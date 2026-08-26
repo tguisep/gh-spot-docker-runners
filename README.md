@@ -53,18 +53,70 @@ Layered as ports and adapters:
 
 The dependency rule is enforced by a test, not by convention.
 
+## Quick start
+
+```bash
+git clone https://github.com/tguisep/gh-spot-docker-runners.git
+cd gh-spot-docker-runners
+uv sync
+
+# Build the runner image with the host's docker group, so jobs can use the socket.
+docker build -t ghspot/runner:ubuntu-24.04 \
+  --build-arg DOCKER_GID="$(getent group docker | cut -d: -f3)" \
+  images/runner/
+
+cp config.example.toml config.toml && $EDITOR config.toml
+export GHSPOT_GITHUB_TOKEN=github_pat_...
+
+ghspot doctor      # checks the token, Docker, the image, and each repository
+ghspot daemon
+```
+
+Then point a workflow at your labels:
+
+```yaml
+jobs:
+  build:
+    runs-on: [self-hosted, linux, x64, home-vm]
+```
+
 ## Requirements
 
-- Linux host with Docker
+- Linux host with Docker, and a user in the `docker` group
 - Python 3.12+
 - A fine-grained GitHub personal access token scoped to the target repositories, with
-  **Administration: read & write** and **Actions: read**
+  **Administration: read & write** (to mint runner configs) and **Actions: read** (to see
+  queued jobs)
+
+## Commands
+
+```
+ghspot doctor                  check everything the daemon needs
+ghspot daemon                  run the reconciliation loop
+ghspot pool list               pools and what they hold
+ghspot pool status <name>      one pool, with its runners
+ghspot runner list [--all]     runners, from the local projection
+ghspot runner logs <ref>       container output
+ghspot runner stop <ref>       retire on both sides
+ghspot config validate         load the config and report what it means
+```
+
+A REST API is served alongside the daemon when `api_bind` is set — see
+[`docs/operations.md`](docs/operations.md).
+
+## Security
+
+Read [SECURITY.md](SECURITY.md) before pointing this at anything. The short version: with
+`docker_socket = true` a job has **effective root on the host**, which is fine for
+repositories you control and unacceptable for one that accepts fork pull requests.
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — how the pieces fit together
-- [`docs/operations.md`](docs/operations.md) — install, configure, run, troubleshoot
-- [`docs/adr/`](docs/adr/) — the decisions and why they were made
+- [`docs/architecture.md`](docs/architecture.md) — how the pieces fit together, and why
+- [`docs/operations.md`](docs/operations.md) — install, configure, run, tune, troubleshoot
+- [`docs/adr/`](docs/adr/) — the decisions, with the alternatives that were rejected
+- [`SECURITY.md`](SECURITY.md) — threat model and hardening checklist
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — layout rules and how to work on it
 - [`CONTEXT.md`](CONTEXT.md) — project history
 
 ## License
