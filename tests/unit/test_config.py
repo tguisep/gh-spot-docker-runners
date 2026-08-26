@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from ghspot.infrastructure.config.settings import (
+    APP_ID_ENV,
+    APP_KEY_ENV,
     TOKEN_ENV,
     ConfigError,
     from_mapping,
@@ -232,3 +234,106 @@ image = "ghspot/runner:ubuntu-24.04"
 
     assert len(settings.pools) == 2  # type: ignore[attr-defined]
     assert len(settings.repositories) == 1  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------- github app
+
+
+APP = """
+[github]
+app_id = "123456"
+private_key_file = "{key}"
+
+[[pool]]
+name = "default"
+repository = "tguisep/gh-spot-docker-runners"
+labels = ["self-hosted", "linux"]
+
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+"""
+
+PEM = "-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n-----END PRIVATE KEY-----\n"
+
+
+def test_an_app_configuration_is_recognised(tmp_path: Path) -> None:
+    key = tmp_path / "app.pem"
+    key.write_text(PEM)
+    key.chmod(0o600)
+
+    settings = parse(APP.format(key=key))
+
+    assert settings.github.uses_app is True  # type: ignore[attr-defined]
+    assert settings.github.app_id == "123456"  # type: ignore[attr-defined]
+    assert settings.github.resolve_private_key() == PEM  # type: ignore[attr-defined]
+
+
+def test_a_token_configuration_is_not_an_app() -> None:
+    assert parse(MINIMAL).github.uses_app is False  # type: ignore[attr-defined]
+
+
+def test_a_private_key_without_an_app_id_is_refused(tmp_path: Path) -> None:
+    """Half a GitHub App is a mistake, not a mode."""
+    text = APP.format(key=tmp_path / "app.pem").replace('app_id = "123456"', "")
+
+    with pytest.raises(ConfigError, match="needs both"):
+        parse(text)
+
+
+def test_the_app_id_can_come_from_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(APP_ID_ENV, "999")
+    text = APP.format(key=tmp_path / "app.pem").replace('app_id = "123456"', "")
+
+    assert parse(text).github.app_id == "999"  # type: ignore[attr-defined]
+
+
+def test_the_private_key_can_come_from_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """systemd EnvironmentFile cannot hold newlines, so an escaped form is accepted."""
+    monkeypatch.setenv(APP_KEY_ENV, PEM.replace("\n", "\\n"))
+    settings = parse(APP.format(key=tmp_path / "absent.pem"))
+
+    assert settings.github.resolve_private_key() == PEM  # type: ignore[attr-defined]
+
+
+def test_a_missing_private_key_names_both_ways_to_supply_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(APP_KEY_ENV, raising=False)
+    settings = parse(APP.format(key=tmp_path / "absent.pem"))
+
+    with pytest.raises(ConfigError, match="could not read the private key"):
+        settings.github.resolve_private_key()  # type: ignore[attr-defined]
+
+
+def test_a_key_file_that_is_not_a_pem_says_where_to_get_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(APP_KEY_ENV, raising=False)
+    key = tmp_path / "app.pem"
+    key.write_text("oops, this is the app id")
+    key.chmod(0o600)
+    settings = parse(APP.format(key=key))
+
+    with pytest.raises(ConfigError, match="Private keys"):
+        settings.github.resolve_private_key()  # type: ignore[attr-defined]
+
+
+def test_a_non_numeric_installation_id_is_refused(tmp_path: Path) -> None:
+    text = APP.format(key=tmp_path / "app.pem").replace(
+        'app_id = "123456"', 'app_id = "1"\ninstallation_id = "not-a-number"'
+    )
+
+    with pytest.raises(ConfigError, match="installation_id must be a number"):
+        parse(text)
+
+
+def test_an_installation_id_is_read_as_an_integer(tmp_path: Path) -> None:
+    text = APP.format(key=tmp_path / "app.pem").replace(
+        'app_id = "123456"', 'app_id = "1"\ninstallation_id = 98765'
+    )
+
+    assert parse(text).github.installation_id == 98765  # type: ignore[attr-defined]
