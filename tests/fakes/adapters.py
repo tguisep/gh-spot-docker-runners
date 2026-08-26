@@ -68,6 +68,9 @@ class InMemoryRunnerRepository:
     async def list_active(self) -> Sequence[Runner]:
         return [runner for runner in self.saved.values() if not runner.is_terminal]
 
+    async def list_all(self) -> Sequence[Runner]:
+        return list(self.saved.values())
+
     async def list_for_pool(self, pool: str) -> Sequence[Runner]:
         return [runner for runner in self.saved.values() if runner.pool == pool]
 
@@ -130,6 +133,9 @@ class FakeForge:
         return list(self.queued.get(repository, []))
 
     async def rate_limit_reset_at(self) -> datetime | None:
+        return None
+
+    async def aclose(self) -> None:
         return None
 
     # -- helpers a test uses to simulate GitHub's side --------------------------------
@@ -209,6 +215,10 @@ class FakeBackend:
 
     async def image_exists(self, image: str) -> bool:
         return image in self.images
+
+    async def ping(self) -> bool:
+        self._guard("ping")
+        return True
 
     # -- helpers a test uses to simulate Docker's side --------------------------------
 
