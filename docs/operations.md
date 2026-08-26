@@ -107,7 +107,9 @@ uv tool update-shell     # adds it, then restart your shell
 uv sync
 uv run ghspot doctor
 
-# Without uv, into a virtualenv of your own.
+# Without uv, into a virtualenv of your own. On Debian and Ubuntu this needs
+# python3-venv, or the virtualenv is created without pip in it.
+sudo apt install -y python3-venv
 python3 -m venv .venv && .venv/bin/pip install -e .
 .venv/bin/ghspot doctor
 
@@ -187,14 +189,26 @@ virtualenv at `/opt/ghspot/.venv`, so that it does not depend on any human's hom
 sudo useradd --system --home /opt/ghspot --shell /usr/sbin/nologin ghspot
 sudo usermod -aG docker ghspot
 
+# Debian and Ubuntu ship python3 without ensurepip, so `python3 -m venv` produces a
+# virtualenv with no pip in it. This package is what supplies it.
+sudo apt install -y python3-venv
+
 sudo mkdir -p /opt/ghspot
 sudo python3 -m venv /opt/ghspot/.venv
-sudo /opt/ghspot/.venv/bin/pip install --quiet .
+
+# Give pip the repository's path, not `.` — sudo does not reliably inherit your
+# working directory.
+sudo /opt/ghspot/.venv/bin/pip install --quiet "$PWD"
+
 sudo chown -R ghspot:ghspot /opt/ghspot
 
 # Confirm the path the unit will run:
 /opt/ghspot/.venv/bin/ghspot version
 ```
+
+> If `pip: command not found` appears, `python3-venv` was missing when the virtualenv was
+> created. Remove it with `sudo rm -rf /opt/ghspot/.venv`, install the package, and create
+> it again — an incomplete virtualenv is not repaired by installing the package afterwards.
 
 Then the configuration and credentials:
 
@@ -230,7 +244,7 @@ To upgrade later:
 
 ```bash
 cd gh-spot-docker-runners && git pull
-sudo /opt/ghspot/.venv/bin/pip install --quiet .
+sudo /opt/ghspot/.venv/bin/pip install --quiet "$PWD"
 sudo systemctl restart ghspot
 ```
 
@@ -311,6 +325,12 @@ Set `docker_socket = true` for the pool, and confirm the image was built with th
 
 **The daemon exits immediately.**
 Almost always configuration. Run `ghspot config validate` — it names the field.
+
+**`pip: command not found` after creating a virtualenv.**
+Debian and Ubuntu ship `python3` without `ensurepip`, so `python3 -m venv` makes a
+virtualenv containing only python symlinks. Install `python3-venv`, delete the incomplete
+virtualenv, and create it again — installing the package does not repair one that already
+exists. The `.deb` avoids this entirely by bundling its own interpreter.
 
 **`ghspot: command not found`.**
 `uv sync` installs into the repository's `.venv/` and does not put anything on your `PATH`.
