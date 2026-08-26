@@ -162,9 +162,14 @@ class Runner:
         self._move_to(RunnerState.IDLE, at)
         self._record(RunnerCameOnline(occurred_at=at, runner_id=self.id))
 
-    def assign_job(self, job_id: int, at: datetime) -> None:
-        """GitHub handed this runner a job."""
-        if self.state is RunnerState.BUSY and self.current_job_id == job_id:
+    def assign_job(self, job_id: int | None, at: datetime) -> None:
+        """GitHub handed this runner a job.
+
+        ``job_id`` is optional because the runner list reports *that* a runner is busy
+        without saying which job it took. Correlating the two costs extra API calls that
+        buy nothing the reconciler needs.
+        """
+        if self.state is RunnerState.BUSY and (job_id is None or self.current_job_id == job_id):
             return
         self._move_to(RunnerState.BUSY, at)
         self.current_job_id = job_id

@@ -50,7 +50,7 @@ class RunnerTookJob(DomainEvent):
     """The runner was assigned a job. With just-in-time runners this happens at most once."""
 
     runner_id: str
-    job_id: int
+    job_id: int | None
 
 
 @dataclass(frozen=True, slots=True)
