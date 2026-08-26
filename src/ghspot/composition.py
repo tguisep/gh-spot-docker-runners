@@ -14,6 +14,11 @@ from ghspot.application.commands.retire import RetireRunner
 from ghspot.application.reconciliation import ReconciliationService
 from ghspot.infrastructure.config.settings import Settings
 from ghspot.infrastructure.docker.backend import DockerRunnerBackend
+from ghspot.infrastructure.github.auth import (
+    GitHubAppTokenProvider,
+    StaticTokenProvider,
+    TokenProvider,
+)
 from ghspot.infrastructure.github.client import GitHubClient
 from ghspot.infrastructure.persistence.sqlite import SqliteEventLog, SqliteRunnerRepository
 from ghspot.infrastructure.system import SystemClock, UuidGenerator
@@ -37,6 +42,29 @@ class Application:
         await self.forge.aclose()
 
 
+def build_auth(settings: Settings) -> TokenProvider:
+    """Choose how to authenticate, from what the configuration provides.
+
+    A GitHub App is used when one is configured, since it is the better credential in every
+    respect that matters here. A personal access token remains supported because it is the
+    faster thing to set up when trying the project out.
+    """
+    github = settings.github
+    if not github.uses_app:
+        return StaticTokenProvider(github.resolve_token())
+
+    assert github.app_id is not None
+    return GitHubAppTokenProvider(
+        app_id=github.app_id,
+        private_key=github.resolve_private_key(),
+        installation_id=github.installation_id,
+        base_url=github.api_url,
+        # Falling back to the first configured repository lets an operator skip
+        # installation_id entirely in the common single-installation case.
+        discovery_repository=next(iter(settings.repositories), None),
+    )
+
+
 def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> Application:
     """Assemble the application from validated settings.
 
@@ -47,7 +75,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
     ids = UuidGenerator()
 
     forge = GitHubClient(
-        token=settings.github.resolve_token(),
+        auth=build_auth(settings),
         base_url=settings.github.api_url,
         timeout_seconds=settings.github.request_timeout.total_seconds(),
     )

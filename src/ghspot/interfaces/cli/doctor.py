@@ -13,6 +13,7 @@ from rich.markup import escape
 
 from ghspot.composition import Application, build
 from ghspot.domain.errors import (
+    ForgeAuthError,
     ForgeError,
     ForgeNotFoundError,
     ForgePermissionError,
@@ -117,18 +118,25 @@ def _socket_check(pool: str) -> Check:
 async def _github(settings: Settings) -> list[Check]:
     try:
         application = build(settings)
-    except ConfigError as error:
+    except (ConfigError, ForgeAuthError) as error:
         return [
             Check(
-                name="github token",
+                name="github auth",
                 ok=False,
                 detail=str(error),
-                remedy="export GHSPOT_GITHUB_TOKEN=... or create the token file",
+                remedy=(
+                    "set GHSPOT_GITHUB_TOKEN, or configure [github].app_id with "
+                    "private_key_file for a GitHub App"
+                ),
             )
         ]
 
-    checks: list[Check] = [Check(name="github token", ok=True, detail="found")]
+    checks: list[Check] = [
+        Check(name="github auth", ok=True, detail=application.forge.describe_auth())
+    ]
     try:
+        # For a GitHub App this is the first call that actually signs a JWT and exchanges it,
+        # so a bad key or a wrong app id surfaces here rather than an hour into a run.
         for repository in settings.repositories:
             checks.append(await _repository(application, repository))
     finally:

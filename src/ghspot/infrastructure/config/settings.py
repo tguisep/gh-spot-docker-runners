@@ -26,6 +26,8 @@ from ghspot.domain.model.pool import PoolSpec
 from ghspot.domain.model.target import RepositoryTarget
 
 TOKEN_ENV = "GHSPOT_GITHUB_TOKEN"
+APP_ID_ENV = "GHSPOT_GITHUB_APP_ID"
+APP_KEY_ENV = "GHSPOT_GITHUB_APP_PRIVATE_KEY"
 CONFIG_ENV = "GHSPOT_CONFIG"
 
 DEFAULT_CONFIG_PATHS = (
@@ -63,9 +65,51 @@ class DaemonSettings:
 
 @dataclass(frozen=True, slots=True)
 class GitHubSettings:
+    """How to reach GitHub, and how to prove who we are.
+
+    Two authentication modes. A GitHub App is preferred where available: its rate limit
+    belongs to the installation rather than to a person, its permissions are the app's rather
+    than everything the person can reach, and its tokens expire on their own.
+    """
+
     api_url: str = "https://api.github.com"
     token_file: Path | None = None
     request_timeout: timedelta = timedelta(seconds=20)
+
+    app_id: str | None = None
+    private_key_file: Path | None = None
+    installation_id: int | None = None
+    """Optional: discovered from the app's installations when left unset."""
+
+    @property
+    def uses_app(self) -> bool:
+        return self.app_id is not None
+
+    def resolve_private_key(self) -> str:
+        """The App private key, from the environment or the configured PEM file."""
+        from_env = os.environ.get(APP_KEY_ENV, "").strip()
+        if from_env:
+            # systemd EnvironmentFile cannot hold newlines, so an escaped form is accepted.
+            return from_env.replace("\\n", "\n")
+
+        if self.private_key_file is None:
+            raise ConfigError(
+                f"a GitHub App needs a private key: set {APP_KEY_ENV} or [github].private_key_file"
+            )
+
+        path = self.private_key_file.expanduser()
+        try:
+            key = path.read_text(encoding="utf-8")
+        except OSError as error:
+            raise ConfigError(f"could not read the private key at {path}: {error}") from error
+
+        if "PRIVATE KEY" not in key:
+            raise ConfigError(
+                f"{path} does not look like a PEM private key. Download it from the app's "
+                "settings page under 'Private keys'."
+            )
+        _warn_if_world_readable(path)
+        return key
 
     def resolve_token(self) -> str:
         """Read the token from the environment, else from ``token_file``.
@@ -145,10 +189,28 @@ def from_mapping(raw: dict[str, Any], source: Path | None = None) -> Settings:
 
 def _github(table: dict[str, Any]) -> GitHubSettings:
     token_file = table.get("token_file")
+    private_key_file = table.get("private_key_file")
+    app_id = table.get("app_id") or os.environ.get(APP_ID_ENV) or None
+
+    installation_id = table.get("installation_id")
+    if installation_id is not None:
+        try:
+            installation_id = int(installation_id)
+        except (TypeError, ValueError) as error:
+            raise ConfigError("github.installation_id must be a number") from error
+
+    if app_id is None and private_key_file is not None:
+        raise ConfigError(
+            "[github].private_key_file is set but app_id is not. A GitHub App needs both."
+        )
+
     return GitHubSettings(
         api_url=str(table.get("api_url", "https://api.github.com")).rstrip("/"),
         token_file=Path(str(token_file)).expanduser() if token_file else None,
         request_timeout=_duration(table.get("request_timeout", "20s"), "github.request_timeout"),
+        app_id=str(app_id) if app_id else None,
+        private_key_file=(Path(str(private_key_file)).expanduser() if private_key_file else None),
+        installation_id=installation_id,
     )
 
 

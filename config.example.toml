@@ -4,13 +4,30 @@
 # then check it with: ghspot config validate
 
 [github]
-# The token is never read from this file. Point at a file containing it, or set
-# GHSPOT_GITHUB_TOKEN in the environment (the environment wins).
-#
-# A fine-grained personal access token scoped to the repositories below, with:
+# Two ways to authenticate. Credentials are never read from this file itself — it points
+# at files, or you set the environment variables (the environment always wins).
+
+# --- Option A: personal access token -------------------------------------------------
+# Quickest to set up. A fine-grained token scoped to the repositories below, with:
 #   Administration: read & write   (required to mint just-in-time runner configs)
 #   Actions:        read           (required to see queued jobs)
+# Or set GHSPOT_GITHUB_TOKEN.
 token_file = "~/.config/ghspot/token"
+
+# --- Option B: GitHub App (preferred) ------------------------------------------------
+# Better in every respect that matters here: the rate limit belongs to the installation
+# rather than to you personally, the permissions are the app's rather than everything your
+# account can reach, and its tokens expire hourly on their own.
+#
+# Create one at Settings -> Developer settings -> GitHub Apps, with repository permissions
+# "Administration: read & write" and "Actions: read", then install it on your account.
+#
+# app_id = "123456"
+# private_key_file = "~/.config/ghspot/app.pem"    # or set GHSPOT_GITHUB_APP_PRIVATE_KEY
+#
+# Optional. Discovered automatically when the app has a single installation, or from the
+# first repository below.
+# installation_id = 98765432
 
 # api_url = "https://api.github.com"       # change for GitHub Enterprise Server
 # request_timeout = "20s"
