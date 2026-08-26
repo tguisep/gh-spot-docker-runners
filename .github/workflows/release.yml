@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (without the leading v). Builds only; publishes nothing."
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }} package
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive the version
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ inputs.version }}"
+            [ -n "${VERSION}" ] || VERSION="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building ghspot ${VERSION} for ${{ matrix.arch }}"
+
+      # A tag must match the version the package will claim, or `apt` and the release
+      # disagree about what is installed.
+      - name: The tag must match pyproject
+        if: github.ref_type == 'tag'
+        run: |
+          DECLARED="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          if [ "${DECLARED}" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::tag v${{ steps.version.outputs.version }} does not match" \
+                 "pyproject version ${DECLARED}. Bump one of them."
+            exit 1
+          fi
+
+      # Built in a container, the same way it builds locally, so there is only one path
+      # to keep working. The runner's own architecture decides the package architecture.
+      - name: Build the package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: packaging/deb/build-in-docker.sh
+
+      - name: Verify the package on a clean system
+        run: packaging/deb/verify.sh "dist/ghspot_${{ steps.version.outputs.version }}-1_${{ matrix.arch }}.deb"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ghspot-${{ matrix.arch }}-deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ghspot-*-deb
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum *.deb > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          NOTES="$(mktemp)"
+          cat > "${NOTES}" <<'BODY'
+          ## Install
+
+          ```bash
+          # Pick the package for your architecture, then:
+          sudo apt install ./ghspot_*.deb
+          ```
+
+          The package bundles its own Python, so it does not depend on the system
+          interpreter and works on any glibc distribution — Debian and Ubuntu alike.
+
+          It installs but does not start the daemon: it needs a repository and a
+          credential first. `sudo ghspot doctor --config /etc/ghspot/config.toml`
+          tells you what is missing.
+
+          - [Setting up a token or a GitHub App](https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/authentication.md)
+          - [Operations guide](https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/operations.md)
+
+          Verify a download against `SHA256SUMS`.
+          BODY
+
+          gh release create "${TAG}" \
+            --title "ghspot ${TAG}" \
+            --notes-file "${NOTES}" \
+            --verify-tag \
+            dist/*.deb dist/SHA256SUMS

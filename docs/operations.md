@@ -86,11 +86,52 @@ Credentials are never command-line arguments; that would put them in `ps` output
 
 ## Install
 
+### From a .deb (recommended on Debian and Ubuntu)
+
+Download the package for your architecture from the
+[latest release](https://github.com/tguisep/gh-spot-docker-runners/releases/latest):
+
+```bash
+sudo apt install ./ghspot_0.1.0-1_amd64.deb
+```
+
+It bundles its own Python, so it does not use — or care about — the system interpreter. The
+package works on any glibc distribution and cannot be broken by a distribution upgrade
+changing `python3`.
+
+What it installs:
+
+| Path | |
+|---|---|
+| `/usr/bin/ghspot` | The command |
+| `/opt/ghspot/` | Bundled interpreter and virtualenv |
+| `/etc/ghspot/config.toml` | Configuration — a conffile, so your edits survive upgrades |
+| `/lib/systemd/system/ghspot.service` | The unit |
+| `/var/lib/ghspot/` | State database |
+
+It creates a `ghspot` system user, adds it to the `docker` group, and **does not start the
+daemon** — it cannot work until a repository and a credential are configured. Continue at
+[Configure](#configure), then:
+
+```bash
+sudo ghspot doctor --config /etc/ghspot/config.toml
+sudo systemctl enable --now ghspot
+```
+
+Removing the package keeps `/etc/ghspot`, so a reinstall does not lose your credentials.
+`sudo apt purge ghspot` removes those too.
+
+### From source
+
 ```bash
 git clone https://github.com/tguisep/gh-spot-docker-runners.git
 cd gh-spot-docker-runners
-uv sync                     # or: pip install -e .
+uv tool install .
+```
 
+Then build the runner image, which both install methods need:
+
+```bash
 docker build -t ghspot/runner:ubuntu-24.04 \
   --build-arg DOCKER_GID="$(getent group docker | cut -d: -f3)" \
   images/runner/
