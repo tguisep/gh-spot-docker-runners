@@ -25,7 +25,9 @@ from ghspot.domain.errors import (
     ForgeAuthError,
     ForgeError,
     ForgeNotFoundError,
+    ForgePermissionError,
     ForgeRateLimitedError,
+    ForgeTokenRejectedError,
 )
 from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.labels import LabelSet
@@ -285,8 +287,8 @@ class GitHubClient:
                     retry_after_seconds=float(retry_after) if retry_after else None,
                 )
             if status == 401:
-                return ForgeAuthError(f"{where}: the token was rejected ({detail})")
-            return ForgeAuthError(
+                return ForgeTokenRejectedError(f"{where}: the token was rejected ({detail})")
+            return ForgePermissionError(
                 f"{where}: forbidden ({detail}). The token likely lacks "
                 "'Administration: read & write' on this repository."
             )

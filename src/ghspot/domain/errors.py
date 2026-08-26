@@ -54,6 +54,14 @@ class ForgeAuthError(ForgeError):
     """The token is missing, expired, or lacks the permission the endpoint needs."""
 
 
+class ForgeTokenRejectedError(ForgeAuthError):
+    """The token itself is invalid or expired — a different fix from a missing scope."""
+
+
+class ForgePermissionError(ForgeAuthError):
+    """The token is valid but lacks the permission this endpoint requires."""
+
+
 class ForgeNotFoundError(ForgeError):
     """The repository or runner does not exist, or the token cannot see it."""
 
