@@ -89,8 +89,41 @@ Credentials are never command-line arguments; that would put them in `ps` output
 ```bash
 git clone https://github.com/tguisep/gh-spot-docker-runners.git
 cd gh-spot-docker-runners
-uv sync                     # or: pip install -e .
+uv tool install .
+```
 
+That puts a standalone `ghspot` in `~/.local/bin`, usable from any directory. If your shell
+cannot find it afterwards, that directory is not on your `PATH`:
+
+```bash
+uv tool update-shell     # adds it, then restart your shell
+```
+
+<details>
+<summary>Other ways to install</summary>
+
+```bash
+# Working on the code: no install, run from the repository.
+uv sync
+uv run ghspot doctor
+
+# Without uv, into a virtualenv of your own.
+python3 -m venv .venv && .venv/bin/pip install -e .
+.venv/bin/ghspot doctor
+
+# With pipx.
+pipx install .
+```
+
+`uv sync` alone installs into `.venv/` **without** putting `ghspot` on your `PATH` — that is
+why the plain command reports `command not found` after it. Use `uv run ghspot`, or install
+with `uv tool install .`.
+
+</details>
+
+Then build the runner image:
+
+```bash
 docker build -t ghspot/runner:ubuntu-24.04 \
   --build-arg DOCKER_GID="$(getent group docker | cut -d: -f3)" \
   images/runner/
@@ -147,9 +180,25 @@ gh api repos/OWNER/REPO/actions/runners               # no ghspot-* runners
 
 ### As a service
 
+Create the service user, and install the daemon somewhere it can reach — the unit expects a
+virtualenv at `/opt/ghspot/.venv`, so that it does not depend on any human's home directory:
+
 ```bash
 sudo useradd --system --home /opt/ghspot --shell /usr/sbin/nologin ghspot
 sudo usermod -aG docker ghspot
+
+sudo mkdir -p /opt/ghspot
+sudo python3 -m venv /opt/ghspot/.venv
+sudo /opt/ghspot/.venv/bin/pip install --quiet .
+sudo chown -R ghspot:ghspot /opt/ghspot
+
+# Confirm the path the unit will run:
+/opt/ghspot/.venv/bin/ghspot version
+```
+
+Then the configuration and credentials:
+
+```bash
 sudo mkdir -p /etc/ghspot
 sudo cp config.toml /etc/ghspot/
 
@@ -172,6 +221,18 @@ journalctl -u ghspot -f
 The unit sets `TimeoutStopSec=300`. On stop the daemon finishes its current tick and leaves
 busy runners alone — killing one fails a build that was about to pass — so that timeout is
 how long systemd waits before insisting.
+
+If you installed elsewhere, point `ExecStart=` at your own path — `command -v ghspot` shows
+it. The unit runs as the `ghspot` user, so a binary under *your* home directory will not be
+readable by it; that is why `/opt/ghspot` is the default.
+
+To upgrade later:
+
+```bash
+cd gh-spot-docker-runners && git pull
+sudo /opt/ghspot/.venv/bin/pip install --quiet .
+sudo systemctl restart ghspot
+```
 
 ## Day to day
 
@@ -250,6 +311,12 @@ Set `docker_socket = true` for the pool, and confirm the image was built with th
 
 **The daemon exits immediately.**
 Almost always configuration. Run `ghspot config validate` — it names the field.
+
+**`ghspot: command not found`.**
+`uv sync` installs into the repository's `.venv/` and does not put anything on your `PATH`.
+Either install it properly with `uv tool install .`, or prefix commands with `uv run` from
+inside the repository. If you did run `uv tool install .`, then `~/.local/bin` is missing
+from your `PATH` — `uv tool update-shell` adds it.
 
 ## Backups
 

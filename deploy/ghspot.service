@@ -5,6 +5,10 @@
 # Runs as an unprivileged user that is a member of the 'docker' group. That group
 # membership is equivalent to root on this host, so the user should exist for this
 # purpose and nothing else.
+#
+# ExecStart expects a virtualenv at /opt/ghspot/.venv, so the daemon does not depend on
+# any human's home directory — the ghspot user cannot read yours. See docs/operations.md
+# for the install steps. If you installed elsewhere, change the path below.
 
 [Unit]
 Description=ghspot — self-hosted GitHub Actions runners on Docker

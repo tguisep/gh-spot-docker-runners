@@ -58,7 +58,10 @@ The dependency rule is enforced by a test, not by convention.
 ```bash
 git clone https://github.com/tguisep/gh-spot-docker-runners.git
 cd gh-spot-docker-runners
-uv sync
+
+# Installs `ghspot` onto your PATH (~/.local/bin). Run `uv tool update-shell` once
+# if it isn't there yet, then restart your shell.
+uv tool install .
 
 # Build the runner image with the host's docker group, so jobs can use the socket.
 docker build -t ghspot/runner:ubuntu-24.04 \
