@@ -27,6 +27,7 @@ dependencies = [
     "structlog>=24.1",
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
+    "pyjwt[crypto]>=2.9",
 ]
 
 [project.optional-dependencies]
