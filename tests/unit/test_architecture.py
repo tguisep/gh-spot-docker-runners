@@ -18,11 +18,17 @@ PACKAGE_ROOT = Path(ghspot.__file__).parent
 PACKAGE_NAME = ghspot.__name__
 
 #: layer -> the layers it may import from (besides itself and the package root).
+#:
+#: `interfaces` may reach `infrastructure` because a driving adapter is an entry point: the
+#: CLI has to name a concrete config loader and a concrete Docker backend, or nothing would
+#: ever be constructed. The rule that carries the weight is the one above it — `domain` and
+#: `application` depend on nothing concrete, which is what lets the reconciliation loop run
+#: entirely against fakes.
 ALLOWED_IMPORTS: dict[str, frozenset[str]] = {
     "domain": frozenset(),
     "application": frozenset({"domain"}),
     "infrastructure": frozenset({"domain", "application"}),
-    "interfaces": frozenset({"domain", "application"}),
+    "interfaces": frozenset({"domain", "application", "infrastructure"}),
 }
 
 
