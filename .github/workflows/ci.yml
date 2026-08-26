@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: build the runner image
-        run: docker build -t ghspot/runner:ci docker/runner/
+        run: docker build -t ghspot/runner:ci images/runner/
       - name: the image must not carry a token
         run: |
           docker run --rm ghspot/runner:ci env | grep -qiE 'token|jitconfig' && exit 1 || exit 0
