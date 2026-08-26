@@ -1,0 +1,69 @@
+# ghspot — self-hosted GitHub Actions runners on Docker
+#
+# Copy to ./config.toml, ~/.config/ghspot/config.toml or /etc/ghspot/config.toml,
+# then check it with: ghspot config validate
+
+[github]
+# The token is never read from this file. Point at a file containing it, or set
+# GHSPOT_GITHUB_TOKEN in the environment (the environment wins).
+#
+# A fine-grained personal access token scoped to the repositories below, with:
+#   Administration: read & write   (required to mint just-in-time runner configs)
+#   Actions:        read           (required to see queued jobs)
+token_file = "~/.config/ghspot/token"
+
+# api_url = "https://api.github.com"       # change for GitHub Enterprise Server
+# request_timeout = "20s"
+
+[daemon]
+poll_interval = "15s"
+state_db = "~/.local/state/ghspot/state.db"
+
+# Serve the REST API. Bind to localhost unless you have put auth in front of it.
+# api_bind = "127.0.0.1:8770"
+
+# stop_timeout = "30s"                     # grace given to a draining runner
+# log_level = "INFO"
+# log_format = "auto"                      # auto | console | json
+
+[[pool]]
+name = "default"
+repository = "tguisep/my-project"
+
+# A job runs here when every label it asks for appears in this list.
+labels = ["self-hosted", "linux", "x64", "home-vm"]
+
+min_idle = 1          # runners kept warm so a job doesn't wait for a container to boot
+max_runners = 4       # hard ceiling for this pool
+idle_timeout = "10m"  # reap runners idle longer than this, never below min_idle
+max_job_duration = "2h"
+max_launch_per_tick = 2   # spreads a large matrix across ticks
+
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+cpus = 2.0
+memory = "4g"
+
+# Let jobs run docker build / docker run. See SECURITY.md: a job with socket access
+# has effective root on this host. Fine for your own repositories.
+docker_socket = true
+
+# Persist caches between runs. Host path = container path.
+# [pool.container.volumes]
+# "/srv/ghspot/cache" = "/home/runner/.cache"
+
+# Extra environment for jobs. Anything token-shaped is refused at load time —
+# job secrets belong in GitHub Actions secrets, not here.
+# [pool.container.environment]
+# TZ = "Europe/Paris"
+
+# A second pool, for a different repository or a different machine shape.
+# [[pool]]
+# name = "heavy"
+# repository = "tguisep/other-project"
+# labels = ["self-hosted", "linux", "x64", "heavy"]
+# max_runners = 1
+# [pool.container]
+# image = "ghspot/runner:ubuntu-24.04"
+# cpus = 8.0
+# memory = "16g"

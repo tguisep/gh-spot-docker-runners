@@ -1,0 +1,60 @@
+# Install to /etc/systemd/system/ghspot.service, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ghspot
+#
+# Runs as an unprivileged user that is a member of the 'docker' group. That group
+# membership is equivalent to root on this host, so the user should exist for this
+# purpose and nothing else.
+
+[Unit]
+Description=ghspot — self-hosted GitHub Actions runners on Docker
+Documentation=https://github.com/tguisep/gh-spot-docker-runners
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ghspot
+Group=ghspot
+SupplementaryGroups=docker
+
+ExecStart=/opt/ghspot/.venv/bin/ghspot daemon --config /etc/ghspot/config.toml
+
+# The token is read from this file rather than passed as an argument, so it never
+# appears in `ps` or in the journal.
+# Format: GHSPOT_GITHUB_TOKEN=ghp_...
+EnvironmentFile=/etc/ghspot/env
+
+Restart=always
+RestartSec=10s
+
+# Runners mid-job are somebody's CI run. On stop, the daemon finishes its current tick
+# and leaves busy containers alone; this is how long we wait before insisting.
+KillSignal=SIGTERM
+TimeoutStopSec=300
+
+StateDirectory=ghspot
+ConfigurationDirectory=ghspot
+
+# The daemon needs the Docker socket and its own state. It needs nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/run/docker.sock
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
