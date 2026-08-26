@@ -44,3 +44,31 @@ class PoolAtCapacityError(DomainError):
         super().__init__(f"pool {pool_name!r} already holds its maximum of {max_runners} runners")
         self.pool_name = pool_name
         self.max_runners = max_runners
+
+
+class ForgeError(GhSpotError):
+    """The code forge could not be reached, or refused the request."""
+
+
+class ForgeAuthError(ForgeError):
+    """The token is missing, expired, or lacks the permission the endpoint needs."""
+
+
+class ForgeNotFoundError(ForgeError):
+    """The repository or runner does not exist, or the token cannot see it."""
+
+
+class ForgeRateLimitedError(ForgeError):
+    """The rate limit is exhausted. ``retry_after_seconds`` is the forge's own advice."""
+
+    def __init__(self, message: str, retry_after_seconds: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class BackendError(GhSpotError):
+    """The container backend could not be reached, or refused the operation."""
+
+
+class ImageNotFoundError(BackendError):
+    """The runner image is not present and could not be pulled."""
