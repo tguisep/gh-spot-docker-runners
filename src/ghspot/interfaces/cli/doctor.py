@@ -11,9 +11,8 @@ from pathlib import Path
 
 from rich.markup import escape
 
-from ghspot.composition import Application, build
+from ghspot.composition import build_forge
 from ghspot.domain.errors import (
-    ForgeAuthError,
     ForgeError,
     ForgeNotFoundError,
     ForgePermissionError,
@@ -23,6 +22,7 @@ from ghspot.domain.errors import (
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.config.settings import ConfigError, Settings
 from ghspot.infrastructure.docker.backend import DOCKER_SOCKET, DockerRunnerBackend
+from ghspot.infrastructure.github.client import GitHubClient
 from ghspot.interfaces.cli.render import console
 
 
@@ -69,14 +69,7 @@ async def _docker(settings: Settings) -> list[Check]:
         backend = DockerRunnerBackend()
         await backend.ping()
     except GhSpotError as error:
-        return [
-            Check(
-                name="docker",
-                ok=False,
-                detail=str(error),
-                remedy="sudo systemctl start docker && sudo usermod -aG docker $USER",
-            )
-        ]
+        return [Check(name="docker", ok=False, detail=str(error), remedy=_docker_remedy(error))]
 
     checks.append(Check(name="docker", ok=True, detail="daemon reachable"))
 
@@ -101,6 +94,22 @@ async def _docker(settings: Settings) -> list[Check]:
     return checks
 
 
+def _docker_remedy(error: Exception) -> str:
+    """Advice that matches which way Docker is unreachable.
+
+    'Permission denied' and 'no such file' need different fixes, and telling someone to add
+    themselves to a group without mentioning that it does not apply to the running shell
+    sends them round the loop a second time.
+    """
+    message = str(error).casefold()
+    if "permission denied" in message or "permissionerror" in message:
+        return (
+            "sudo usermod -aG docker $USER  —  then run 'newgrp docker', "
+            "or log out and back in: group changes do not apply to the current shell"
+        )
+    return "sudo systemctl start docker  (and check: systemctl status docker)"
+
+
 def _socket_check(pool: str) -> Check:
     exists = Path(DOCKER_SOCKET).exists()
     return Check(
@@ -116,9 +125,12 @@ def _socket_check(pool: str) -> Check:
 
 
 async def _github(settings: Settings) -> list[Check]:
+    # Only the forge client, never the whole application: the GitHub checks do not need
+    # Docker, and building it here would make an unreachable daemon abort the report that
+    # is supposed to tell you the daemon is unreachable.
     try:
-        application = build(settings)
-    except (ConfigError, ForgeAuthError) as error:
+        forge = build_forge(settings)
+    except (ConfigError, GhSpotError) as error:
         return [
             Check(
                 name="github auth",
@@ -131,20 +143,18 @@ async def _github(settings: Settings) -> list[Check]:
             )
         ]
 
-    checks: list[Check] = [
-        Check(name="github auth", ok=True, detail=application.forge.describe_auth())
-    ]
+    checks: list[Check] = [Check(name="github auth", ok=True, detail=forge.describe_auth())]
     try:
         # For a GitHub App this is the first call that actually signs a JWT and exchanges it,
         # so a bad key or a wrong app id surfaces here rather than an hour into a run.
         for repository in settings.repositories:
-            checks.append(await _repository(application, repository))
+            checks.append(await _repository(forge, repository))
     finally:
-        await application.aclose()
+        await forge.aclose()
     return checks
 
 
-async def _repository(application: Application, repository: RepositoryTarget) -> Check:
+async def _repository(forge: GitHubClient, repository: RepositoryTarget) -> Check:
     """Prove the token can actually do the two things the daemon needs.
 
     Listing runners exercises 'Administration: read'; it is the cheapest call that fails in
@@ -152,7 +162,7 @@ async def _repository(application: Application, repository: RepositoryTarget) ->
     """
     name = str(repository)
     try:
-        runners = await application.forge.list_runners(repository)
+        runners = await forge.list_runners(repository)
     except ForgeNotFoundError:
         return Check(
             name=f"repository {name}",
