@@ -55,11 +55,25 @@ The dependency rule is enforced by a test, not by convention.
 
 ## Quick start
 
+On Debian or Ubuntu, take the `.deb` from the
+[latest release](https://github.com/tguisep/gh-spot-docker-runners/releases/latest). It
+bundles its own Python, so it needs nothing from the system interpreter:
+
+```bash
+sudo apt install ./ghspot_*.deb
+```
+
+<details><summary>Or install from source</summary>
+
 ```bash
 git clone https://github.com/tguisep/gh-spot-docker-runners.git
 cd gh-spot-docker-runners
-uv sync
+uv tool install .          # then `uv tool update-shell` if ghspot isn't found
+```
 
+</details>
+
+```bash
 # Build the runner image with the host's docker group, so jobs can use the socket.
 docker build -t ghspot/runner:ubuntu-24.04 \
   --build-arg DOCKER_GID="$(getent group docker | cut -d: -f3)" \
