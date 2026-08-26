@@ -6,17 +6,22 @@
 - Python 3.12 or newer
 - A fine-grained GitHub personal access token
 
-## The token
+## Authentication
 
-Create it at **Settings → Developer settings → Personal access tokens → Fine-grained tokens**,
-scoped to the repositories you want runners for, with:
+Two modes. Both need the same two permissions:
 
 | Permission | Level | Why |
 |---|---|---|
 | Administration | Read and write | Minting just-in-time runner configurations |
 | Actions | Read | Seeing which jobs are queued |
 
-Store it so it is not world-readable:
+Neither credential ever enters a runner container — containers get a single-use config blob
+and nothing else, in either mode.
+
+### Personal access token — quickest to start
+
+Create it at **Settings → Developer settings → Personal access tokens → Fine-grained tokens**,
+scoped to the repositories you want runners for.
 
 ```bash
 mkdir -p ~/.config/ghspot
@@ -24,9 +29,60 @@ install -m 600 /dev/null ~/.config/ghspot/token
 printf '%s' 'github_pat_...' > ~/.config/ghspot/token
 ```
 
-The daemon reads `GHSPOT_GITHUB_TOKEN` first and falls back to the file, so a systemd unit
-can inject it without one existing on disk. It is never a command-line argument — that would
-put it in `ps` output.
+```toml
+[github]
+token_file = "~/.config/ghspot/token"
+```
+
+### GitHub App — preferred for anything long-lived
+
+Better in three ways that matter for a daemon running continuously:
+
+- **Rate limit belongs to the installation**, not to you. A PAT's 5000/hour is shared with
+  everything else you do; an installation gets its own budget, which scales with the number
+  of repositories and users it covers.
+- **Permissions are the app's**, not everything your account can reach. A PAT scoped to two
+  repositories still authenticates *as you*.
+- **Tokens expire hourly on their own.** The daemon refreshes them; a leaked one dies
+  without you doing anything.
+
+Create one at **Settings → Developer settings → GitHub Apps → New GitHub App**:
+
+1. Uncheck **Webhook → Active** — this project polls and needs no inbound endpoint.
+2. Under **Repository permissions**, set *Administration: Read and write* and
+   *Actions: Read*.
+3. Create it, then **Generate a private key** and save the `.pem`.
+4. **Install App** on your account, choosing the repositories you want runners for.
+
+```bash
+install -m 600 ~/Downloads/your-app.*.private-key.pem ~/.config/ghspot/app.pem
+```
+
+```toml
+[github]
+app_id = "123456"
+private_key_file = "~/.config/ghspot/app.pem"
+# installation_id = 98765432   # optional; discovered automatically
+```
+
+`installation_id` is worked out from the first configured repository, or from the app's
+single installation. Set it explicitly only if the app is installed in several places.
+
+`ghspot doctor` reports which mode is in use and, for an App, performs a real JWT exchange —
+so a wrong app id or an unusable key surfaces there rather than an hour into a run.
+
+### Supplying credentials from the environment
+
+The environment always wins over the config file, so a systemd unit can inject secrets with
+no file on disk:
+
+| Variable | Mode |
+|---|---|
+| `GHSPOT_GITHUB_TOKEN` | Personal access token |
+| `GHSPOT_GITHUB_APP_ID` | GitHub App |
+| `GHSPOT_GITHUB_APP_PRIVATE_KEY` | GitHub App — `\n` escapes are accepted, since systemd `EnvironmentFile` cannot hold real newlines |
+
+Credentials are never command-line arguments; that would put them in `ps` output.
 
 ## Install
 
@@ -96,7 +152,15 @@ sudo useradd --system --home /opt/ghspot --shell /usr/sbin/nologin ghspot
 sudo usermod -aG docker ghspot
 sudo mkdir -p /etc/ghspot
 sudo cp config.toml /etc/ghspot/
+
+# Personal access token:
 printf 'GHSPOT_GITHUB_TOKEN=%s\n' 'github_pat_...' | sudo tee /etc/ghspot/env > /dev/null
+
+# Or a GitHub App — EnvironmentFile cannot hold real newlines, so escape them:
+#   { printf 'GHSPOT_GITHUB_APP_ID=123456\n'
+#     printf 'GHSPOT_GITHUB_APP_PRIVATE_KEY=%s\n' "$(awk '{printf "%s\\n", $0}' app.pem)"
+#   } | sudo tee /etc/ghspot/env > /dev/null
+
 sudo chmod 600 /etc/ghspot/env
 
 sudo cp deploy/ghspot.service /etc/systemd/system/
@@ -169,9 +233,16 @@ and which are offline, so a hand-registered runner is never touched.
 The runner image is not built on this host. `ghspot doctor` prints the exact build command.
 
 **Rate limited.**
-`ForgeRateLimitedError` means the 5000/hour budget is spent. Raise `poll_interval` or reduce
-the number of pools. Conditional requests make idle polling nearly free, so this usually
-means many repositories with constant activity.
+`ForgeRateLimitedError` means the hourly budget is spent. Raise `poll_interval` or reduce the
+number of pools. Conditional requests make idle polling nearly free, so this usually means
+many repositories with constant activity. Switching from a personal access token to a GitHub
+App gives the daemon its own budget instead of sharing yours.
+
+**`GitHub rejected the app assertion`.**
+Either `app_id` does not match the private key, or the host clock is wrong. GitHub refuses a
+JWT whose `iat` is in the future, so a clock running fast fails every request. Check with
+`timedatectl` and confirm the app id on the app's settings page — it is the numeric **App
+ID**, not the client id and not the installation id.
 
 **Jobs cannot run `docker`.**
 Set `docker_socket = true` for the pool, and confirm the image was built with the host's
@@ -183,4 +254,4 @@ Almost always configuration. Run `ghspot config validate` — it names the field
 ## Backups
 
 There is nothing to back up. The state database is a projection: delete it and the next tick
-rebuilds the fleet from the containers' own labels. Back up `config.toml` and your token.
+rebuilds the fleet from the containers' own labels. Back up `config.toml` and your credential — the token file or the app's private key.

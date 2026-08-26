@@ -27,8 +27,15 @@ This is enforced in more than one place, deliberately:
 - CI asserts the built image carries no token-shaped environment variable.
 
 **The token is never an argument.** It is read from a file or the environment, so it does not
-appear in `ps` output or shell history. A world-readable token file produces a warning naming
-the `chmod` to run.
+appear in `ps` output or shell history. A world-readable token or key file produces a warning
+naming the `chmod` to run.
+
+**GitHub App credentials rotate themselves.** When authenticating as an App, the long-lived
+secret on disk is the private key, which is never transmitted — only signatures made with it
+are. The installation tokens it produces live about an hour and are refreshed automatically,
+so a leaked one expires without intervention. This is why an App is preferred over a personal
+access token for anything long-running; see
+[ADR 6](docs/adr/0006-github-app-alongside-pat.md).
 
 **The runner tarball is verified.** It is the only artefact in the image not coming from a
 signed apt repository, so it is SHA256-checked against the digest GitHub publishes, on both
@@ -75,8 +82,8 @@ escapes regardless of what the socket is doing.
 
 ## Hardening checklist
 
-- [ ] Fine-grained token, scoped to exactly the repositories in `config.toml`
-- [ ] Token file `chmod 600`, owned by the daemon user
+- [ ] A GitHub App, or a fine-grained token scoped to exactly the repositories in `config.toml`
+- [ ] Token file or app private key `chmod 600`, owned by the daemon user
 - [ ] Daemon runs as a dedicated system user, not your login account
 - [ ] `api_bind` on `127.0.0.1`, or absent
 - [ ] `docker_socket = false` for any repository that accepts fork pull requests

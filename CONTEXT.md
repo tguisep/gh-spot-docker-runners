@@ -92,3 +92,38 @@ the test now says.
 
 No end-to-end run against a live repository yet — that needs a real token on the VM. Until
 then the GitHub side is covered by `respx` cassettes rather than by GitHub itself.
+
+## 2026-08-26 — GitHub App authentication
+
+Added as a second authentication mode, alongside the personal access token. For a daemon
+polling continuously, an App is the better credential: the rate limit belongs to the
+installation rather than to a person, the permissions are the app's rather than everything
+the account can reach, and installation tokens expire hourly on their own. Recorded in
+[ADR 6](docs/adr/0006-github-app-alongside-pat.md).
+
+The structural change is small but real: `GitHubClient` used to set `Authorization` once in
+its constructor. An installation token expires under a long-running daemon, so the header is
+now built per request from a `TokenProvider`. `StaticTokenProvider` and
+`GitHubAppTokenProvider` are the two implementations.
+
+PAT support stays. The first five minutes with the project should not require creating a
+GitHub App.
+
+### Notes for later
+
+- The App private key is validated by signing at construction, so a malformed PEM surfaces
+  from `ghspot doctor` rather than as an opaque 401 an hour into a run.
+- `installation_id` is discovered from the first configured repository, so the common
+  single-installation case needs no extra setup.
+- `GHSPOT_GITHUB_APP_PRIVATE_KEY` accepts `\n` escapes, because systemd `EnvironmentFile`
+  cannot hold real newlines.
+- Tests generate a real RSA keypair and verify the JWT against the public key. Stubbing the
+  signing step would not have caught a malformed key, which is the likeliest failure here.
+
+### Repository history note
+
+Merging the nine-PR stack went wrong: `gh pr merge --delete-branch` removed each parent
+branch while its child still pointed at it, and GitHub **auto-closed** #2, #4, #6 and #8
+rather than merging them. No work was lost — `feat/rest-api` held the complete tree — and it
+was landed on `main` as #10 after confirming byte-identity with the verified state. When
+merging a stack, either merge without `--delete-branch` or retarget each child first.

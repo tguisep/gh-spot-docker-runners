@@ -14,7 +14,7 @@ when the job finishes.
 
 - **No credentials in the container.** Runners are registered through GitHub's
   [just-in-time config API][jit]. The container receives a single-use, pre-scoped config blob —
-  never your personal access token. A compromised job cannot register more runners.
+  never your token or your app's key. A compromised job cannot register more runners.
 - **Continuous reconciliation.** A control loop observes Docker and GitHub, diffs them against your
   declared configuration, and converges both ways. Runners stuck `Offline` after a hard kill, or
   containers orphaned by a daemon crash, are repaired on the next tick rather than by a cleanup
@@ -66,7 +66,10 @@ docker build -t ghspot/runner:ubuntu-24.04 \
   images/runner/
 
 cp config.example.toml config.toml && $EDITOR config.toml
-export GHSPOT_GITHUB_TOKEN=github_pat_...
+
+export GHSPOT_GITHUB_TOKEN=github_pat_...          # or, for a GitHub App:
+# export GHSPOT_GITHUB_APP_ID=123456
+# export GHSPOT_GITHUB_APP_PRIVATE_KEY="$(cat app.pem)"
 
 ghspot doctor      # checks the token, Docker, the image, and each repository
 ghspot daemon
@@ -84,9 +87,11 @@ jobs:
 
 - Linux host with Docker, and a user in the `docker` group
 - Python 3.12+
-- A fine-grained GitHub personal access token scoped to the target repositories, with
-  **Administration: read & write** (to mint runner configs) and **Actions: read** (to see
-  queued jobs)
+- Credentials with **Administration: read & write** (to mint runner configs) and
+  **Actions: read** (to see queued jobs) — either a fine-grained personal access token, or a
+  [GitHub App](docs/operations.md#authentication), which is preferred for anything
+  long-lived: its rate limit belongs to the installation rather than to you, and its tokens
+  rotate hourly on their own
 
 ## Commands
 
