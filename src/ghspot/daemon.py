@@ -97,7 +97,11 @@ class Daemon:
 
 
 async def run_forever(application: Application, max_ticks: int | None = None) -> int:
-    """Run the daemon with signal handling. Returns a process exit code."""
+    """Run the daemon, and the API alongside it when one is configured.
+
+    Both are cancelled together: an API still answering after the loop has stopped would
+    report a fleet nobody is reconciling.
+    """
     daemon = Daemon(application)
     loop = asyncio.get_running_loop()
 
@@ -105,8 +109,42 @@ async def run_forever(application: Application, max_ticks: int | None = None) ->
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(signal_number, daemon.request_stop)
 
+    api_task = _start_api(application, daemon)
+
     try:
         await daemon.run(max_ticks=max_ticks)
     finally:
+        if api_task is not None:
+            api_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await api_task
         await application.aclose()
     return 0
+
+
+def _start_api(application: Application, daemon: Daemon) -> asyncio.Task[None] | None:
+    """Serve the REST API in the background, if ``daemon.api_bind`` is configured."""
+    bind = application.settings.daemon.api_bind
+    if not bind:
+        return None
+
+    host, _, port = bind.rpartition(":")
+    if not host or not port.isdigit():
+        log.error("api.bad_bind", bind=bind, hint="expected host:port, e.g. 127.0.0.1:8770")
+        return None
+
+    import uvicorn
+
+    from ghspot.interfaces.api.app import create_app
+
+    # The API borrows the daemon's application, so it reports the same fleet the loop is
+    # reconciling rather than opening its own connections to Docker and GitHub.
+    config = uvicorn.Config(
+        create_app(application),
+        host=host,
+        port=int(port),
+        log_config=None,
+        lifespan="off",
+    )
+    log.info("api.listening", bind=bind)
+    return asyncio.create_task(uvicorn.Server(config).serve())
