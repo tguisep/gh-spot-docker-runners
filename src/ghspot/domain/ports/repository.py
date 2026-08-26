@@ -26,6 +26,14 @@ class RunnerRepository(Protocol):
         """Every runner not yet retired, across all pools."""
         ...
 
+    async def list_all(self) -> Sequence[Runner]:
+        """Every runner still on record, terminal ones included.
+
+        Distinct from :meth:`list_active` because history is what the operator wants when
+        asking why a runner disappeared.
+        """
+        ...
+
     async def list_for_pool(self, pool: str) -> Sequence[Runner]: ...
 
     async def delete(self, runner_id: RunnerId) -> None:

@@ -148,6 +148,14 @@ class SqliteRunnerRepository(SqliteStore):
         result: list[Runner] = await self._run(work)
         return result
 
+    async def list_all(self) -> Sequence[Runner]:
+        def work(connection: sqlite3.Connection) -> list[Runner]:
+            rows = connection.execute("SELECT * FROM runners ORDER BY created_at").fetchall()
+            return [_from_row(row) for row in rows]
+
+        result: list[Runner] = await self._run(work)
+        return result
+
     async def list_for_pool(self, pool: str) -> Sequence[Runner]:
         def work(connection: sqlite3.Connection) -> list[Runner]:
             rows = connection.execute(

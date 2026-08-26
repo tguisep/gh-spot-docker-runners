@@ -40,11 +40,12 @@ class ListRunners:
     async def __call__(
         self, pool: str | None = None, *, include_terminal: bool = False
     ) -> list[RunnerView]:
-        found = (
-            await self._runners.list_for_pool(pool)
-            if pool is not None
-            else await self._runners.list_active()
-        )
+        if pool is not None:
+            found = await self._runners.list_for_pool(pool)
+        elif include_terminal:
+            found = await self._runners.list_all()
+        else:
+            found = await self._runners.list_active()
         now = self._clock.now()
         views = [
             to_view(runner, now) for runner in found if include_terminal or not runner.is_terminal

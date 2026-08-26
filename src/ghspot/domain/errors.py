@@ -80,3 +80,11 @@ class BackendError(GhSpotError):
 
 class ImageNotFoundError(BackendError):
     """The runner image is not present and could not be pulled."""
+
+
+class RunnerNotFoundError(GhSpotError):
+    """No runner matches the reference an operator supplied."""
+
+
+class RunnerBusyError(GhSpotError):
+    """The runner is executing a job and the caller did not ask to force it."""
