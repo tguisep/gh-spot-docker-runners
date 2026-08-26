@@ -53,3 +53,12 @@ jobs:
       - name: the image must not carry a token
         run: |
           docker run --rm ghspot/runner:ci env | grep -qiE 'token|jitconfig' && exit 1 || exit 0
+
+  install-docs:
+    name: Documented install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Runs the commands docs/operations.md tells people to run, on a clean system.
+      # They were wrong three times running; reasoning about them evidently does not work.
+      - run: packaging/verify-source-install.sh
