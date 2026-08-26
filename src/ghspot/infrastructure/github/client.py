@@ -22,7 +22,6 @@ from typing import Any
 import httpx
 
 from ghspot.domain.errors import (
-    ForgeAuthError,
     ForgeError,
     ForgeNotFoundError,
     ForgePermissionError,
@@ -33,6 +32,7 @@ from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.ports.forge import ForgeRunner, JitRegistration
+from ghspot.infrastructure.github.auth import StaticTokenProvider, TokenProvider
 
 API_VERSION = "2022-11-28"
 DEFAULT_BASE_URL = "https://api.github.com"
@@ -59,16 +59,24 @@ class GitHubClient:
 
     def __init__(
         self,
-        token: str,
+        token: str | None = None,
         base_url: str = DEFAULT_BASE_URL,
         *,
+        auth: TokenProvider | None = None,
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 20.0,
         max_attempts: int = 3,
         backoff_seconds: float = 1.0,
     ) -> None:
-        if not token:
-            raise ForgeAuthError("no GitHub token was provided")
+        """Either ``token`` (a personal access token) or ``auth`` (any token provider).
+
+        The token is resolved per request rather than baked into the client's headers,
+        because a GitHub App installation token expires roughly hourly and would otherwise
+        go stale underneath a long-running daemon.
+        """
+        if auth is None:
+            auth = StaticTokenProvider(token or "")
+        self._auth = auth
         self._base_url = base_url.rstrip("/")
         self._max_attempts = max(1, max_attempts)
         self._backoff_seconds = max(0.0, backoff_seconds)
@@ -79,14 +87,20 @@ class GitHubClient:
             base_url=self._base_url,
             timeout=timeout_seconds,
             headers={
-                "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": API_VERSION,
                 "User-Agent": "ghspot",
             },
         )
 
+    def describe_auth(self) -> str:
+        """How this client authenticates, without revealing the credential."""
+        return self._auth.describe()
+
     async def aclose(self) -> None:
+        closer = getattr(self._auth, "aclose", None)
+        if closer is not None:
+            await closer()
         if self._owns_client:
             await self._client.aclose()
 
@@ -225,7 +239,7 @@ class GitHubClient:
         json: Mapping[str, Any] | None = None,
     ) -> Any:
         cache_key = f"{method} {path} {sorted((params or {}).items())}"
-        headers: dict[str, str] = {}
+        headers: dict[str, str] = {"Authorization": f"Bearer {await self._auth.token()}"}
         cached = self._cache.get(cache_key) if method == "GET" else None
         if cached is not None:
             headers["If-None-Match"] = cached.etag

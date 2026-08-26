@@ -11,3 +11,4 @@ it costs — the rejected alternatives are the useful part.
 | [0003](0003-polling-over-webhooks.md) | Poll the API for demand instead of receiving webhooks | Accepted |
 | [0004](0004-storage-as-a-projection.md) | Treat storage as a projection, not the source of truth | Accepted |
 | [0005](0005-docker-socket-over-dind.md) | Mount the host Docker socket rather than run Docker-in-Docker | Accepted |
+| [0006](0006-github-app-alongside-pat.md) | Support GitHub Apps alongside personal access tokens | Accepted |
