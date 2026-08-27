@@ -28,6 +28,15 @@ class ContainerSpec:
 
     cpus: float | None = None
     memory: str | None = None
+
+    gpus: str | int | tuple[str, ...] | None = None
+    """Which GPUs the job may use.
+
+    ``"all"``, a count, or specific device ids as the host numbers them. ``None`` means no
+    GPU access at all, which is the right default: a container given a GPU it does not need
+    still holds it against every other runner on the machine.
+    """
+
     mount_docker_socket: bool = False
     volumes: Mapping[str, str] = field(default_factory=dict)
     network: str | None = None
