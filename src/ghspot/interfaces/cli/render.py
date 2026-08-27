@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 
@@ -115,8 +116,14 @@ def tick_summary(report: TickReport) -> Text:
 
 
 def fail(message: str) -> None:
-    error_console.print(f"[red]error[/red] {message}")
+    """Report an error.
+
+    The message is escaped because ours routinely contain square brackets — `[daemon]`,
+    `[github].token_file` — which Rich would otherwise read as markup and silently delete,
+    turning the one useful part of the sentence into nothing.
+    """
+    error_console.print(f"[red]error[/red] {escape(message)}")
 
 
 def hint(message: str) -> None:
-    error_console.print(f"[dim]hint:[/dim] {message}")
+    error_console.print(f"[dim]hint:[/dim] {escape(message)}")
