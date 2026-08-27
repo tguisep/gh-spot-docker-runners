@@ -48,7 +48,16 @@ cpus = {{ pool.container.cpus }}
 {% if pool.container.memory is defined %}
 memory = "{{ pool.container.memory }}"
 {% endif %}
-docker_socket = {{ pool.container.docker_socket | default(false) | lower }}
+docker_socket = {{ pool.container.docker_socket | default(false) | bool | lower }}
+{% if pool.container.gpus is defined and pool.container.gpus %}
+{% if pool.container.gpus is string %}
+gpus = "{{ pool.container.gpus }}"
+{% elif pool.container.gpus is sequence %}
+gpus = [{{ pool.container.gpus | map('string') | map('tojson') | join(', ') }}]
+{% else %}
+gpus = {{ pool.container.gpus }}
+{% endif %}
+{% endif %}
 {% if pool.container.network is defined %}
 network = "{{ pool.container.network }}"
 {% endif %}

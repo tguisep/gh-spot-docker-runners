@@ -100,6 +100,18 @@ memory = "4g"
 # has effective root on this host. Fine for your own repositories.
 docker_socket = true
 
+# GPUs for the job. Needs the NVIDIA Container Toolkit on this host — `ghspot doctor` says
+# so if it is missing, rather than letting every runner in the pool fail to start.
+#
+#   gpus = "all"          every GPU
+#   gpus = 1              any one of them
+#   gpus = ["0", "1"]     these, as `nvidia-smi -L` numbers them
+#
+# Unset, jobs get no GPU. That is the right default: a runner holding a GPU it does not need
+# holds it against every other runner on the machine. Give a GPU pool its own label, so only
+# jobs that need one land there.
+# gpus = "all"
+
 # Persist caches between runs. Host path = container path.
 # [pool.container.volumes]
 # "/srv/ghspot/cache" = "/home/runner/.cache"
