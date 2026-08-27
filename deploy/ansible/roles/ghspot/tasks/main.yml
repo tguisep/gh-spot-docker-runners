@@ -1,0 +1,197 @@
+---
+# Fail on a misconfiguration before touching the host, rather than halfway through.
+- name: Check the configuration makes sense
+  ansible.builtin.assert:
+    that:
+      - ghspot_pools | length > 0
+      - (ghspot_github_token | length > 0) or (ghspot_github_app_id | length > 0)
+      - not ((ghspot_github_token | length > 0) and (ghspot_github_app_id | length > 0))
+      - (ghspot_github_app_id | length == 0) or (ghspot_github_app_private_key | length > 0)
+    fail_msg: >-
+      ghspot needs at least one pool in ghspot_pools, and exactly one credential:
+      ghspot_github_token, or ghspot_github_app_id together with
+      ghspot_github_app_private_key.
+    quiet: true
+
+- name: Install Docker
+  when: ghspot_install_docker | bool
+  block:
+    - name: Install Docker's prerequisites
+      ansible.builtin.apt:
+        name: [ca-certificates, curl]
+        state: present
+        update_cache: true
+
+    - name: Add Docker's signing key
+      ansible.builtin.get_url:
+        url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker's repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
+          signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/{{ ansible_distribution | lower }}
+          {{ ansible_distribution_release }} stable
+        filename: docker
+        state: present
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin]
+        state: present
+        update_cache: true
+
+    - name: Start Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+- name: Require Docker to be present
+  ansible.builtin.command: docker version --format '{% raw %}{{.Server.Version}}{% endraw %}'
+  register: ghspot_docker_version
+  changed_when: false
+  failed_when: ghspot_docker_version.rc != 0
+
+# --- the package -------------------------------------------------------------------------
+
+- name: Resolve the release to install
+  when: ghspot_deb_local | length == 0
+  block:
+    - name: Ask GitHub for the release
+      ansible.builtin.uri:
+        url: >-
+          https://api.github.com/repos/{{ ghspot_repo }}/releases/{{
+            'latest' if ghspot_version == 'latest' else 'tags/v' + ghspot_version
+          }}
+        return_content: true
+      register: ghspot_release
+
+    - name: Pick the package for this architecture
+      ansible.builtin.set_fact:
+        ghspot_deb_url: >-
+          {{ ghspot_release.json.assets
+             | selectattr('name', 'search', '_' + (
+                 ansible_architecture
+                 | replace('x86_64', 'amd64')
+                 | replace('aarch64', 'arm64')
+               ) + '\.deb$')
+             | map(attribute='browser_download_url') | first }}
+
+    - name: Download it
+      ansible.builtin.get_url:
+        url: "{{ ghspot_deb_url }}"
+        dest: /tmp/ghspot.deb
+        mode: "0644"
+      register: ghspot_download
+
+- name: Copy a locally built package
+  when: ghspot_deb_local | length > 0
+  ansible.builtin.copy:
+    src: "{{ ghspot_deb_local }}"
+    dest: /tmp/ghspot.deb
+    mode: "0644"
+
+# The package creates the ghspot user, the systemd unit and /etc/ghspot, and deliberately
+# does not start anything.
+- name: Install ghspot
+  ansible.builtin.apt:
+    deb: /tmp/ghspot.deb
+    state: present
+  notify: Restart ghspot
+
+- name: Remove the downloaded package
+  ansible.builtin.file:
+    path: /tmp/ghspot.deb
+    state: absent
+
+# --- configuration -----------------------------------------------------------------------
+
+- name: Write the configuration
+  ansible.builtin.template:
+    src: config.toml.j2
+    dest: /etc/ghspot/config.toml
+    owner: root
+    group: ghspot
+    mode: "0640"
+  notify: Restart ghspot
+
+# Written with no_log, because the whole point of this file is that it holds a credential.
+- name: Write the credential
+  ansible.builtin.template:
+    src: env.j2
+    dest: /etc/ghspot/env
+    owner: root
+    group: ghspot
+    mode: "0640"
+  no_log: true
+  notify: Restart ghspot
+
+# --- runner images -----------------------------------------------------------------------
+
+- name: Build the runner images
+  when: ghspot_build_images | bool
+  block:
+    - name: Install git
+      ansible.builtin.apt:
+        name: git
+        state: present
+
+    - name: Check out the source the images are built from
+      ansible.builtin.git:
+        repo: "https://github.com/{{ ghspot_repo }}.git"
+        dest: "{{ ghspot_checkout }}"
+        version: "{{ 'main' if ghspot_version == 'latest' else 'v' + ghspot_version }}"
+        depth: 1
+        force: true
+
+    - name: Find out which images are already built
+      ansible.builtin.command: docker image inspect ghspot/runner:{{ item }}
+      loop: "{{ ghspot_images }}"
+      register: ghspot_image_present
+      changed_when: false
+      failed_when: false
+
+    # Several minutes each, so already-present images are left alone unless forced.
+    - name: Build them
+      ansible.builtin.command:
+        cmd: "{{ ghspot_checkout }}/images/runner/build.sh {{ item.item }}"
+        chdir: "{{ ghspot_checkout }}"
+      loop: "{{ ghspot_image_present.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.rc != 0 or (ghspot_images_force | bool)
+      changed_when: true
+      # Building four variants on a modest host is not quick.
+      async: 3600
+      poll: 15
+
+# --- the service -------------------------------------------------------------------------
+
+- name: Enable and start ghspot
+  ansible.builtin.systemd:
+    name: ghspot
+    enabled: "{{ ghspot_service_enabled | bool }}"
+    state: "{{ ghspot_service_state }}"
+    daemon_reload: true
+
+- name: Check the daemon is happy with what it was given
+  ansible.builtin.command: ghspot doctor --config /etc/ghspot/config.toml
+  register: ghspot_doctor
+  changed_when: false
+  failed_when: false
+
+- name: Report what doctor found
+  ansible.builtin.debug:
+    msg: "{{ ghspot_doctor.stdout_lines }}"
+
+- name: Fail if the daemon cannot work
+  ansible.builtin.assert:
+    that: ghspot_doctor.rc == 0
+    fail_msg: >-
+      ghspot doctor reported a problem — see the output above. The service is installed but
+      will not be able to start runners until it is fixed.
+    quiet: true

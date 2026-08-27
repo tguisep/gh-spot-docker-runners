@@ -1,0 +1,58 @@
+# Managed by Ansible — edits here are overwritten on the next run.
+# Change the role's variables instead.
+
+[github]
+api_url = "{{ ghspot_api_url }}"
+{% if ghspot_github_app_id | length > 0 %}
+app_id = "{{ ghspot_github_app_id }}"
+{% endif %}
+
+[daemon]
+poll_interval = "{{ ghspot_poll_interval }}"
+state_db = "{{ ghspot_state_db }}"
+log_level = "{{ ghspot_log_level }}"
+log_format = "json"
+{% if ghspot_api_bind | length > 0 %}
+api_bind = "{{ ghspot_api_bind }}"
+{% endif %}
+
+[housekeeping]
+enabled = {{ ghspot_housekeeping.enabled | lower }}
+every = "{{ ghspot_housekeeping.every }}"
+containers_older_than = "{{ ghspot_housekeeping.containers_older_than }}"
+images_older_than = "{{ ghspot_housekeeping.images_older_than }}"
+volumes = {{ ghspot_housekeeping.volumes | lower }}
+build_cache_older_than = "{{ ghspot_housekeeping.build_cache_older_than }}"
+keep_build_cache = "{{ ghspot_housekeeping.keep_build_cache }}"
+{% for pool in ghspot_pools %}
+
+[[pool]]
+name = "{{ pool.name }}"
+repository = "{{ pool.repository }}"
+labels = [{{ pool.labels | map('tojson') | join(', ') }}]
+min_idle = {{ pool.min_idle | default(0) }}
+max_runners = {{ pool.max_runners | default(2) }}
+idle_timeout = "{{ pool.idle_timeout | default('10m') }}"
+max_job_duration = "{{ pool.max_job_duration | default('2h') }}"
+max_launch_per_tick = {{ pool.max_launch_per_tick | default(2) }}
+
+[pool.container]
+image = "{{ pool.container.image }}"
+{% if pool.container.cpus is defined %}
+cpus = {{ pool.container.cpus }}
+{% endif %}
+{% if pool.container.memory is defined %}
+memory = "{{ pool.container.memory }}"
+{% endif %}
+docker_socket = {{ pool.container.docker_socket | default(false) | lower }}
+{% if pool.container.network is defined %}
+network = "{{ pool.container.network }}"
+{% endif %}
+{% if pool.container.volumes is defined %}
+
+[pool.container.volumes]
+{% for host_path, container_path in pool.container.volumes.items() %}
+"{{ host_path }}" = "{{ container_path }}"
+{% endfor %}
+{% endif %}
+{% endfor %}

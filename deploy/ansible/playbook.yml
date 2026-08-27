@@ -1,0 +1,13 @@
+---
+# Deploy ghspot to a host.
+#
+#   ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
+#
+# The credential belongs in ansible-vault, never here:
+#   ansible-vault create inventory/group_vars/runners/vault.yml
+- name: Deploy ghspot
+  hosts: runners
+  become: true
+
+  roles:
+    - role: ghspot

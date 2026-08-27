@@ -1,0 +1,67 @@
+---
+# Where the package comes from.
+#
+# By default the latest published release. Set ghspot_version to pin one, or
+# ghspot_deb_local to install a file you built yourself — useful before a release exists.
+ghspot_version: latest
+ghspot_deb_local: ""
+ghspot_repo: tguisep/gh-spot-docker-runners
+
+# Docker. Left alone by default: a host that runs runners usually has it already, and
+# installing it under someone is rude.
+ghspot_install_docker: false
+
+# Runner images.
+#
+# There is no public registry for these, so they are built on the host from a checkout.
+# Building takes several minutes per variant, so the role skips any already present unless
+# ghspot_images_force is set.
+ghspot_build_images: true
+ghspot_images: [ubuntu-24.04]
+ghspot_images_force: false
+ghspot_checkout: /opt/ghspot/src
+
+# Credentials. Supply exactly one. Keep them in ansible-vault, not in a playbook.
+#
+#   ghspot_github_token: "{{ vault_ghspot_token }}"
+# or
+#   ghspot_github_app_id: "123456"
+#   ghspot_github_app_private_key: "{{ vault_ghspot_app_key }}"
+ghspot_github_token: ""
+ghspot_github_app_id: ""
+ghspot_github_app_private_key: ""
+
+# Daemon configuration, rendered into /etc/ghspot/config.toml.
+ghspot_api_url: https://api.github.com
+ghspot_poll_interval: 15s
+ghspot_state_db: /var/lib/ghspot/state.db
+ghspot_api_bind: ""
+ghspot_log_level: INFO
+
+ghspot_housekeeping:
+  enabled: true
+  every: 1h
+  containers_older_than: 1h
+  images_older_than: 24h
+  volumes: true
+  build_cache_older_than: 24h
+  keep_build_cache: 10g
+
+# The pools this host serves. At least one is required.
+#
+# ghspot_pools:
+#   - name: default
+#     repository: you/your-project
+#     labels: [self-hosted, linux, x64, ubuntu-24.04]
+#     min_idle: 1
+#     max_runners: 4
+#     container:
+#       image: ghspot/runner:ubuntu-24.04
+#       cpus: 2.0
+#       memory: 4g
+#       docker_socket: true
+ghspot_pools: []
+
+# Whether to start the service. Set false to configure a host without running it yet.
+ghspot_service_enabled: true
+ghspot_service_state: started

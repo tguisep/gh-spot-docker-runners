@@ -1,0 +1,8 @@
+---
+- name: Restart ghspot
+  ansible.builtin.systemd:
+    name: ghspot
+    state: restarted
+    daemon_reload: true
+  # Nothing to restart if the operator asked for the service to stay stopped.
+  when: ghspot_service_enabled | bool
