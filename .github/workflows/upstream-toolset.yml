@@ -1,0 +1,47 @@
+name: Upstream toolset
+
+# Asks, periodically, whether GitHub has added tooling to its own runner images that ours
+# lack. Nothing here changes an image: what to adopt and what to leave out is a judgement,
+# and the point is to make the question visible rather than to answer it automatically.
+#
+# The alternative is what happened with pipx — upstream had it, we did not, and the first
+# anyone heard was a workflow failing months later on `pipx: command not found`.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "images/runner/**"
+      - ".github/workflows/upstream-toolset.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Compare against upstream
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # On a pull request, against the revision we pinned: it checks the transcription is
+      # faithful. On a schedule, against upstream main: it checks upstream has not moved.
+      - name: Compare
+        id: compare
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            images/runner/sync-toolset.sh | tee "$GITHUB_STEP_SUMMARY"
+          else
+            images/runner/sync-toolset.sh --latest | tee "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # A scheduled run finding new packages is information, not a failure — upstream moving
+      # is not our branch being broken. On a pull request it is a failure, because there the
+      # question is whether this change kept the lists honest.
+      - name: Note the drift
+        if: failure() && github.event_name != 'pull_request'
+        run: |
+          echo "::warning::upstream actions/runner-images has packages our images lack —" \
+               "see the job summary. Adopt them, or record why not in sync-toolset.sh."

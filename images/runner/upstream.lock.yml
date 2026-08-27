@@ -1,0 +1,18 @@
+# The revision of actions/runner-images our package lists were taken from.
+#
+# Pinned so "the toolset GitHub ships" means a specific, checkable thing rather than whatever
+# it happened to be the day someone read it. sync-toolset.sh fetches this revision and
+# reports what has changed since, which turns silent drift into a reviewable diff.
+#
+# Borrowed from runs-on/runner-images-for-aws, which pins upstream the same way.
+---
+repository: https://github.com/actions/runner-images.git
+ref: refs/heads/main
+revision: 9aeaa2747bb41f9abf41846db570d50f794b7745
+retrieved: 2026-08-27T10:30:52Z
+
+# The toolset each of our variants was derived from. GitHub has no RHEL images, so the RHEL
+# variants map the ubuntu toolset onto RHEL package names.
+toolsets:
+  ubuntu-24.04: images/ubuntu/toolsets/toolset-2404.json
+  ubuntu-22.04: images/ubuntu/toolsets/toolset-2204.json
