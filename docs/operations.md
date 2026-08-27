@@ -87,6 +87,37 @@ cd gh-spot-docker-runners
 uv tool install .
 ```
 
+That puts a standalone `ghspot` in `~/.local/bin`, usable from any directory. If your shell
+cannot find it afterwards, that directory is not on your `PATH`:
+
+```bash
+uv tool update-shell     # adds it, then restart your shell
+```
+
+<details>
+<summary>Other ways to install</summary>
+
+```bash
+# Working on the code: no install, run from the repository.
+uv sync
+uv run ghspot doctor
+
+# Without uv, into a virtualenv of your own. On Debian and Ubuntu this needs
+# python3-venv, or the virtualenv is created without pip in it.
+sudo apt install -y python3-venv
+python3 -m venv .venv && .venv/bin/pip install -e .
+.venv/bin/ghspot doctor
+
+# With pipx.
+pipx install .
+```
+
+`uv sync` alone installs into `.venv/` **without** putting `ghspot` on your `PATH` — that is
+why the plain command reports `command not found` after it. Use `uv run ghspot`, or install
+with `uv tool install .`.
+
+</details>
+
 Then build the runner image, which both install methods need:
 
 ```bash
@@ -146,9 +177,37 @@ gh api repos/OWNER/REPO/actions/runners               # no ghspot-* runners
 
 ### As a service
 
+Create the service user, and install the daemon somewhere it can reach — the unit expects a
+virtualenv at `/opt/ghspot/.venv`, so that it does not depend on any human's home directory:
+
 ```bash
 sudo useradd --system --home /opt/ghspot --shell /usr/sbin/nologin ghspot
 sudo usermod -aG docker ghspot
+
+# Debian and Ubuntu ship python3 without ensurepip, so `python3 -m venv` produces a
+# virtualenv with no pip in it. This package is what supplies it.
+sudo apt install -y python3-venv
+
+sudo mkdir -p /opt/ghspot
+sudo python3 -m venv /opt/ghspot/.venv
+
+# Give pip the repository's path, not `.` — sudo does not reliably inherit your
+# working directory.
+sudo /opt/ghspot/.venv/bin/pip install --quiet "$PWD"
+
+sudo chown -R ghspot:ghspot /opt/ghspot
+
+# Confirm the path the unit will run:
+/opt/ghspot/.venv/bin/ghspot version
+```
+
+> If `pip: command not found` appears, `python3-venv` was missing when the virtualenv was
+> created. Remove it with `sudo rm -rf /opt/ghspot/.venv`, install the package, and create
+> it again — an incomplete virtualenv is not repaired by installing the package afterwards.
+
+Then the configuration and credentials:
+
+```bash
 sudo mkdir -p /etc/ghspot
 sudo cp config.toml /etc/ghspot/
 
@@ -171,6 +230,18 @@ journalctl -u ghspot -f
 The unit sets `TimeoutStopSec=300`. On stop the daemon finishes its current tick and leaves
 busy runners alone — killing one fails a build that was about to pass — so that timeout is
 how long systemd waits before insisting.
+
+If you installed elsewhere, point `ExecStart=` at your own path — `command -v ghspot` shows
+it. The unit runs as the `ghspot` user, so a binary under *your* home directory will not be
+readable by it; that is why `/opt/ghspot` is the default.
+
+To upgrade later:
+
+```bash
+cd gh-spot-docker-runners && git pull
+sudo /opt/ghspot/.venv/bin/pip install --quiet "$PWD"
+sudo systemctl restart ghspot
+```
 
 ## Day to day
 
@@ -249,6 +320,18 @@ Set `docker_socket = true` for the pool, and confirm the image was built with th
 
 **The daemon exits immediately.**
 Almost always configuration. Run `ghspot config validate` — it names the field.
+
+**`pip: command not found` after creating a virtualenv.**
+Debian and Ubuntu ship `python3` without `ensurepip`, so `python3 -m venv` makes a
+virtualenv containing only python symlinks. Install `python3-venv`, delete the incomplete
+virtualenv, and create it again — installing the package does not repair one that already
+exists. The `.deb` avoids this entirely by bundling its own interpreter.
+
+**`ghspot: command not found`.**
+`uv sync` installs into the repository's `.venv/` and does not put anything on your `PATH`.
+Either install it properly with `uv tool install .`, or prefix commands with `uv run` from
+inside the repository. If you did run `uv tool install .`, then `~/.local/bin` is missing
+from your `PATH` — `uv tool update-shell` adds it.
 
 ## Backups
 
