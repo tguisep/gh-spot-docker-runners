@@ -1,0 +1,57 @@
+name: Bug report
+description: Something behaves differently from how it is documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: `ghspot doctor --config <your config>` checks the things that usually
+        turn out to be the cause, and prints the fix for each.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: ghspot doctor
+      description: Its output. Redact the repository name if you would rather not share it.
+      render: shell
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Daemon logs
+      description: |
+        `journalctl -u ghspot --since "1 hour ago"`, or the terminal output if you ran it by
+        hand. The daemon logs JSON; paste it as-is.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`ghspot version`, and how you installed it (.deb, source, Ansible)."
+    validations:
+      required: true
+
+  - type: input
+    id: host
+    attributes:
+      label: Host
+      description: "Distribution and version, plus `docker version --format '{{.Server.Version}}'`."

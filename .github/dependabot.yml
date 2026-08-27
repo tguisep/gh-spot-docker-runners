@@ -1,0 +1,43 @@
+version: 2
+
+# Three ecosystems, because this repository ships in three shapes: a Python application, a
+# set of container images, and the workflows that build both.
+#
+# The runner tarball inside images/runner is *not* covered — its version is pinned with a
+# checksum in the Dockerfile and comes from a GitHub release, not a package manager.
+# images/runner/sync-toolset.sh watches that, and CI asks weekly.
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # One pull request for routine bumps rather than five. Anything major still arrives on
+      # its own, because a major is a decision rather than a chore.
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Both runner images, plus the base image the .deb is built in.
+  - package-ecosystem: docker
+    directories:
+      - /images/runner
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(deps)"
