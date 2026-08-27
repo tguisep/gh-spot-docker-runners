@@ -95,7 +95,16 @@ def daemon(
     configure_logging(settings.daemon.log_level, settings.daemon.log_format)
 
     limit = 1 if once else ticks
-    application = build(settings)
+    # Wiring resolves the credential, so a missing token surfaces here. It has to go through
+    # the same handling as everything else, or the commonest misconfiguration there is
+    # answers with a traceback instead of the sentence that says how to fix it.
+    try:
+        application = build(settings)
+    except GhSpotError as error:
+        fail(str(error))
+        hint("ghspot doctor --config <path> checks everything the daemon needs")
+        raise typer.Exit(code=1) from error
+
     _run(run_forever(application, max_ticks=limit))
 
 
