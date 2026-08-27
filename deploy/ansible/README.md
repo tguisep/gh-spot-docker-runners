@@ -1,0 +1,85 @@
+# Deploying with Ansible
+
+An Ansible role that installs ghspot on a host: the package, the configuration, the
+credential, the runner images, and the service.
+
+## Quick start
+
+```bash
+cd deploy/ansible
+cp inventory/hosts.example.ini inventory/hosts.ini
+cp inventory/group_vars/runners/main.example.yml inventory/group_vars/runners/main.yml
+
+# The credential goes in the vault, and nowhere else.
+ansible-vault create inventory/group_vars/runners/vault.yml
+
+$EDITOR inventory/hosts.ini inventory/group_vars/runners/main.yml
+ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
+```
+
+The run ends by calling `ghspot doctor` on the host and failing if it is unhappy — so a
+green run means the daemon can actually do its job, not merely that files were copied.
+
+## What it does
+
+1. Refuses to start if the configuration is incoherent, before touching the host.
+2. Installs Docker, if you ask it to. It does not by default: a host that runs runners
+   usually has Docker already, and installing it under someone is rude.
+3. Installs the `.deb` from a GitHub release — or one you built, via `ghspot_deb_local`.
+4. Renders `/etc/ghspot/config.toml` and `/etc/ghspot/env` (`0640`, `root:ghspot`).
+5. Builds the runner images from a shallow checkout, skipping any already present.
+6. Enables and starts the service, then runs `ghspot doctor`.
+
+## Variables worth knowing
+
+| Variable | Default | |
+|---|---|---|
+| `ghspot_pools` | `[]` | **Required.** The pools this host serves |
+| `ghspot_github_token` | `""` | A personal access token — or use the App variables |
+| `ghspot_github_app_id` / `_private_key` | `""` | A GitHub App instead |
+| `ghspot_version` | `latest` | Pin a release, e.g. `0.2.0` |
+| `ghspot_deb_local` | `""` | Install a locally built package instead of a release |
+| `ghspot_images` | `[ubuntu-24.04]` | Which runner images to build |
+| `ghspot_install_docker` | `false` | Install Docker as well |
+| `ghspot_service_state` | `started` | `stopped` to configure without running |
+
+Everything else is in [`roles/ghspot/defaults/main.yml`](roles/ghspot/defaults/main.yml).
+
+## Credentials
+
+Exactly one of a token or an App, and the role refuses both or neither rather than picking.
+
+They belong in `ansible-vault`. The task that writes `/etc/ghspot/env` sets `no_log`, so the
+credential does not appear in output even at `-vvv` — the point of that file is that it holds
+a secret, and Ansible logs template contents by default.
+
+Setting either up, with the exact permissions:
+[`docs/authentication.md`](../../docs/authentication.md).
+
+## Building images takes a while
+
+Each variant is a couple of gigabytes and several minutes. The role skips any already on the
+host, so a second run is quick. `ghspot_images_force: true` rebuilds regardless — do that
+after upgrading, since a new release may expect a newer image.
+
+Set `ghspot_build_images: false` if you build them some other way. The daemon cannot start a
+runner without one, and `doctor` will say so.
+
+## Upgrading
+
+```bash
+ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass \
+  -e ghspot_version=0.3.0 -e ghspot_images_force=true
+```
+
+The configuration is rewritten from the role's variables each run, so edits made directly on
+the host are overwritten. That is the point of a role — change the variables.
+
+## What it does not do
+
+- **It does not add your user to the `docker` group.** The package puts the *service*
+  account there, which is what the daemon needs. Doing it for a human is your call.
+- **It does not open ports.** `ghspot_api_bind` defaults to unset, and the API has no
+  authentication — keep it on localhost.
+- **It does not manage the repository side.** Registering runners is the daemon's job; there
+  is nothing to configure on GitHub beyond the credential.

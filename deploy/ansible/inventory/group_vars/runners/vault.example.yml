@@ -1,0 +1,9 @@
+---
+# ansible-vault encrypt this file. It is the only place a credential should appear.
+#
+#   ansible-vault create inventory/group_vars/runners/vault.yml
+vault_ghspot_github_token: github_pat_replace_me
+# vault_ghspot_app_private_key: |
+#   -----BEGIN PRIVATE KEY-----
+#   ...
+#   -----END PRIVATE KEY-----

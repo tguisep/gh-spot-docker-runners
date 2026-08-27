@@ -1,5 +1,33 @@
 For any change about code structure, feature, deployment, update context.md and the documentation
 
+
+## Keep the deployment paths in step
+
+A change to configuration, packaging or the service is not finished when the code works. The
+project ships three ways of installing itself, and each restates the same facts:
+
+| Changed | Also update |
+|---|---|
+| A `config.toml` key — added, renamed, removed, default changed | `config.example.toml`, the Ansible role's `defaults/main.yml` and `templates/config.toml.j2`, `packaging/deb/config.toml` |
+| The systemd unit, or anything it depends on | `deploy/ghspot.service`, `packaging/deb/postinst`, the Ansible role |
+| The `.deb` layout, or a new file it installs | `packaging/deb/build.sh`, `packaging/deb/verify.sh` |
+| A runner image variant, or the tools in one | `images/runner/build.sh`, `images/runner/verify.sh`, `images/runner/README.md` |
+| Anything an operator does by hand | `docs/operations.md` |
+
+The Ansible role is the one most easily forgotten, because **nothing fails when it falls
+behind**. It keeps rendering a configuration the daemon quietly ignores, and the drift
+surfaces much later as "why does this setting do nothing?".
+
+So when a configuration key changes, render the role's template and feed the result to the
+real parser rather than assuming it still fits:
+
+```bash
+ansible localhost -c local -m ansible.builtin.template \
+  -a "src=deploy/ansible/roles/ghspot/templates/config.toml.j2 dest=/tmp/rendered.toml" \
+  -e @vars.yml
+uv run python -c "from ghspot.infrastructure.config.settings import load; print(load('/tmp/rendered.toml'))"
+```
+
 ## Branches
 
 One branch per unit of work, cut from `main`, named `<type>/<short-kebab-summary>` with the same types as commits:

@@ -1,0 +1,23 @@
+---
+# Copy to main.yml and edit. Credentials go in vault.yml, not here.
+
+ghspot_pools:
+  - name: default
+    repository: tguisep/my-project
+    labels: [self-hosted, linux, x64, ubuntu-24.04, home-vm]
+    min_idle: 1
+    max_runners: 4
+    container:
+      image: ghspot/runner:ubuntu-24.04
+      cpus: 2.0
+      memory: 4g
+      docker_socket: true
+
+ghspot_images: [ubuntu-24.04]
+
+# A personal access token, from vault:
+ghspot_github_token: "{{ vault_ghspot_github_token }}"
+
+# Or a GitHub App:
+# ghspot_github_app_id: "123456"
+# ghspot_github_app_private_key: "{{ vault_ghspot_app_private_key }}"

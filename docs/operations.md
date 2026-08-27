@@ -81,6 +81,21 @@ sudo systemctl enable --now ghspot
 Removing the package keeps `/etc/ghspot`, so a reinstall does not lose your credentials.
 `sudo apt purge ghspot` removes those too.
 
+### With Ansible
+
+For more than one host, or to keep the configuration in version control:
+
+```bash
+cd deploy/ansible
+cp inventory/hosts.example.ini inventory/hosts.ini
+ansible-vault create inventory/group_vars/runners/vault.yml
+ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
+```
+
+The role installs the package, renders the configuration and credential, builds the runner
+images, starts the service, and finishes by running `ghspot doctor` — so a green run means
+the daemon can actually work. See [`deploy/ansible/README.md`](../deploy/ansible/README.md).
+
 ### From source
 
 ```bash
