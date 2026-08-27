@@ -42,6 +42,31 @@ tool at runtime has to be able to write to them, and jobs do not run as root. `v
 checks that by actually installing something, since being on `PATH` and being usable are not
 the same thing.
 
+### Where the list came from, and staying honest about it
+
+`upstream.lock.yml` pins the exact `actions/runner-images` revision our package lists were
+transcribed from, so "the toolset GitHub ships" means a specific checkable thing rather than
+whatever it was the day someone read it.
+
+```bash
+images/runner/sync-toolset.sh                 # against the pinned revision
+images/runner/sync-toolset.sh --latest        # against upstream main
+images/runner/sync-toolset.sh --update-lock   # repin, then report
+```
+
+It reports what upstream has that we lack, what we deliberately leave out, what we install
+under a different name, and what we add on top. It never edits an image — which packages to
+adopt is a judgement, and the script's job is to make the question visible.
+
+CI runs it on every change to `images/runner/`, and weekly against upstream `main`.
+
+This idea is borrowed from [`runs-on/runner-images-for-aws`](https://github.com/runs-on/runner-images-for-aws),
+which pins upstream the same way. That project builds **AMIs for EC2** rather than container
+images, so nothing in it could be used directly here — but the pinning pattern is the right
+answer to a transcription that would otherwise rot quietly. `pipx` is what rotting looks
+like: upstream had it, we did not, and the first anyone heard was a workflow failing on
+`pipx: command not found`.
+
 ### Deliberately not installed
 
 **Container-hostile packages.** `systemd-coredump` (drags in systemd), `pollinate` (a
