@@ -94,10 +94,20 @@ jobs:
   # Runs on the self-hosted fleet too. `docker build` streams its context from the client, so
   # it works over the mounted socket; jobs that bind-mount a workspace path do not, and stay
   # on GitHub-hosted (see below).
+  # Pinned to GitHub-hosted rather than using select-runner, for three reasons that all
+  # point the same way:
+  #
+  #   - the images CI builds are throwaway, so nothing is gained by building them on the
+  #     fleet host;
+  #   - four variants at roughly 2.7 GB each, every run, fills a home server;
+  #   - rhel-10 needs the x86-64-v3 microarchitecture level, which a VM presenting a generic
+  #     CPU does not have — so that variant simply cannot build on many self-hosted hosts.
+  #
+  # The REGISTRY override and the cleanup step below are kept regardless, so that routing
+  # this back onto the fleet later cannot quietly replace the images real jobs run in.
   runner-image:
     name: Runner image (${{ matrix.variant }})
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.labels) }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
