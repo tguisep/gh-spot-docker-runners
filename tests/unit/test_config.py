@@ -390,3 +390,43 @@ def test_asking_for_zero_gpus_means_none() -> None:
     )
 
     assert settings.pools[0].template.gpus is None  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------- requires_labels
+
+
+def test_a_pool_can_demand_labels_be_asked_for() -> None:
+    settings = parse(
+        MINIMAL.replace(
+            'labels = ["self-hosted", "linux"]',
+            'labels = ["self-hosted", "linux", "gpu-a100"]\nrequires_labels = ["gpu-a100"]',
+        )
+    )
+
+    required = settings.pools[0].spec.requires_labels  # type: ignore[attr-defined]
+    assert required is not None
+    assert required.as_list() == ["gpu-a100"]
+
+
+def test_pools_demand_nothing_unless_they_say_so() -> None:
+    assert parse(MINIMAL).pools[0].spec.requires_labels is None  # type: ignore[attr-defined]
+
+
+def test_requiring_a_label_the_pool_does_not_carry_is_refused() -> None:
+    with pytest.raises(ConfigError, match="could never serve"):
+        parse(
+            MINIMAL.replace(
+                'labels = ["self-hosted", "linux"]',
+                'labels = ["self-hosted", "linux"]\nrequires_labels = ["gpu-a100"]',
+            )
+        )
+
+
+def test_requires_labels_must_be_a_list() -> None:
+    with pytest.raises(ConfigError, match="must be a list"):
+        parse(
+            MINIMAL.replace(
+                'labels = ["self-hosted", "linux"]',
+                'labels = ["self-hosted", "linux"]\nrequires_labels = "gpu-a100"',
+            )
+        )

@@ -103,3 +103,61 @@ def test_a_pool_exposes_its_name_and_iterates_its_runners() -> None:
 
     assert pool.name == "default"
     assert {runner.id for runner in pool} == {"a", "b"}
+
+
+# ---------------------------------------------------------------- requires_labels
+
+
+def test_a_pool_serves_jobs_that_never_asked_for_its_extra_labels() -> None:
+    """The default, and for an ordinary pool it is what you want."""
+    spec = make_spec(labels=LabelSet.of("self-hosted", "linux", "x64", "gpu-a100"))
+
+    assert spec.can_serve(make_job(labels=LabelSet.of("self-hosted", "linux", "x64")))
+
+
+def test_a_required_label_must_be_asked_for_by_name() -> None:
+    """What stops a GPU being spent on work that never wanted one.
+
+    Label matching is a subset rule, so without this a pool carrying `gpu-a100` happily takes
+    a job asking only for `self-hosted, linux, x64`.
+    """
+    spec = make_spec(
+        labels=LabelSet.of("self-hosted", "linux", "x64", "gpu-a100"),
+        requires_labels=LabelSet.of("gpu-a100"),
+    )
+
+    assert not spec.can_serve(make_job(labels=LabelSet.of("self-hosted", "linux", "x64")))
+    assert spec.can_serve(make_job(labels=LabelSet.of("self-hosted", "linux", "x64", "gpu-a100")))
+
+
+def test_every_required_label_must_be_present_not_just_one() -> None:
+    spec = make_spec(
+        labels=LabelSet.of("self-hosted", "gpu-a100", "cuda-12"),
+        requires_labels=LabelSet.of("gpu-a100", "cuda-12"),
+    )
+
+    assert not spec.can_serve(make_job(labels=LabelSet.of("self-hosted", "gpu-a100")))
+    assert spec.can_serve(make_job(labels=LabelSet.of("self-hosted", "gpu-a100", "cuda-12")))
+
+
+def test_requiring_a_label_the_pool_lacks_is_refused() -> None:
+    """It could never match, so the pool would idle while its jobs queued."""
+    with pytest.raises(InvalidPoolSpecError, match="could never serve"):
+        make_spec(
+            labels=LabelSet.of("self-hosted", "linux"),
+            requires_labels=LabelSet.of("gpu-a100"),
+        )
+
+
+def test_a_required_label_still_respects_the_repository() -> None:
+    spec = make_spec(
+        labels=LabelSet.of("self-hosted", "gpu-a100"),
+        requires_labels=LabelSet.of("gpu-a100"),
+    )
+
+    assert not spec.can_serve(
+        make_job(
+            labels=LabelSet.of("self-hosted", "gpu-a100"),
+            repository=RepositoryTarget("someone", "else"),
+        )
+    )
