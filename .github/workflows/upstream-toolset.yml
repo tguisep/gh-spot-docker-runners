@@ -20,9 +20,13 @@ permissions:
   contents: read
 
 jobs:
+  runner:
+    uses: ./.github/workflows/select-runner.yml
+
   compare:
     name: Compare against upstream
-    runs-on: ubuntu-latest
+    needs: runner
+    runs-on: ${{ fromJSON(needs.runner.outputs.labels) }}
     steps:
       - uses: actions/checkout@v4
 

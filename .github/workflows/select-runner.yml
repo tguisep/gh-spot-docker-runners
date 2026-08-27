@@ -1,0 +1,53 @@
+name: Select runner
+
+# Decides where a workflow's jobs run, once, so the rule lives in one place.
+#
+# This repository is public, and GitHub is explicit that self-hosted runners and public
+# repositories are a dangerous combination: anyone can fork, open a pull request, and have
+# their workflow execute on the runner. Ours mount the host Docker socket, which is root on
+# that machine — so a fork pull request must never reach them.
+#
+# push and same-repository pull requests both require write access, so they are safe.
+# Everything else falls back to GitHub-hosted, where a stranger's code is Microsoft's problem
+# rather than yours.
+#
+# Called with `uses: ./.github/workflows/select-runner.yml` rather than copied into each
+# workflow, because a rule repeated four times is a rule that will be wrong in one of them.
+
+on:
+  workflow_call:
+    outputs:
+      labels:
+        description: A JSON array for runs-on.
+        value: ${{ jobs.pick.outputs.labels }}
+      where:
+        description: Human-readable explanation of the choice.
+        value: ${{ jobs.pick.outputs.where }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Hosted on purpose, and the one job that should stay that way: it decides where everything
+  # else runs. On the fleet, a fleet that is down could not tell anyone to fall back off it —
+  # every workflow would queue behind the very runners that are missing. Five seconds of
+  # hosted time buys the escape hatch.
+  pick:
+    runs-on: ubuntu-latest
+    outputs:
+      labels: ${{ steps.pick.outputs.labels }}
+      where: ${{ steps.pick.outputs.where }}
+    steps:
+      - id: pick
+        env:
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+        run: |
+          if [ "${IS_FORK}" = "true" ]; then
+            echo 'labels=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+            echo 'where=GitHub-hosted (pull request from a fork)' >> "$GITHUB_OUTPUT"
+          else
+            echo 'labels=["self-hosted","linux","x64","home-vm"]' >> "$GITHUB_OUTPUT"
+            echo 'where=self-hosted' >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: echo "Running on ${{ steps.pick.outputs.where }}"

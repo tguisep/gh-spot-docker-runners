@@ -1,0 +1,69 @@
+name: Packaging
+
+# src/ and pyproject.toml are listed because the .deb embeds the application — a change to
+# either changes what the package contains.
+#
+# docs/operations.md is listed because verify-source-install.sh runs the commands that file
+# tells people to run. Editing them without running them is exactly how they were wrong
+# three times.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packaging/**"
+      - "deploy/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "docs/operations.md"
+      - ".github/workflows/packaging.yml"
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "deploy/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "docs/operations.md"
+      - ".github/workflows/packaging.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Hosted, and not movable to the fleet.
+  #
+  # Both bind-mount the workspace into a container. On a self-hosted runner the Docker client
+  # is inside a container talking to the *host's* daemon, so `-v "$PWD:/src"` resolves on the
+  # host, where the workspace does not exist. Docker then creates an empty directory there
+  # and mounts that — verified, not assumed: a file written in the runner is simply not
+  # visible to the sibling container. The build would quietly produce a package from nothing.
+  #
+  # Moving them needs the runner's work directory to be a host bind mount at an identical
+  # path, which would put every job's files on the host disk. A clean machine is also the
+  # right place to build a distributable package.
+  deb:
+    name: Debian package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The same container build used locally, so there is only one path to keep working.
+      - name: build
+        run: packaging/deb/build-in-docker.sh
+      # Verified on a newer Ubuntu than the builder, which is the point of bundling the
+      # interpreter: a regression here means the package would break on any host whose python
+      # differs from the runner's.
+      - name: verify on a clean system
+        run: packaging/deb/verify.sh dist/*.deb
+
+  install-docs:
+    name: Documented install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: packaging/verify-source-install.sh
