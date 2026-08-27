@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import structlog
 
 from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.labels import LabelSet
@@ -86,3 +88,15 @@ def make_job(
 @pytest.fixture
 def now() -> datetime:
     return T0
+
+
+@pytest.fixture(autouse=True)
+def _reset_logging() -> Iterator[None]:
+    """Undo any logging configuration a test performed.
+
+    `ghspot daemon` configures structlog, which binds it to the stream it was handed. Under
+    CliRunner that stream is closed when the invocation ends, so without this every later
+    test that logs fails with "I/O operation on closed file".
+    """
+    yield
+    structlog.reset_defaults()
