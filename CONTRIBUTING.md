@@ -6,10 +6,17 @@ With [mise](https://mise.jdx.dev), which installs the pinned python and uv and g
 project's tasks:
 
 ```bash
-mise install
+mise install            # python, uv, ansible-core, ansible-lint, molecule — all pinned
 mise run check          # lint and tests, the same invocations CI uses
+mise run ansible        # lint the role, and check it renders config the daemon accepts
+mise run molecule       # converge the role against a container with systemd
 mise tasks              # what else there is
 ```
+
+That includes the Ansible toolchain, so testing the role does not mean remembering a `uvx`
+line with four `--with` flags. `ansible-core` is declared as a tool in its own right rather
+than only as a dependency: molecule shells out to `ansible`, so it has to be on `PATH`, not
+merely importable.
 
 Without it, uv alone is enough:
 

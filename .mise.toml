@@ -11,6 +11,16 @@
 python = "3.12"
 uv = "0.12.6"
 
+# The Ansible toolchain, so `mise install` gets everything rather than leaving the role's
+# tests to a uvx incantation nobody remembers.
+#
+# ansible-core is its own tool rather than only a dependency of the others: molecule shells
+# out to `ansible`, so it has to be on PATH, not merely importable. Discovered by installing
+# it the other way first and watching molecule fail inside ansible_compat.
+"pipx:ansible-core" = "2.21.3"
+"pipx:ansible-lint" = "26.8.0"
+"pipx:molecule" = { version = "26.8.0", uvx_args = "--with molecule-plugins[docker] --with ansible-core --with docker" }
+
 [env]
 # uv reads this; keeping it here means `uv sync` behaves the same for everyone.
 UV_FROZEN = "1"
@@ -46,9 +56,14 @@ run = "images/runner/build.sh"
 [tasks.ansible]
 description = "Lint the role and check it renders configuration the daemon accepts"
 run = [
-  "uvx --from ansible-lint ansible-lint deploy/ansible",
+  "ansible-lint deploy/ansible",
   "uv run python deploy/ansible/test/render_and_validate.py",
 ]
+
+[tasks.molecule]
+description = "Converge the role against a container with systemd, and verify it"
+dir = "deploy/ansible/roles/ghspot"
+run = "molecule test"
 
 [tasks.deb]
 description = "Build the Debian package and install it on a clean system"
