@@ -152,6 +152,11 @@ RUN dnf install -y --nodocs pipx \
     && install -d -o runner -g runner "${PIPX_HOME}" "${PIPX_BIN_DIR}" \
     && pipx --version
 
+# Marks this as an image the daemon needs. Housekeeping prunes unused images on the host,
+# and without a marker it would eventually reclaim the very images runners start from —
+# leaving the daemon unable to launch anything until they were rebuilt.
+LABEL io.ghspot.image=runner
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
