@@ -78,6 +78,33 @@ One sentence of **What**, a table of changes by module, bullets for anything a r
 cannot see in the diff, one line of **Verification**. No narration of the journey — that is
 what the commit body is for.
 
+## What CI runs, and when
+
+Not everything, on everything. A `changes` job works out what a pull request touches and the
+rest are gated on it:
+
+| Touched | Runs |
+|---|---|
+| `src/`, `tests/`, `pyproject.toml`, `uv.lock` | lint, tests, and the package |
+| `images/runner/` | the four runner images |
+| `packaging/`, `deploy/`, `docs/operations.md` | the package and the documented install |
+| `.github/workflows/` | everything — the change may be the gating itself |
+| Anything else — most documentation | nothing heavy |
+
+Two of those are deliberate rather than obvious:
+
+- **A source change rebuilds the package**, because the `.deb` embeds the application.
+- **`docs/operations.md` runs the install check**, because that job exists to execute the
+  commands that file tells people to run. Editing them without running them is exactly how
+  they were wrong three times.
+
+Branch protection should require the single **CI** check rather than the individual jobs. A
+skipped job reports neither success nor failure, so requiring the jobs themselves leaves a
+documentation-only pull request waiting forever on builds that were correctly skipped. The
+`ci` job gathers them: skipped is fine, failed is not.
+
+If you add a job, add it to that list too — otherwise a failure in it cannot block anything.
+
 ## Releases
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please), driven by

@@ -29,6 +29,77 @@ jobs:
   # push and same-repository pull requests both require write access, so they are safe.
   # Everything else falls back to GitHub-hosted, where a stranger's code is Microsoft's
   # problem rather than yours.
+  # Work out what this change actually touches, so a documentation edit does not rebuild four
+  # runner images and a Debian package.
+  #
+  # Done with git rather than a paths-filter action: it is a dozen lines, it is auditable,
+  # and adding a third-party action to a workflow that runs on a self-hosted fleet is a
+  # supply-chain decision worth avoiding for something this small.
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      images: ${{ steps.filter.outputs.images }}
+      packaging: ${{ steps.filter.outputs.packaging }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "${BASE}" ]; then
+            CHANGED="$(git diff --name-only "${BASE}...HEAD")"
+          else
+            # A push. Compare against the previous commit; on the very first one, or a force
+            # push, fall back to treating everything as changed rather than guessing.
+            CHANGED="$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)"
+          fi
+
+          echo "Changed files:"
+          echo "${CHANGED}" | sed 's/^/  /'
+
+          matches() { echo "${CHANGED}" | grep -qE "$1"; }
+
+          # A change to the workflow itself runs everything: the point of the change may be
+          # the jobs it gates.
+          if matches '^\.github/workflows/'; then
+            echo "a workflow changed — running everything"
+            {
+              echo "python=true"; echo "images=true"; echo "packaging=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          matches '^(src/|tests/|pyproject\.toml|uv\.lock)' \
+            && echo "python=true" >> "$GITHUB_OUTPUT" \
+            || echo "python=false" >> "$GITHUB_OUTPUT"
+
+          matches '^images/runner/' \
+            && echo "images=true" >> "$GITHUB_OUTPUT" \
+            || echo "images=false" >> "$GITHUB_OUTPUT"
+
+          # Packaging embeds the application, so it is rebuilt when the application changes.
+          # docs/operations.md is in here because install-docs exists to run the commands
+          # that file tells people to run — editing them without checking them is exactly
+          # how they were wrong three times.
+          matches '^(packaging/|deploy/|src/|pyproject\.toml|uv\.lock|docs/operations\.md)' \
+            && echo "packaging=true" >> "$GITHUB_OUTPUT" \
+            || echo "packaging=false" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "| Area | Runs |"
+            echo "|---|---|"
+            echo "| python | ${{ steps.filter.outputs.python }} |"
+            echo "| images | ${{ steps.filter.outputs.images }} |"
+            echo "| packaging | ${{ steps.filter.outputs.packaging }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   select-runner:
     name: Select runner
     runs-on: ubuntu-latest
@@ -59,7 +130,8 @@ jobs:
         run: echo "Running on ${{ steps.pick.outputs.where }}"
 
   lint:
-    needs: select-runner
+    needs: [changes, select-runner]
+    if: needs.changes.outputs.python == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.labels) }}
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +147,8 @@ jobs:
         run: uv run mypy
 
   test:
-    needs: select-runner
+    needs: [changes, select-runner]
+    if: needs.changes.outputs.python == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.labels) }}
     strategy:
       fail-fast: false
@@ -107,6 +180,8 @@ jobs:
   # this back onto the fleet later cannot quietly replace the images real jobs run in.
   runner-image:
     name: Runner image (${{ matrix.variant }})
+    needs: changes
+    if: needs.changes.outputs.images == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -153,6 +228,8 @@ jobs:
 
   install-docs:
     name: Documented install
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -162,6 +239,8 @@ jobs:
 
   deb:
     name: Debian package
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -173,3 +252,26 @@ jobs:
       # python differs from the runner's.
       - name: verify on a clean system
         run: packaging/deb/verify.sh dist/*.deb
+
+  # One check for branch protection to require.
+  #
+  # A skipped job reports neither success nor failure, so requiring the jobs themselves would
+  # leave a documentation-only pull request waiting forever on builds that were correctly
+  # skipped. This gathers them: skipped is fine, failed is not.
+  ci:
+    name: CI
+    if: always()
+    needs: [changes, lint, test, runner-image, install-docs, deb]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check nothing failed
+        run: |
+          RESULTS="${{ join(needs.*.result, ' ') }}"
+          echo "job results: ${RESULTS}"
+          for result in ${RESULTS}; do
+            case "${result}" in
+              success|skipped) ;;
+              *) echo "::error::a required job reported '${result}'"; exit 1 ;;
+            esac
+          done
+          echo "nothing failed"
