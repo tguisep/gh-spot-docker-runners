@@ -38,14 +38,21 @@ ghspot_state_db: /var/lib/ghspot/state.db
 ghspot_api_bind: ""
 ghspot_log_level: INFO
 
+# Reclaiming what jobs leave on the host.
+#
+# Jobs reach the host's Docker daemon through the mounted socket, so what they build, pull
+# and create outlives them. This bounds that; it does not eliminate it — a container a job
+# leaves *running* is never touched. See docs/operations.md.
+#
+# Any age may be "never" to turn that sweep off; enabled: false turns off all of it.
 ghspot_housekeeping:
   enabled: true
   every: 1h
-  containers_older_than: 1h
-  images_older_than: 24h
-  volumes: true
+  containers_older_than: 1h    # stopped containers only
+  images_older_than: 24h       # unused images; runner images are exempt by label
+  volumes: true                # anonymous volumes only; named ones are yours
   build_cache_older_than: 24h
-  keep_build_cache: 10g
+  keep_build_cache: 10g        # cache below this is kept, or rebuilds start cold
 
 # The pools this host serves. At least one is required.
 #

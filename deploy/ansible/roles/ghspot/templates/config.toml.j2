@@ -17,13 +17,17 @@ api_bind = "{{ ghspot_api_bind }}"
 {% endif %}
 
 [housekeeping]
-enabled = {{ ghspot_housekeeping.enabled | lower }}
+enabled = {{ ghspot_housekeeping.enabled | bool | lower }}
 every = "{{ ghspot_housekeeping.every }}"
-containers_older_than = "{{ ghspot_housekeeping.containers_older_than }}"
-images_older_than = "{{ ghspot_housekeeping.images_older_than }}"
-volumes = {{ ghspot_housekeeping.volumes | lower }}
-build_cache_older_than = "{{ ghspot_housekeeping.build_cache_older_than }}"
+volumes = {{ ghspot_housekeeping.volumes | bool | lower }}
+{# Each sweep can be turned off individually with "never"; the daemon reads that as "do not". #}
+{% for key in ['containers_older_than', 'images_older_than', 'build_cache_older_than'] %}
+{% set age = ghspot_housekeeping[key] | default('never') %}
+{{ key }} = "{{ 'never' if age in [none, false, '', 'never'] else age }}"
+{% endfor %}
+{% if ghspot_housekeeping.keep_build_cache is defined and ghspot_housekeeping.keep_build_cache %}
 keep_build_cache = "{{ ghspot_housekeeping.keep_build_cache }}"
+{% endif %}
 {% for pool in ghspot_pools %}
 
 [[pool]]
