@@ -8,81 +8,39 @@
 
 ## Authentication
 
-Two modes. Both need the same two permissions:
+The daemon needs **Administration: read & write** (to register and remove runners) and
+**Actions: read** (to see queued jobs), on the repositories in your `config.toml`. Nothing
+else.
 
-| Permission | Level | Why |
+Two ways to provide them:
+
+| | Personal access token | GitHub App |
 |---|---|---|
-| Administration | Read and write | Minting just-in-time runner configurations |
-| Actions | Read | Seeing which jobs are queued |
+| Setup | ~2 minutes | ~10 minutes |
+| Rate limit | 5000/hour, shared with everything else you do | Its own budget per installation |
+| Token lifetime | Until it expires | ~1 hour, rotated automatically |
 
-Neither credential ever enters a runner container — containers get a single-use config blob
-and nothing else, in either mode.
+Use a token to try things out; use an App for anything left running.
 
-### Personal access token — quickest to start
+**→ [`authentication.md`](authentication.md) walks through both, with the exact permissions
+and why each one is needed.**
 
-Create it at **Settings → Developer settings → Personal access tokens → Fine-grained tokens**,
-scoped to the repositories you want runners for.
-
-```bash
-mkdir -p ~/.config/ghspot
-install -m 600 /dev/null ~/.config/ghspot/token
-printf '%s' 'github_pat_...' > ~/.config/ghspot/token
-```
+Whichever you choose, no credential ever enters a runner container — containers receive a
+single-use config blob and nothing else.
 
 ```toml
+# A token:
 [github]
 token_file = "~/.config/ghspot/token"
-```
 
-### GitHub App — preferred for anything long-lived
-
-Better in three ways that matter for a daemon running continuously:
-
-- **Rate limit belongs to the installation**, not to you. A PAT's 5000/hour is shared with
-  everything else you do; an installation gets its own budget, which scales with the number
-  of repositories and users it covers.
-- **Permissions are the app's**, not everything your account can reach. A PAT scoped to two
-  repositories still authenticates *as you*.
-- **Tokens expire hourly on their own.** The daemon refreshes them; a leaked one dies
-  without you doing anything.
-
-Create one at **Settings → Developer settings → GitHub Apps → New GitHub App**:
-
-1. Uncheck **Webhook → Active** — this project polls and needs no inbound endpoint.
-2. Under **Repository permissions**, set *Administration: Read and write* and
-   *Actions: Read*.
-3. Create it, then **Generate a private key** and save the `.pem`.
-4. **Install App** on your account, choosing the repositories you want runners for.
-
-```bash
-install -m 600 ~/Downloads/your-app.*.private-key.pem ~/.config/ghspot/app.pem
-```
-
-```toml
+# Or an App:
 [github]
 app_id = "123456"
 private_key_file = "~/.config/ghspot/app.pem"
-# installation_id = 98765432   # optional; discovered automatically
 ```
 
-`installation_id` is worked out from the first configured repository, or from the app's
-single installation. Set it explicitly only if the app is installed in several places.
-
-`ghspot doctor` reports which mode is in use and, for an App, performs a real JWT exchange —
-so a wrong app id or an unusable key surfaces there rather than an hour into a run.
-
-### Supplying credentials from the environment
-
-The environment always wins over the config file, so a systemd unit can inject secrets with
-no file on disk:
-
-| Variable | Mode |
-|---|---|
-| `GHSPOT_GITHUB_TOKEN` | Personal access token |
-| `GHSPOT_GITHUB_APP_ID` | GitHub App |
-| `GHSPOT_GITHUB_APP_PRIVATE_KEY` | GitHub App — `\n` escapes are accepted, since systemd `EnvironmentFile` cannot hold real newlines |
-
-Credentials are never command-line arguments; that would put them in `ps` output.
+The environment wins over the file, so a service manager can inject secrets without one:
+`GHSPOT_GITHUB_TOKEN`, or `GHSPOT_GITHUB_APP_ID` and `GHSPOT_GITHUB_APP_PRIVATE_KEY`.
 
 ## Install
 
@@ -128,6 +86,37 @@ git clone https://github.com/tguisep/gh-spot-docker-runners.git
 cd gh-spot-docker-runners
 uv tool install .
 ```
+
+That puts a standalone `ghspot` in `~/.local/bin`, usable from any directory. If your shell
+cannot find it afterwards, that directory is not on your `PATH`:
+
+```bash
+uv tool update-shell     # adds it, then restart your shell
+```
+
+<details>
+<summary>Other ways to install</summary>
+
+```bash
+# Working on the code: no install, run from the repository.
+uv sync
+uv run ghspot doctor
+
+# Without uv, into a virtualenv of your own. On Debian and Ubuntu this needs
+# python3-venv, or the virtualenv is created without pip in it.
+sudo apt install -y python3-venv
+python3 -m venv .venv && .venv/bin/pip install -e .
+.venv/bin/ghspot doctor
+
+# With pipx.
+pipx install .
+```
+
+`uv sync` alone installs into `.venv/` **without** putting `ghspot` on your `PATH` — that is
+why the plain command reports `command not found` after it. Use `uv run ghspot`, or install
+with `uv tool install .`.
+
+</details>
 
 Then build the runner image, which both install methods need:
 
@@ -186,9 +175,37 @@ gh api repos/OWNER/REPO/actions/runners               # no ghspot-* runners
 
 ### As a service
 
+Create the service user, and install the daemon somewhere it can reach — the unit expects a
+virtualenv at `/opt/ghspot/.venv`, so that it does not depend on any human's home directory:
+
 ```bash
 sudo useradd --system --home /opt/ghspot --shell /usr/sbin/nologin ghspot
 sudo usermod -aG docker ghspot
+
+# Debian and Ubuntu ship python3 without ensurepip, so `python3 -m venv` produces a
+# virtualenv with no pip in it. This package is what supplies it.
+sudo apt install -y python3-venv
+
+sudo mkdir -p /opt/ghspot
+sudo python3 -m venv /opt/ghspot/.venv
+
+# Give pip the repository's path, not `.` — sudo does not reliably inherit your
+# working directory.
+sudo /opt/ghspot/.venv/bin/pip install --quiet "$PWD"
+
+sudo chown -R ghspot:ghspot /opt/ghspot
+
+# Confirm the path the unit will run:
+/opt/ghspot/.venv/bin/ghspot version
+```
+
+> If `pip: command not found` appears, `python3-venv` was missing when the virtualenv was
+> created. Remove it with `sudo rm -rf /opt/ghspot/.venv`, install the package, and create
+> it again — an incomplete virtualenv is not repaired by installing the package afterwards.
+
+Then the configuration and credentials:
+
+```bash
 sudo mkdir -p /etc/ghspot
 sudo cp config.toml /etc/ghspot/
 
@@ -211,6 +228,18 @@ journalctl -u ghspot -f
 The unit sets `TimeoutStopSec=300`. On stop the daemon finishes its current tick and leaves
 busy runners alone — killing one fails a build that was about to pass — so that timeout is
 how long systemd waits before insisting.
+
+If you installed elsewhere, point `ExecStart=` at your own path — `command -v ghspot` shows
+it. The unit runs as the `ghspot` user, so a binary under *your* home directory will not be
+readable by it; that is why `/opt/ghspot` is the default.
+
+To upgrade later:
+
+```bash
+cd gh-spot-docker-runners && git pull
+sudo /opt/ghspot/.venv/bin/pip install --quiet "$PWD"
+sudo systemctl restart ghspot
+```
 
 ## Day to day
 
@@ -330,6 +359,67 @@ package creates its own `docker` group first and a plain `groupadd` silently doe
 
 If you move an image to another host whose `docker` group id differs, rebuild it there.
 
+## Running this project's own CI on your runners
+
+The workflow in `.github/workflows/ci.yml` runs on the self-hosted fleet, which is the most
+honest test the project has: if reconciliation breaks, CI stops.
+
+### Labels
+
+The workflow asks for `[self-hosted, linux, x64, home-vm]`. A pool serves a job only when it
+carries **every** label the job asks for, so the pool's `labels` must be a superset — which
+leaves room for the OS label from the section above:
+
+```toml
+[[pool]]
+labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
+```
+
+Change the workflow and the pool together, or jobs queue forever with no runner to take
+them.
+
+### Fork pull requests never reach your machine
+
+This matters more than anything else on this page.
+
+GitHub is explicit that [self-hosted runners and public repositories are a dangerous
+combination](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#self-hosted-runner-security):
+anyone can fork a public repository, open a pull request, and have their workflow execute on
+your runner. With `docker_socket = true` that is **root on your home server, offered to
+strangers**.
+
+The workflow therefore picks its runner rather than hard-coding one:
+
+| Event | Runs on | Why |
+|---|---|---|
+| `push` | Self-hosted | Requires write access |
+| Pull request from a branch in this repository | Self-hosted | Requires write access |
+| Pull request from a fork | GitHub-hosted | The author could be anyone |
+| `workflow_dispatch` with `force_hosted` | GitHub-hosted | Manual escape hatch |
+
+A `select-runner` job resolves this once and every other job reads its output, so the rule
+lives in one place instead of being repeated — and forgotten — per job.
+
+**This is not optional if your repository is public.** Deleting that logic and writing
+`runs-on: [self-hosted, ...]` directly hands arbitrary code execution to anyone with a GitHub
+account.
+
+### When the fleet is down
+
+CI queues rather than failing: a job with no matching runner waits, and GitHub fails it after
+24 hours. To get a green build without waiting, re-run the workflow from the Actions tab with
+**Run workflow → force_hosted**, which puts everything back on GitHub-hosted runners.
+
+### Which jobs cannot move
+
+Jobs that run `docker run -v "${PWD}:/src"` stay on GitHub-hosted. Inside a runner container
+the Docker client talks to the *host's* daemon, so a workspace path is resolved on the host,
+where it does not exist — Docker mounts an empty directory and the job fails confusingly.
+`docker build` is unaffected, because it streams its context from the client.
+
+Moving them would require the runner's work directory to be a host bind mount at an identical
+path inside the container. That is a change to the runner image, not to the workflow.
+
 ## Tuning
 
 | Setting | Raise it when | Lower it when |
@@ -364,11 +454,11 @@ number of pools. Conditional requests make idle polling nearly free, so this usu
 many repositories with constant activity. Switching from a personal access token to a GitHub
 App gives the daemon its own budget instead of sharing yours.
 
-**`GitHub rejected the app assertion`.**
-Either `app_id` does not match the private key, or the host clock is wrong. GitHub refuses a
-JWT whose `iat` is in the future, so a clock running fast fails every request. Check with
-`timedatectl` and confirm the app id on the app's settings page — it is the numeric **App
-ID**, not the client id and not the installation id.
+**A credential or permission error.**
+[`authentication.md`](authentication.md#when-permissions-are-wrong) has a table mapping each
+message to its cause. The two that catch people out: `GitHub rejected the app assertion`
+usually means a wrong App ID or a skewed host clock, and a permission change on a GitHub App
+does not take effect until the installation *accepts* it.
 
 **Jobs cannot run `docker`.**
 Set `docker_socket = true` for the pool, and confirm the image was built with the host's
@@ -376,6 +466,18 @@ Set `docker_socket = true` for the pool, and confirm the image was built with th
 
 **The daemon exits immediately.**
 Almost always configuration. Run `ghspot config validate` — it names the field.
+
+**`pip: command not found` after creating a virtualenv.**
+Debian and Ubuntu ship `python3` without `ensurepip`, so `python3 -m venv` makes a
+virtualenv containing only python symlinks. Install `python3-venv`, delete the incomplete
+virtualenv, and create it again — installing the package does not repair one that already
+exists. The `.deb` avoids this entirely by bundling its own interpreter.
+
+**`ghspot: command not found`.**
+`uv sync` installs into the repository's `.venv/` and does not put anything on your `PATH`.
+Either install it properly with `uv tool install .`, or prefix commands with `uv run` from
+inside the repository. If you did run `uv tool install .`, then `~/.local/bin` is missing
+from your `PATH` — `uv tool update-shell` adds it.
 
 ## Backups
 

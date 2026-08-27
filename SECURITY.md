@@ -82,7 +82,8 @@ escapes regardless of what the socket is doing.
 
 ## Hardening checklist
 
-- [ ] A GitHub App, or a fine-grained token scoped to exactly the repositories in `config.toml`
+- [ ] A GitHub App, or a fine-grained token scoped to exactly the repositories in
+      `config.toml` — see [docs/authentication.md](docs/authentication.md)
 - [ ] Token file or app private key `chmod 600`, owned by the daemon user
 - [ ] Daemon runs as a dedicated system user, not your login account
 - [ ] `api_bind` on `127.0.0.1`, or absent
