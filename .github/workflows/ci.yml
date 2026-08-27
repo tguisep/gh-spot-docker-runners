@@ -115,3 +115,26 @@ jobs:
   #
   # Moving those jobs would need the runner's work directory to be a host bind mount at an
   # identical path inside the container, which is a separate change to the runner image.
+
+  install-docs:
+    name: Documented install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Runs the commands docs/operations.md tells people to run, on a clean system.
+      # They were wrong three times running; reasoning about them evidently does not work.
+      - run: packaging/verify-source-install.sh
+
+  deb:
+    name: Debian package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The same container build used locally, so there is only one path to keep working.
+      - name: build
+        run: packaging/deb/build-in-docker.sh
+      # Verified on a newer Ubuntu than the builder, which is the point of bundling the
+      # interpreter: a regression here means the package would break on any host whose
+      # python differs from the runner's.
+      - name: verify on a clean system
+        run: packaging/deb/verify.sh dist/*.deb

@@ -65,6 +65,19 @@ def build_auth(settings: Settings) -> TokenProvider:
     )
 
 
+def build_forge(settings: Settings) -> GitHubClient:
+    """Just the forge client, with no Docker connection.
+
+    ``ghspot doctor`` checks GitHub and Docker independently, and must still be able to
+    report on one when the other is unreachable — that is the situation it exists for.
+    """
+    return GitHubClient(
+        auth=build_auth(settings),
+        base_url=settings.github.api_url,
+        timeout_seconds=settings.github.request_timeout.total_seconds(),
+    )
+
+
 def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> Application:
     """Assemble the application from validated settings.
 
@@ -74,11 +87,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
     clock = SystemClock()
     ids = UuidGenerator()
 
-    forge = GitHubClient(
-        auth=build_auth(settings),
-        base_url=settings.github.api_url,
-        timeout_seconds=settings.github.request_timeout.total_seconds(),
-    )
+    forge = build_forge(settings)
     container_backend = backend or DockerRunnerBackend()
     runners = SqliteRunnerRepository(settings.daemon.state_db)
     events = SqliteEventLog(settings.daemon.state_db)

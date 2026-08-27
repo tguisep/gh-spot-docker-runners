@@ -55,11 +55,25 @@ The dependency rule is enforced by a test, not by convention.
 
 ## Quick start
 
+On Debian or Ubuntu, take the `.deb` from the
+[latest release](https://github.com/tguisep/gh-spot-docker-runners/releases/latest). It
+bundles its own Python, so it needs nothing from the system interpreter:
+
+```bash
+sudo apt install ./ghspot_*.deb
+```
+
+<details><summary>Or install from source</summary>
+
 ```bash
 git clone https://github.com/tguisep/gh-spot-docker-runners.git
 cd gh-spot-docker-runners
-uv sync
+uv tool install .          # then `uv tool update-shell` if ghspot isn't found
+```
 
+</details>
+
+```bash
 # Build the runner image with the host's docker group, so jobs can use the socket.
 docker build -t ghspot/runner:ubuntu-24.04 \
   --build-arg DOCKER_GID="$(getent group docker | cut -d: -f3)" \
@@ -87,11 +101,10 @@ jobs:
 
 - Linux host with Docker, and a user in the `docker` group
 - Python 3.12+
-- Credentials with **Administration: read & write** (to mint runner configs) and
-  **Actions: read** (to see queued jobs) — either a fine-grained personal access token, or a
-  [GitHub App](docs/operations.md#authentication), which is preferred for anything
-  long-lived: its rate limit belongs to the installation rather than to you, and its tokens
-  rotate hourly on their own
+- Credentials with **Administration: read & write** (to register runners) and **Actions:
+  read** (to see queued jobs) — either a fine-grained personal access token or a GitHub App.
+  [`docs/authentication.md`](docs/authentication.md) sets up both, and explains why each
+  permission is needed
 
 ## Commands
 
@@ -117,6 +130,8 @@ repositories you control and unacceptable for one that accepts fork pull request
 
 ## Documentation
 
+- [`docs/authentication.md`](docs/authentication.md) — setting up a token or a GitHub App,
+  and the exact permissions
 - [`docs/architecture.md`](docs/architecture.md) — how the pieces fit together, and why
 - [`docs/operations.md`](docs/operations.md) — install, configure, run, tune, troubleshoot
 - [`docs/adr/`](docs/adr/) — the decisions, with the alternatives that were rejected

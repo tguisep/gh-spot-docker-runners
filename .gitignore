@@ -18,8 +18,9 @@ htmlcov/
 .vscode/
 
 # Runtime state & secrets
-config.toml
+/config.toml
 *.db
 *.sqlite3
 .env
 token
+dist/

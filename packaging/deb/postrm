@@ -1,0 +1,30 @@
+#!/bin/sh
+# Clean up on removal.
+#
+# The service account, /etc/ghspot and /var/lib/ghspot survive 'remove' and are only removed
+# on 'purge'. Credentials live in /etc/ghspot, so deleting them on a plain remove would lose
+# a token or an app key during a routine reinstall.
+set -e
+
+case "$1" in
+    remove)
+        if [ -d /run/systemd/system ]; then
+            systemctl --system daemon-reload >/dev/null 2>&1 || true
+        fi
+        ;;
+
+    purge)
+        rm -rf /var/lib/ghspot
+        rm -rf /etc/ghspot
+        if getent passwd ghspot >/dev/null; then
+            deluser --system --quiet ghspot >/dev/null 2>&1 || true
+        fi
+        if [ -d /run/systemd/system ]; then
+            systemctl --system daemon-reload >/dev/null 2>&1 || true
+        fi
+        echo "ghspot: purged. Any runner containers still on this host are untouched;"
+        echo "        remove them with: docker rm -f \$(docker ps -aq --filter label=io.ghspot.managed=true)"
+        ;;
+esac
+
+exit 0

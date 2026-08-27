@@ -1,0 +1,65 @@
+#!/bin/sh
+# Create the service account and make systemd aware of the unit.
+#
+# Deliberately does NOT enable or start the service: it cannot work until a repository and a
+# credential are configured, and starting a daemon that will only fail is not helpful.
+set -e
+
+USER_NAME=ghspot
+HOME_DIR=/var/lib/ghspot
+
+case "$1" in
+    configure)
+        if ! getent passwd "${USER_NAME}" >/dev/null; then
+            adduser --system --group --quiet \
+                    --home "${HOME_DIR}" --no-create-home \
+                    --shell /usr/sbin/nologin \
+                    --gecos "ghspot GitHub Actions runner daemon" \
+                    "${USER_NAME}"
+        fi
+
+        # Reaching the Docker socket requires this group, and that membership is equivalent
+        # to root on this host. It is why the account exists for nothing else.
+        if getent group docker >/dev/null; then
+            adduser --quiet "${USER_NAME}" docker || true
+        else
+            echo "ghspot: no 'docker' group found — install Docker, then run:" >&2
+            echo "        sudo adduser ${USER_NAME} docker" >&2
+        fi
+
+        install -d -o "${USER_NAME}" -g "${USER_NAME}" -m 0750 "${HOME_DIR}"
+        install -d -o root -g "${USER_NAME}" -m 0750 /etc/ghspot
+        if [ -f /etc/ghspot/config.toml ]; then
+            chown root:"${USER_NAME}" /etc/ghspot/config.toml
+            chmod 0640 /etc/ghspot/config.toml
+        fi
+
+        cat <<'NEXT'
+
+ghspot is installed but not started — it needs a repository and a credential first.
+
+  1. Edit /etc/ghspot/config.toml            (repository, labels, image)
+  2. Add a credential to /etc/ghspot/env     (chmod 600; see below)
+  3. Build the runner image:
+       docker build -t ghspot/runner:ubuntu-24.04 \
+         --build-arg DOCKER_GID="$(getent group docker | cut -d: -f3)" \
+         images/runner/
+  4. sudo ghspot doctor --config /etc/ghspot/config.toml
+  5. sudo systemctl enable --now ghspot
+
+  /etc/ghspot/env holds one of:
+       GHSPOT_GITHUB_TOKEN=github_pat_...
+    or GHSPOT_GITHUB_APP_ID=... and GHSPOT_GITHUB_APP_PRIVATE_KEY=...
+
+  Setting up either: https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/authentication.md
+
+NEXT
+        ;;
+esac
+
+#DEBHELPER#
+if [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null 2>&1 || true
+fi
+
+exit 0

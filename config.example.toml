@@ -6,6 +6,8 @@
 [github]
 # Two ways to authenticate. Credentials are never read from this file itself — it points
 # at files, or you set the environment variables (the environment always wins).
+#
+# Full walkthrough for both, with the exact permissions: docs/authentication.md
 
 # --- Option A: personal access token -------------------------------------------------
 # Quickest to set up. A fine-grained token scoped to the repositories below, with:
