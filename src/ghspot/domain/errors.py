@@ -88,3 +88,7 @@ class RunnerNotFoundError(GhSpotError):
 
 class RunnerBusyError(GhSpotError):
     """The runner is executing a job and the caller did not ask to force it."""
+
+
+class StorageError(GhSpotError):
+    """The state store could not be opened or written."""

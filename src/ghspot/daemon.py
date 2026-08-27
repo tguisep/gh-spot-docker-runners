@@ -102,6 +102,11 @@ async def run_forever(application: Application, max_ticks: int | None = None) ->
     Both are cancelled together: an API still answering after the loop has stopped would
     report a fleet nobody is reconciling.
     """
+    # Open the store before claiming to have started. It is opened lazily otherwise, so an
+    # unwritable path surfaces inside every tick instead — the daemon looks alive, does
+    # nothing, and fills the journal with the same traceback until someone reads it.
+    await asyncio.to_thread(application.runners.prepare)
+
     daemon = Daemon(application)
     loop = asyncio.get_running_loop()
 

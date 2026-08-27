@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ghspot.domain.errors import StorageError
 from ghspot.domain.model import events as domain_events
 from ghspot.domain.model.events import DomainEvent
 from ghspot.domain.model.labels import LabelSet
@@ -65,11 +66,25 @@ class SqliteStore:
         self._prepared = False
 
     def prepare(self) -> None:
-        """Create the database and bring the schema up to date. Safe to call repeatedly."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as connection:
-            connection.executescript(_SCHEMA)
-            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        """Create the database and bring the schema up to date. Safe to call repeatedly.
+
+        Failures are translated rather than left as OSError, because the likeliest one by far
+        is a path the daemon cannot write — and under systemd's ProtectSystem that is a
+        confusing thing to be told by a traceback three frames deep in pathlib.
+        """
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.connect() as connection:
+                connection.executescript(_SCHEMA)
+                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        except OSError as error:
+            raise StorageError(
+                f"cannot use the state database at {self.path}: {error}. "
+                "Set [daemon].state_db to a writable path — /var/lib/ghspot/state.db when "
+                "running under the shipped systemd unit."
+            ) from error
+        except sqlite3.Error as error:
+            raise StorageError(f"the state database at {self.path} is unusable: {error}") from error
         self._prepared = True
 
     def connect(self) -> sqlite3.Connection:
