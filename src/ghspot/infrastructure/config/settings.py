@@ -305,6 +305,7 @@ def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
                 table.get("max_job_duration", "2h"), f"{where}.max_job_duration"
             ),
             max_launch_per_tick=int(table.get("max_launch_per_tick", 2)),
+            requires_labels=_required_labels(table.get("requires_labels"), where, str(name)),
         )
     except GhSpotError as error:
         raise ConfigError(f"{where}: {error}") from error
@@ -338,6 +339,18 @@ def _template(container: dict[str, Any], where: str, name: str) -> RunnerTemplat
 
 
 # -- helpers -------------------------------------------------------------------------
+
+
+def _required_labels(value: Any, where: str, name: str) -> LabelSet | None:
+    """Labels a job must ask for by name before this pool will serve it."""
+    if value in (None, False, "", []):
+        return None
+    if not isinstance(value, list):
+        raise ConfigError(f"{where} ({name}): 'requires_labels' must be a list")
+    try:
+        return LabelSet.from_iterable(str(label) for label in value)
+    except GhSpotError as error:
+        raise ConfigError(f"{where} ({name}): {error}") from error
 
 
 def _gpus(value: Any, where: str, name: str) -> str | int | tuple[str, ...] | None:

@@ -39,6 +39,9 @@ max_runners = {{ pool.max_runners | default(2) }}
 idle_timeout = "{{ pool.idle_timeout | default('10m') }}"
 max_job_duration = "{{ pool.max_job_duration | default('2h') }}"
 max_launch_per_tick = {{ pool.max_launch_per_tick | default(2) }}
+{% if pool.requires_labels is defined and pool.requires_labels %}
+requires_labels = [{{ pool.requires_labels | map('tojson') | join(', ') }}]
+{% endif %}
 
 [pool.container]
 image = "{{ pool.container.image }}"

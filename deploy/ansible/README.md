@@ -64,7 +64,10 @@ Set `gpus` on a pool's container, the same way the daemon takes it:
 ghspot_pools:
   - name: gpu
     repository: you/your-project
-    labels: [self-hosted, linux, x64, gpu]
+    labels: [self-hosted, linux, x64, gpu-a100]
+    # Without this a plain CPU job lands here and burns the GPU: label matching is a
+    # subset rule, so extra labels on a pool are ignored by jobs that never asked.
+    requires_labels: [gpu-a100]
     max_runners: 1
     container:
       image: ghspot/runner:ubuntu-24.04

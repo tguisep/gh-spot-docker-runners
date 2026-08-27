@@ -212,3 +212,33 @@ def test_every_action_carries_a_reason() -> None:
 
     assert not plan.is_noop
     assert plan.reasons
+
+
+def test_a_protected_pool_does_not_scale_for_work_that_never_asked_for_it() -> None:
+    """The reason requires_labels exists.
+
+    Without it the pool counts a plain CPU job as its own and starts a GPU runner to serve
+    something that would have been happy anywhere.
+    """
+    protected = make_pool(
+        labels=LabelSet.of("self-hosted", "linux", "x64", "gpu-a100"),
+        requires_labels=LabelSet.of("gpu-a100"),
+        max_runners=4,
+    )
+    cpu_work = [make_job(n, labels=LabelSet.of("self-hosted", "linux", "x64")) for n in range(3)]
+
+    assert plan_scaling(protected, cpu_work, T0).launch == 0
+
+
+def test_a_protected_pool_still_scales_for_the_work_it_is_for() -> None:
+    protected = make_pool(
+        labels=LabelSet.of("self-hosted", "linux", "x64", "gpu-a100"),
+        requires_labels=LabelSet.of("gpu-a100"),
+        max_runners=4,
+        max_launch_per_tick=4,
+    )
+    gpu_work = [
+        make_job(n, labels=LabelSet.of("self-hosted", "linux", "x64", "gpu-a100")) for n in range(2)
+    ]
+
+    assert plan_scaling(protected, gpu_work, T0).launch == 2
