@@ -1,0 +1,14 @@
+# Every sweep disabled, and no keep_build_cache — the paths that emit "never" or omit a key.
+ghspot_api_url: https://api.github.com
+ghspot_github_app_id: ""
+ghspot_poll_interval: 15s
+ghspot_state_db: /var/lib/ghspot/state.db
+ghspot_log_level: INFO
+ghspot_api_bind: ""
+ghspot_housekeeping: {enabled: false, every: 1h, volumes: false}
+ghspot_pools:
+  - name: default
+    repository: tguisep/my-project
+    labels: [self-hosted, linux]
+    container:
+      image: ghspot/runner:ubuntu-24.04

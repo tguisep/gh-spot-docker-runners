@@ -1,0 +1,14 @@
+# The smallest configuration the role will accept.
+ghspot_api_url: https://api.github.com
+ghspot_github_app_id: ""
+ghspot_poll_interval: 15s
+ghspot_state_db: /var/lib/ghspot/state.db
+ghspot_log_level: INFO
+ghspot_api_bind: ""
+ghspot_housekeeping: {enabled: true, every: 1h, containers_older_than: 1h, images_older_than: 24h, volumes: true, build_cache_older_than: 24h, keep_build_cache: 10g}
+ghspot_pools:
+  - name: default
+    repository: tguisep/my-project
+    labels: [self-hosted, linux, x64]
+    container:
+      image: ghspot/runner:ubuntu-24.04

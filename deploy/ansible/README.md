@@ -56,6 +56,29 @@ a secret, and Ansible logs template contents by default.
 Setting either up, with the exact permissions:
 [`docs/authentication.md`](../../docs/authentication.md).
 
+## Tests
+
+```bash
+uvx --from ansible-lint ansible-lint deploy/ansible
+uv run python deploy/ansible/test/render_and_validate.py
+```
+
+The second is the one that matters. The role restates the daemon's configuration schema in a
+Jinja template, and **nothing fails when the two drift** — the role keeps rendering a file the
+daemon quietly ignores, and it surfaces months later as a setting that does nothing.
+
+So it renders the templates with Ansible itself, using the filters the template actually
+uses, and loads the result with `ghspot`'s own parser. Fixtures in `test/vars/` cover a
+minimal pool, every key the template can emit, and housekeeping turned off — the last
+because `never` and omitted keys take different paths.
+
+Confirmed to fail on real drift: dropping `requires_labels` from the template reports
+`full: requires_labels lost`, and renaming `keep_build_cache` reports
+`full: keep_build_cache lost`.
+
+CI runs both on any change to `deploy/ansible/` **or to the daemon's configuration module**,
+so a key added on one side without the other is caught by whichever moved first.
+
 ## GPUs
 
 Set `gpus` on a pool's container, the same way the daemon takes it:

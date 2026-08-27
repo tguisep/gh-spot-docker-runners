@@ -1,0 +1,59 @@
+name: Ansible
+
+# The role restates the daemon's configuration schema in a Jinja template, and nothing fails
+# when the two drift: the role keeps rendering a file the daemon quietly ignores, and it
+# surfaces months later as a setting that does nothing. This is what turns that into a red
+# build.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/ansible/**"
+      - "src/ghspot/infrastructure/config/**"
+      - ".github/workflows/ansible.yml"
+  pull_request:
+    paths:
+      - "deploy/ansible/**"
+      - "src/ghspot/infrastructure/config/**"
+      - ".github/workflows/ansible.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  runner:
+    uses: ./.github/workflows/select-runner.yml
+
+  check:
+    needs: runner
+    runs-on: ${{ fromJSON(needs.runner.outputs.labels) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+
+      - name: Install the project
+        run: uv sync --all-extras
+
+      # Run through uvx rather than installed: these are tools, not dependencies, and adding
+      # them to pyproject would make every contributor carry Ansible to run the unit tests.
+      - name: ansible-lint
+        run: uvx --from ansible-lint ansible-lint deploy/ansible
+
+      - name: Syntax check
+        working-directory: deploy/ansible
+        run: uvx --from ansible-core ansible-playbook playbook.yml --syntax-check -i inventory/hosts.example.ini
+
+      # The one that earns its keep: render the templates with Ansible itself, then load the
+      # result with the daemon's own parser.
+      - name: The role renders configuration the daemon accepts
+        run: |
+          uv pip install ansible-core
+          uv run python deploy/ansible/test/render_and_validate.py
