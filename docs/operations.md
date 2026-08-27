@@ -47,7 +47,9 @@ The environment wins over the file, so a service manager can inject secrets with
 ### From a .deb (recommended on Debian and Ubuntu)
 
 Download the package for your architecture from the
-[latest release](https://github.com/tguisep/gh-spot-docker-runners/releases/latest):
+[latest release](https://github.com/tguisep/gh-spot-docker-runners/releases/latest).
+Releases are cut automatically from the commit history, so `latest` always matches `main` as
+of its last release:
 
 ```bash
 sudo apt install ./ghspot_0.1.0-1_amd64.deb
