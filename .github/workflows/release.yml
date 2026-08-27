@@ -27,10 +27,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  runner:
+    uses: ./.github/workflows/select-runner.yml
+
   release-please:
     name: Release pull request
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    needs: runner
+    runs-on: ${{ fromJSON(needs.runner.outputs.labels) }}
     permissions:
       contents: write
       pull-requests: write
@@ -104,9 +108,9 @@ jobs:
 
   publish:
     name: Attach packages to the release
-    needs: [release-please, build]
+    needs: [runner, release-please, build]
     if: needs.release-please.outputs.released == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.runner.outputs.labels) }}
     permissions:
       contents: write
 

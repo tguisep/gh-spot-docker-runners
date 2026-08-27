@@ -28,6 +28,10 @@ permissions:
   contents: read
 
 jobs:
+  # Hosted on purpose, and the one job that should stay that way: it decides where everything
+  # else runs. On the fleet, a fleet that is down could not tell anyone to fall back off it —
+  # every workflow would queue behind the very runners that are missing. Five seconds of
+  # hosted time buys the escape hatch.
   pick:
     runs-on: ubuntu-latest
     outputs:

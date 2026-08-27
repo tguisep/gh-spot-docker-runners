@@ -106,6 +106,27 @@ about where jobs may run is a rule that will be wrong in one of four copies. Not
 **GitHub Actions does not support YAML anchors**, so the path lists are spelled out under
 both `push` and `pull_request` rather than shared.
 
+### Which jobs run on the fleet
+
+Most of them. The exceptions are deliberate, and each workflow says why at the job:
+
+| Job | Runs on | Why |
+|---|---|---|
+| lint, test | Fleet | |
+| upstream comparison | Fleet | |
+| release PR, publish | Fleet | |
+| `select-runner` | **Hosted** | It decides where everything else runs. On the fleet, a fleet that is down could not tell anyone to fall back off it |
+| `packaging` | **Hosted** | Both jobs bind-mount the workspace, which silently mounts an empty directory on a self-hosted runner |
+| `runner-images` | **Hosted** | Throwaway images would fill the host, and rhel-10 needs a CPU feature a generic VM does not expose |
+| release `build` | **Hosted** | Builds the package, so the same bind-mount problem — and it needs an arm64 runner |
+
+The bind-mount one is worth understanding before trying to "fix" it. On a self-hosted runner
+the Docker client sits inside a container talking to the **host's** daemon, so a path like
+`$PWD` is resolved against the host, where the workspace does not exist. Docker creates an
+empty directory there and mounts that, and the build produces a package from nothing without
+failing. Moving those jobs would require the runner's work directory to be a host bind mount
+at an identical path — putting every job's files on the host disk.
+
 ### If you turn on branch protection
 
 Require the checks from workflows that always run. A workflow filtered out by `paths` does

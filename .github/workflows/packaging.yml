@@ -36,9 +36,17 @@ permissions:
   contents: read
 
 jobs:
-  # Neither of these can move onto a self-hosted runner: both bind-mount the workspace into a
-  # container, and there the Docker client talks to the host's daemon, so a workspace path
-  # resolves on the host where it does not exist and Docker mounts an empty directory.
+  # Hosted, and not movable to the fleet.
+  #
+  # Both bind-mount the workspace into a container. On a self-hosted runner the Docker client
+  # is inside a container talking to the *host's* daemon, so `-v "$PWD:/src"` resolves on the
+  # host, where the workspace does not exist. Docker then creates an empty directory there
+  # and mounts that — verified, not assumed: a file written in the runner is simply not
+  # visible to the sibling container. The build would quietly produce a package from nothing.
+  #
+  # Moving them needs the runner's work directory to be a host bind mount at an identical
+  # path, which would put every job's files on the host disk. A clean machine is also the
+  # right place to build a distributable package.
   deb:
     name: Debian package
     runs-on: ubuntu-latest

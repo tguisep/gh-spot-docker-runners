@@ -19,11 +19,16 @@ permissions:
   contents: read
 
 jobs:
-  # Pinned to GitHub-hosted rather than using select-runner, for three reasons that all point
-  # the same way: the images CI builds are throwaway, so nothing is gained by building them
-  # on the fleet host; four variants at roughly 2.7 GB each every run fills a home server;
-  # and rhel-10 needs the x86-64-v3 microarchitecture level, which a virtual machine
-  # presenting a generic CPU does not have.
+  # Hosted, and not movable to the fleet without losing something.
+  #
+  # Three reasons pointing the same way:
+  #   - what CI builds here is deleted at the end of the job, so building it on the fleet
+  #     host gains nothing;
+  #   - four variants at roughly 2.7 GB each, every run, fills a home server;
+  #   - rhel-10 needs the x86-64-v3 microarchitecture level, which a virtual machine
+  #     presenting a generic CPU does not expose. Moving this job would mean either fixing
+  #     the hypervisor's CPU model or dropping rhel-10 from the matrix — and a variant that
+  #     is never built is a variant nobody finds out is broken.
   build:
     name: ${{ matrix.variant }}
     runs-on: ubuntu-latest
