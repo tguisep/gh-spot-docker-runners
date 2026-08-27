@@ -22,16 +22,38 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RUNNER_MANUALLY_TRAP_SIG=1 \
     ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT=1
 
+# The toolset GitHub installs on its own ubuntu images, from
+# actions/runner-images: images/ubuntu/toolsets/toolset-2404.json.
+#
+# Grouped as they are upstream, so a diff against a future toolset stays readable. Three
+# packages are deliberately left out because they cannot work in a container:
+# systemd-coredump (drags in systemd), pollinate (a boot-time entropy service) and haveged
+# (an entropy daemon the kernel has not needed for years).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        git \
-        gnupg \
-        jq \
-        rsync \
-        sudo \
-        unzip \
-        zip \
+    `# vital_packages` \
+        bzip2 curl g++ gcc jq make tar unzip wget \
+    `# common_packages` \
+        autoconf automake dbus dnsutils dpkg dpkg-dev fakeroot fonts-noto-color-emoji \
+        gnupg2 iproute2 iputils-ping libicu-dev libsqlite3-dev libssl-dev libtool \
+        libyaml-dev locales mercurial openssh-client p7zip-rar pkg-config \
+        python-is-python3 rpm texinfo tk tree tzdata upx xvfb xz-utils zsync \
+    `# cmd_packages` \
+        acl aria2 binutils bison brotli coreutils file findutils flex ftp libnss3-tools \
+        lz4 m4 mediainfo net-tools netcat-openbsd p7zip-full parallel patchelf pigz rsync \
+        shellcheck sphinxsearch sqlite3 ssh sshpass sudo swig telnet time zip \
+    `# not upstream, but a runner without them is surprising: git for checkout, and pip and` \
+    `# venv because Debian ships python3 without ensurepip` \
+        ca-certificates cmake git python3 python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node and npm. GitHub keeps these in a toolcache; here they are just installed, because a
+# workflow running `npm ci` without actions/setup-node is common and the failure is obscure.
+# Other toolchains are not preinstalled: actions/setup-python, setup-go, setup-java and the
+# rest download what they need at runtime, so they work on this image already.
+ARG NODE_MAJOR=22
+RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm --version \
     && rm -rf /var/lib/apt/lists/*
 
 # Docker CLI only. The daemon is the host's, reached through the mounted socket.
