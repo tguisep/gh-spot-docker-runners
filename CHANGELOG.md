@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.2.1...v0.3.0) (2026-08-27)
+
+
+### Features
+
+* **runner-image:** install the GitHub CLI ([27ba9d7](https://github.com/tguisep/gh-spot-docker-runners/commit/27ba9d76a6bd186474a6d43451cae1490a59814a))
+* **runner-image:** install the GitHub CLI ([d9fea59](https://github.com/tguisep/gh-spot-docker-runners/commit/d9fea59fee60537092c5296e6bffb00006165825))
+
 ## [0.2.1](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.2.0...v0.2.1) (2026-08-27)
 
 
