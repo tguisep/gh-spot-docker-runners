@@ -48,7 +48,15 @@ name = "default"
 repository = "tguisep/my-project"
 
 # A job runs here when every label it asks for appears in this list.
-labels = ["self-hosted", "linux", "x64", "home-vm"]
+#
+# Name the operating system precisely, the way GitHub's own hosted runners do, so a workflow
+# can ask for what it actually needs:
+#
+#     runs-on: [self-hosted, ubuntu-24.04]
+#
+# "linux" and "x64" are conventional and worth keeping; a bare "linux" alone is not, because
+# a job asking for it has no idea what it will get.
+labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
 
 min_idle = 1          # runners kept warm so a job doesn't wait for a container to boot
 max_runners = 4       # hard ceiling for this pool
@@ -57,6 +65,10 @@ max_job_duration = "2h"
 max_launch_per_tick = 2   # spreads a large matrix across ticks
 
 [pool.container]
+# The image tag and the OS label above are the same string, deliberately: build with
+# images/runner/build.sh and the two cannot drift apart.
+#
+# Available: ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10
 image = "ghspot/runner:ubuntu-24.04"
 cpus = 2.0
 memory = "4g"
@@ -75,12 +87,14 @@ docker_socket = true
 # TZ = "Europe/Paris"
 
 # A second pool, for a different repository or a different machine shape.
+# A second pool serving a different operating system. Pools are how you offer more than one:
+# a job asking for rhel-9 will only ever land on a runner that has it.
+#
 # [[pool]]
-# name = "heavy"
-# repository = "tguisep/other-project"
-# labels = ["self-hosted", "linux", "x64", "heavy"]
+# name = "rhel"
+# repository = "tguisep/my-project"
+# labels = ["self-hosted", "linux", "x64", "rhel-9"]
 # max_runners = 1
 # [pool.container]
-# image = "ghspot/runner:ubuntu-24.04"
-# cpus = 8.0
-# memory = "16g"
+# image = "ghspot/runner:rhel-9"
+# docker_socket = true
