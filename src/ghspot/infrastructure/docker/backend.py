@@ -37,7 +37,7 @@ class DockerRunnerBackend:
             except ImageNotFound as error:
                 raise ImageNotFoundError(
                     f"the runner image {spec.image!r} is not present. "
-                    f"Build it with: docker build -t {spec.image} images/runner/"
+                    f"Build it with: images/runner/build.sh {spec.image.rpartition(':')[2]}"
                 ) from error
             except (APIError, DockerException) as error:
                 raise BackendError(f"could not start {spec.name!r}: {error}") from error
