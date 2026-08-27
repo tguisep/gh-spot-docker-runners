@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.2.0...v0.2.1) (2026-08-27)
+
+
+### Fixes
+
+* **ci:** tell gh which repository it is releasing to ([3ad68fe](https://github.com/tguisep/gh-spot-docker-runners/commit/3ad68fea98f2a3b3702783bfc4f5f2d18e497dc4))
+* **ci:** tell gh which repository it is releasing to ([79f39a9](https://github.com/tguisep/gh-spot-docker-runners/commit/79f39a9e4ed19b31ff83095ca76263e53cbaf620))
+
 ## [0.2.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.1.0...v0.2.0) (2026-08-27)
 
 
