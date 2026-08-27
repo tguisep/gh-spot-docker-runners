@@ -43,6 +43,42 @@ EQUIVALENT = {
     "netcat": "netcat-openbsd",  # `netcat` is virtual on 24.04, with no installable candidate
 }
 
+# Upstream (Debian) name -> the RHEL package providing the same thing. GitHub publishes no
+# RHEL images, so our RHEL variants are a second transcription — and a second transcription
+# rots the same way the first does. Checking only Ubuntu left half the images unwatched.
+RHEL_EQUIVALENT = {
+    "dnsutils": "bind-utils",
+    "dpkg-dev": "dpkg",
+    "fonts-noto-color-emoji": "google-noto-color-emoji-fonts",
+    "g++": "gcc-c++",
+    "iproute2": "iproute",
+    "iputils-ping": "iputils",
+    "libicu-dev": "libicu-devel",
+    "libnss3-tools": "nss-tools",
+    "libsqlite3-dev": "sqlite-devel",
+    "libssl-dev": "openssl-devel",
+    "libyaml-dev": "libyaml-devel",
+    "locales": "glibc-langpack-en",
+    "netcat": "nmap-ncat",
+    "openssh-client": "openssh-clients",
+    "p7zip-full": "p7zip",
+    "p7zip-rar": "p7zip-plugins",
+    "pkg-config": "pkgconf-pkg-config",
+    "shellcheck": "ShellCheck",
+    "sqlite3": "sqlite",
+    "ssh": "openssh-clients",
+    "xvfb": "xorg-x11-server-Xvfb",
+    "xz-utils": "xz",
+}
+
+# Upstream packages with no RHEL packaging, and why. Absent from the RHEL variants on
+# purpose, so the report should not keep asking about them.
+RHEL_UNAVAILABLE = {
+    "mediainfo": "RPM Fusion only",
+    "sphinxsearch": "RPM Fusion only",
+    "python-is-python3": "a Debian convention; RHEL has no equivalent package",
+}
+
 
 def read_lock() -> dict[str, str]:
     """Parse the handful of scalar fields we need, without a YAML dependency."""
@@ -71,23 +107,60 @@ def upstream_packages(toolset: dict[str, object]) -> set[str]:
     return {package for group in apt.values() for package in group}
 
 
-def our_packages(dockerfile: Path) -> set[str]:
-    """Read the package names out of the apt/dnf install block.
+# Words that appear inside an install command without being packages.
+_NOT_A_PACKAGE = {
+    "RUN", "apt-get", "dnf", "install", "update", "clean", "all", "rm", "rf", "true",
+    "y", "nodocs", "allowerasing", "no", "recommends", "npm", "version", "bash",
+    "install_weak_deps", "strict", "setopt", "cache", "lists", "var", "lib", "apt",
+}
 
-    Everything between the group markers and the closing `&&` is a package name; comments
-    and continuations are skipped.
+
+def our_packages(dockerfile: Path) -> set[str]:
+    """Read package names out of every install command in a Dockerfile.
+
+    All of them, not the first: the RHEL image installs in three passes (EPEL, the toolset,
+    then the packages whose names differ between RHEL 9 and 10), and reading only the first
+    silently reported that it installs nothing at all.
     """
     text = dockerfile.read_text(encoding="utf-8")
-    match = re.search(r"RUN (?:apt-get update && apt-get|dnf) install.*?(?=\n\n)", text, re.S)
-    if not match:
-        sys.exit(f"could not find the install block in {dockerfile}")
+
+    # Join line continuations so each RUN is one string.
+    joined = re.sub(r"\\\n\s*", " ", text)
 
     found: set[str] = set()
-    for raw in match.group(0).splitlines()[1:]:
-        line = raw.strip().rstrip("\\").strip()
-        if not line or line.startswith("`#") or line.startswith("&&") or "=" in line:
+    for line in joined.splitlines():
+        if not line.startswith("RUN ") or " install" not in line:
             continue
-        found.update(word for word in line.split() if re.fullmatch(r"[a-zA-Z0-9][\w.+-]*", word))
+        # Drop the inline `# ...` group markers, then take only the segments that actually
+        # install something: Ubuntu's form is `apt-get update && apt-get install ...`, so the
+        # first segment is not the interesting one.
+        cleaned = re.sub(r"`#[^`]*`", " ", line)
+        for segment in cleaned.split("&&"):
+            if " install" not in segment:
+                continue
+            # `install -d` / `-m` / `-o` is coreutils creating a directory, not a package
+            # manager. Its arguments are paths and user names, which would otherwise be
+            # read as packages named `runner` and `0755`.
+            if re.search(r"\binstall\s+-[dmo]\b", segment):
+                continue
+            # The NodeSource bootstrap pipes a script through bash; nothing in it is a
+            # package name we chose.
+            if "nodesource" in segment:
+                continue
+
+            found.update(
+                word
+                for word in segment.split()
+                # Package names may carry capitals (ShellCheck, xorg-x11-server-Xvfb).
+                if re.fullmatch(r"[A-Za-z][A-Za-z0-9.+_-]*", word)
+                and word not in _NOT_A_PACKAGE
+            )
+
+    # A silent parse failure would report every upstream package as missing, which is worse
+    # than no report at all. These files install dozens of things; far fewer means the
+    # parser has stopped understanding them.
+    if len(found) < 40:
+        sys.exit(f"only read {len(found)} packages from {dockerfile}; the parser needs fixing")
     return found
 
 
@@ -99,6 +172,35 @@ def latest_revision() -> str:
     if result.returncode != 0:
         sys.exit(f"could not resolve upstream main: {result.stderr.strip()}")
     return result.stdout.strip()
+
+
+def report_rhel(upstream: set[str]) -> list[str]:
+    """Check the RHEL transcription covers the same upstream toolset."""
+    theirs = our_packages(HERE / "rhel.Dockerfile")
+
+    missing: list[str] = []
+    for package in sorted(upstream):
+        if package in DELIBERATELY_ABSENT or package in RHEL_UNAVAILABLE:
+            continue
+        candidate = RHEL_EQUIVALENT.get(package, package)
+        if candidate not in theirs:
+            missing.append(f"{package} (expected {candidate})" if candidate != package else package)
+
+    print(f"\nrhel variants install {len(theirs)} packages")
+    if missing:
+        print(f"upstream has, the rhel images do not ({len(missing)}):")
+        for entry in missing:
+            print(f"  + {entry}")
+    else:
+        print("nothing upstream is missing from the rhel images either.")
+
+    unavailable = sorted(set(RHEL_UNAVAILABLE) & upstream)
+    if unavailable:
+        print("\nno rhel packaging:")
+        for package in unavailable:
+            print(f"  - {package:20} {RHEL_UNAVAILABLE[package]}")
+
+    return missing
 
 
 def main() -> int:
@@ -148,6 +250,8 @@ def main() -> int:
         print("  " + " ".join(extra))
         print("  (expected: git, cmake, pipx, python3-pip and friends — see README.md)")
 
+    rhel_missing = report_rhel(upstream)
+
     if arguments.update_lock and revision != lock["revision"]:
         LOCK.write_text(
             re.sub(r"^revision: .*$", f"revision: {revision}", LOCK.read_text(), flags=re.M),
@@ -155,7 +259,7 @@ def main() -> int:
         )
         print(f"\nrepinned to {revision[:12]}")
 
-    return 1 if missing else 0
+    return 1 if (missing or rhel_missing) else 0
 
 
 if __name__ == "__main__":

@@ -54,6 +54,12 @@ images/runner/sync-toolset.sh --latest        # against upstream main
 images/runner/sync-toolset.sh --update-lock   # repin, then report
 ```
 
+It checks **both families**. The RHEL images are a second transcription — GitHub publishes no
+RHEL images, so ours map the ubuntu toolset onto RHEL package names — and a second
+transcription rots exactly like the first. The script carries that name mapping
+(`shellcheck` → `ShellCheck`, `libssl-dev` → `openssl-devel`, and so on) along with the
+handful of packages RHEL simply does not have.
+
 It reports what upstream has that we lack, what we deliberately leave out, what we install
 under a different name, and what we add on top. It never edits an image — which packages to
 adopt is a judgement, and the script's job is to make the question visible.
