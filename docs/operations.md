@@ -8,83 +8,78 @@
 
 ## Authentication
 
-Two modes. Both need the same two permissions:
+The daemon needs **Administration: read & write** (to register and remove runners) and
+**Actions: read** (to see queued jobs), on the repositories in your `config.toml`. Nothing
+else.
 
-| Permission | Level | Why |
+Two ways to provide them:
+
+| | Personal access token | GitHub App |
 |---|---|---|
-| Administration | Read and write | Minting just-in-time runner configurations |
-| Actions | Read | Seeing which jobs are queued |
+| Setup | ~2 minutes | ~10 minutes |
+| Rate limit | 5000/hour, shared with everything else you do | Its own budget per installation |
+| Token lifetime | Until it expires | ~1 hour, rotated automatically |
 
-Neither credential ever enters a runner container — containers get a single-use config blob
-and nothing else, in either mode.
+Use a token to try things out; use an App for anything left running.
 
-### Personal access token — quickest to start
+**→ [`authentication.md`](authentication.md) walks through both, with the exact permissions
+and why each one is needed.**
 
-Create it at **Settings → Developer settings → Personal access tokens → Fine-grained tokens**,
-scoped to the repositories you want runners for.
-
-```bash
-mkdir -p ~/.config/ghspot
-install -m 600 /dev/null ~/.config/ghspot/token
-printf '%s' 'github_pat_...' > ~/.config/ghspot/token
-```
+Whichever you choose, no credential ever enters a runner container — containers receive a
+single-use config blob and nothing else.
 
 ```toml
+# A token:
 [github]
 token_file = "~/.config/ghspot/token"
-```
 
-### GitHub App — preferred for anything long-lived
-
-Better in three ways that matter for a daemon running continuously:
-
-- **Rate limit belongs to the installation**, not to you. A PAT's 5000/hour is shared with
-  everything else you do; an installation gets its own budget, which scales with the number
-  of repositories and users it covers.
-- **Permissions are the app's**, not everything your account can reach. A PAT scoped to two
-  repositories still authenticates *as you*.
-- **Tokens expire hourly on their own.** The daemon refreshes them; a leaked one dies
-  without you doing anything.
-
-Create one at **Settings → Developer settings → GitHub Apps → New GitHub App**:
-
-1. Uncheck **Webhook → Active** — this project polls and needs no inbound endpoint.
-2. Under **Repository permissions**, set *Administration: Read and write* and
-   *Actions: Read*.
-3. Create it, then **Generate a private key** and save the `.pem`.
-4. **Install App** on your account, choosing the repositories you want runners for.
-
-```bash
-install -m 600 ~/Downloads/your-app.*.private-key.pem ~/.config/ghspot/app.pem
-```
-
-```toml
+# Or an App:
 [github]
 app_id = "123456"
 private_key_file = "~/.config/ghspot/app.pem"
-# installation_id = 98765432   # optional; discovered automatically
 ```
 
-`installation_id` is worked out from the first configured repository, or from the app's
-single installation. Set it explicitly only if the app is installed in several places.
-
-`ghspot doctor` reports which mode is in use and, for an App, performs a real JWT exchange —
-so a wrong app id or an unusable key surfaces there rather than an hour into a run.
-
-### Supplying credentials from the environment
-
-The environment always wins over the config file, so a systemd unit can inject secrets with
-no file on disk:
-
-| Variable | Mode |
-|---|---|
-| `GHSPOT_GITHUB_TOKEN` | Personal access token |
-| `GHSPOT_GITHUB_APP_ID` | GitHub App |
-| `GHSPOT_GITHUB_APP_PRIVATE_KEY` | GitHub App — `\n` escapes are accepted, since systemd `EnvironmentFile` cannot hold real newlines |
-
-Credentials are never command-line arguments; that would put them in `ps` output.
+The environment wins over the file, so a service manager can inject secrets without one:
+`GHSPOT_GITHUB_TOKEN`, or `GHSPOT_GITHUB_APP_ID` and `GHSPOT_GITHUB_APP_PRIVATE_KEY`.
 
 ## Install
+
+### From a .deb (recommended on Debian and Ubuntu)
+
+Download the package for your architecture from the
+[latest release](https://github.com/tguisep/gh-spot-docker-runners/releases/latest):
+
+```bash
+sudo apt install ./ghspot_0.1.0-1_amd64.deb
+```
+
+It bundles its own Python, so it does not use — or care about — the system interpreter. The
+package works on any glibc distribution and cannot be broken by a distribution upgrade
+changing `python3`.
+
+What it installs:
+
+| Path | |
+|---|---|
+| `/usr/bin/ghspot` | The command |
+| `/opt/ghspot/` | Bundled interpreter and virtualenv |
+| `/etc/ghspot/config.toml` | Configuration — a conffile, so your edits survive upgrades |
+| `/lib/systemd/system/ghspot.service` | The unit |
+| `/var/lib/ghspot/` | State database |
+
+It creates a `ghspot` system user, adds it to the `docker` group, and **does not start the
+daemon** — it cannot work until a repository and a credential are configured. Continue at
+[Configure](#configure), then:
+
+```bash
+sudo ghspot doctor --config /etc/ghspot/config.toml
+sudo systemctl enable --now ghspot
+```
+
+Removing the package keeps `/etc/ghspot`, so a reinstall does not lose your credentials.
+`sudo apt purge ghspot` removes those too.
+
+### From source
 
 ```bash
 git clone https://github.com/tguisep/gh-spot-docker-runners.git
@@ -123,7 +118,7 @@ with `uv tool install .`.
 
 </details>
 
-Then build the runner image:
+Then build the runner image, which both install methods need:
 
 ```bash
 docker build -t ghspot/runner:ubuntu-24.04 \
@@ -313,11 +308,11 @@ number of pools. Conditional requests make idle polling nearly free, so this usu
 many repositories with constant activity. Switching from a personal access token to a GitHub
 App gives the daemon its own budget instead of sharing yours.
 
-**`GitHub rejected the app assertion`.**
-Either `app_id` does not match the private key, or the host clock is wrong. GitHub refuses a
-JWT whose `iat` is in the future, so a clock running fast fails every request. Check with
-`timedatectl` and confirm the app id on the app's settings page — it is the numeric **App
-ID**, not the client id and not the installation id.
+**A credential or permission error.**
+[`authentication.md`](authentication.md#when-permissions-are-wrong) has a table mapping each
+message to its cause. The two that catch people out: `GitHub rejected the app assertion`
+usually means a wrong App ID or a skewed host clock, and a permission change on a GitHub App
+does not take effect until the installation *accepts* it.
 
 **Jobs cannot run `docker`.**
 Set `docker_socket = true` for the pool, and confirm the image was built with the host's

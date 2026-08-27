@@ -1,0 +1,17 @@
+#!/bin/sh
+# Stop the daemon before the files it runs from are removed.
+#
+# SIGTERM lets it finish the tick it is in and leave busy runners alone; the unit's
+# TimeoutStopSec governs how long systemd waits. Containers already running a job are not
+# touched here — removing this package does not entitle it to fail someone's build.
+set -e
+
+case "$1" in
+    remove|deconfigure)
+        if [ -d /run/systemd/system ]; then
+            systemctl --system stop ghspot.service >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
+exit 0

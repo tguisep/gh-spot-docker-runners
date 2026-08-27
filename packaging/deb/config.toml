@@ -1,0 +1,50 @@
+# ghspot — installed configuration
+#
+# Edit this, then: sudo ghspot doctor --config /etc/ghspot/config.toml
+#
+# Credentials do NOT go here. Put them in /etc/ghspot/env (chmod 600), which the systemd
+# unit reads as an EnvironmentFile:
+#
+#     GHSPOT_GITHUB_TOKEN=github_pat_...
+#   or
+#     GHSPOT_GITHUB_APP_ID=123456
+#     GHSPOT_GITHUB_APP_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...
+#
+# Setting up either, with the exact permissions needed:
+# https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/authentication.md
+#
+# A fully commented reference lives at /usr/share/doc/ghspot/config.example.toml
+
+[github]
+# api_url = "https://api.github.com"     # change for GitHub Enterprise Server
+
+[daemon]
+poll_interval = "15s"
+state_db = "/var/lib/ghspot/state.db"
+
+# Serve the REST API. It has no authentication — keep it on localhost.
+# api_bind = "127.0.0.1:8770"
+
+[[pool]]
+name = "default"
+
+# CHANGE THIS to a repository you own.
+repository = "OWNER/REPOSITORY"
+
+# A job runs here when every label it asks for appears in this list.
+labels = ["self-hosted", "linux", "x64"]
+
+min_idle = 0          # runners kept warm; 1 removes container boot from the first job
+max_runners = 2       # hard ceiling for this pool
+idle_timeout = "10m"
+max_job_duration = "2h"
+
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+cpus = 2.0
+memory = "4g"
+
+# Lets jobs run docker build / docker run. A job with socket access has effective root on
+# this host: fine for repositories you control, unacceptable for one accepting pull requests
+# from forks. See /usr/share/doc/ghspot/README.md.gz and SECURITY.md.
+docker_socket = true
