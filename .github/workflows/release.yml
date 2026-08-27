@@ -110,6 +110,15 @@ jobs:
     permissions:
       contents: write
 
+    # This job wants the built packages, not the source, so it does not check the repository
+    # out. `gh` otherwise infers which repository it is acting on from the git remote, and
+    # without one it fails with "not a git repository" — which reads like a broken checkout
+    # rather than a missing setting. GH_REPO tells it directly.
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.release-please.outputs.tag }}
+
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -126,15 +135,9 @@ jobs:
       # release-please has already created the release with the changelog as its notes, so
       # this uploads to it and appends installation instructions rather than replacing them.
       - name: Upload the packages
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag }}
         run: gh release upload "${TAG}" dist/*.deb dist/SHA256SUMS --clobber
 
       - name: Append the installation notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag }}
         run: |
           NOTES="$(mktemp)"
           gh release view "${TAG}" --json body --jq .body > "${NOTES}"
