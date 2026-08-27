@@ -41,6 +41,10 @@ DEFAULT_BASE_URL = "https://api.github.com"
 #: land in group 1.
 DEFAULT_RUNNER_GROUP_ID = 1
 
+#: How many job listings to fetch at once. Bounded rather than unlimited: a backlog can mean
+#: sixty runs, and sixty simultaneous requests is how a daemon earns a secondary rate limit.
+_JOB_FETCH_CONCURRENCY = 8
+
 #: How many workflow runs to examine per poll. A backlog deeper than this is already beyond
 #: what a single home server will clear, and the next tick picks up where this one stopped.
 MAX_RUNS_PER_POLL = 30
@@ -174,17 +178,27 @@ class GitHubClient:
                 )
             )
 
+        # One request per run, and a busy repository has dozens. Done in sequence this was
+        # the whole cost of a tick — measured at over three minutes on a host with two pools
+        # and a backlog, against a fifteen second poll interval. The daemon cannot react to a
+        # queue it takes minutes to read.
+        run_ids = [run["id"] for run in runs if isinstance(run.get("id"), int)]
+        limit = asyncio.Semaphore(_JOB_FETCH_CONCURRENCY)
+
+        async def jobs_for(run_id: int) -> list[dict[str, Any]]:
+            async with limit:
+                return await self._paginate(
+                    f"/{repository.api_path}/actions/runs/{run_id}/jobs",
+                    key="jobs",
+                    params={"filter": "latest"},
+                )
+
+        fetched = await asyncio.gather(*(jobs_for(run_id) for run_id in run_ids))
+
         jobs: list[QueuedJob] = []
         seen: set[int] = set()
-        for run in runs:
-            run_id = run.get("id")
-            if not isinstance(run_id, int):
-                continue
-            for item in await self._paginate(
-                f"/{repository.api_path}/actions/runs/{run_id}/jobs",
-                key="jobs",
-                params={"filter": "latest"},
-            ):
+        for items in fetched:
+            for item in items:
                 job = _parse_job(item, repository)
                 if job is not None and job.id not in seen:
                     seen.add(job.id)
