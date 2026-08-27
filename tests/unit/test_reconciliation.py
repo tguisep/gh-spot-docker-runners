@@ -6,6 +6,8 @@ Each of these would otherwise need a Docker daemon, a live repository and a well
 
 from __future__ import annotations
 
+import asyncio
+
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -18,6 +20,7 @@ from ghspot.application.commands.provision import (
 )
 from ghspot.application.commands.retire import RetireRunner
 from ghspot.application.reconciliation import PoolConfiguration, ReconciliationService
+from ghspot.domain.errors import BackendError
 from ghspot.domain.model.pool import PoolSpec
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
 from ghspot.domain.model.target import RepositoryTarget
@@ -426,3 +429,55 @@ def test_container_status_reports_its_own_lifecycle() -> None:
 
     assert running.is_running and not running.has_exited
     assert exited.has_exited and not exited.is_running
+
+
+async def test_a_burst_is_launched_together_not_one_at_a_time() -> None:
+    """Each runner costs two round trips. In sequence a burst trickles in.
+
+    Measured on a real host: a tick serving a backlog took over three minutes against a
+    fifteen second poll interval, so the daemon was reacting to a queue it could not read
+    fast enough.
+
+    Tested with a barrier rather than by watching the order of calls: every launch waits for
+    all of them to arrive, so a serial implementation cannot get past the first and the test
+    times out instead of quietly passing.
+    """
+    wanted = 5
+    spec = make_spec(max_runners=8, max_launch_per_tick=8)
+    harness_ = build(spec)
+    harness_.forge.queued[REPO] = [make_job(n) for n in range(wanted)]
+
+    arrived = asyncio.Barrier(wanted)
+    original = harness_.backend.create
+
+    async def wait_for_the_others(container_spec: object) -> str:
+        await arrived.wait()
+        return await original(container_spec)  # type: ignore[arg-type]
+
+    harness_.backend.create = wait_for_the_others  # type: ignore[method-assign]
+
+    report = await asyncio.wait_for(harness_.service.tick(), timeout=5)
+
+    assert report.launched == wanted
+
+
+async def test_one_failed_launch_does_not_abandon_the_rest(harness: Harness) -> None:
+    """A partly served burst beats an unserved one."""
+    spec = make_spec(max_runners=4, max_launch_per_tick=4)
+    harness_ = build(spec)
+    harness_.forge.queued[REPO] = [make_job(n) for n in range(3)]
+
+    calls = {"n": 0}
+    original = harness_.backend.create
+
+    async def fail_the_second(container_spec: object) -> str:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise BackendError("no space left on device")
+        return await original(container_spec)  # type: ignore[arg-type]
+
+    harness_.backend.create = fail_the_second  # type: ignore[method-assign]
+
+    report = await harness_.service.tick()
+
+    assert report.launched == 2, "the surviving launches should still have happened"
