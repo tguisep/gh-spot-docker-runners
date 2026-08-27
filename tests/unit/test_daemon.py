@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 
+import pytest
+
 from ghspot.application.dto import TickReport
 from ghspot.composition import Application
 from ghspot.daemon import Daemon
@@ -113,3 +115,26 @@ def test_a_report_knows_whether_anything_happened() -> None:
     assert not quiet.changed_anything
     assert busy.changed_anything
     assert replace(quiet, terminated=1).changed_anything
+
+
+async def test_the_daemon_opens_the_store_before_it_claims_to_have_started() -> None:
+    """An unwritable path must stop the daemon, not be discovered once per tick forever.
+
+    Lazily opened, the daemon starts, ticks, fails, logs a traceback, and repeats — looking
+    alive while doing nothing.
+    """
+    from ghspot.daemon import run_forever
+    from ghspot.domain.errors import StorageError
+
+    class RefusingStore:
+        def prepare(self) -> None:
+            raise StorageError("cannot use the state database at /nowhere")
+
+    reconciler = StubReconciler()
+    daemon = build_daemon(reconciler)
+    daemon._application.runners = RefusingStore()  # type: ignore[assignment]
+
+    with pytest.raises(StorageError):
+        await run_forever(daemon._application, max_ticks=1)
+
+    assert reconciler.calls == 0, "a tick ran despite the store being unusable"

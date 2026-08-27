@@ -11,6 +11,7 @@ import pytest
 from ghspot.infrastructure.config.settings import (
     APP_ID_ENV,
     APP_KEY_ENV,
+    STATE_DIRECTORY_ENV,
     TOKEN_ENV,
     ConfigError,
     from_mapping,
@@ -337,3 +338,45 @@ def test_an_installation_id_is_read_as_an_integer(tmp_path: Path) -> None:
     )
 
     assert parse(text).github.installation_id == 98765  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------- state directory
+
+
+def test_the_state_database_follows_systemd_when_it_provides_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The unit declares StateDirectory=; the daemon should not need telling twice.
+
+    Without this the default lands under the service user's home, which ProtectSystem makes
+    read-only — the daemon then starts and fails on every tick.
+    """
+    monkeypatch.setenv(STATE_DIRECTORY_ENV, "/var/lib/ghspot")
+
+    assert parse(MINIMAL).daemon.state_db == Path("/var/lib/ghspot/state.db")  # type: ignore[attr-defined]
+
+
+def test_systemd_may_hand_over_several_directories(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(STATE_DIRECTORY_ENV, "/var/lib/ghspot:/var/lib/other")
+
+    assert parse(MINIMAL).daemon.state_db == Path("/var/lib/ghspot/state.db")  # type: ignore[attr-defined]
+
+
+def test_without_systemd_it_falls_back_to_the_user_location(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(STATE_DIRECTORY_ENV, raising=False)
+
+    assert "state/ghspot" in str(parse(MINIMAL).daemon.state_db)  # type: ignore[attr-defined]
+
+
+def test_an_explicit_setting_always_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An operator who names a path means it, whatever systemd says."""
+    monkeypatch.setenv(STATE_DIRECTORY_ENV, "/var/lib/ghspot")
+    text = MINIMAL.replace("[daemon]", '[daemon]\nstate_db = "/srv/ghspot.db"', 1)
+    if "[daemon]" not in MINIMAL:
+        text = MINIMAL + '\n[daemon]\nstate_db = "/srv/ghspot.db"\n'
+
+    assert parse(text).daemon.state_db == Path("/srv/ghspot.db")  # type: ignore[attr-defined]

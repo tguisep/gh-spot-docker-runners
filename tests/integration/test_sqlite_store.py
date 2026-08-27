@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from ghspot.domain.errors import StorageError
 from ghspot.domain.model.events import RunnerRegistered, RunnerRetired
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
@@ -206,3 +207,17 @@ async def test_recent_is_capped(events: SqliteEventLog) -> None:
     )
 
     assert len(list(await events.recent(limit=5))) == 5
+
+
+async def test_an_unwritable_path_says_what_to_set(tmp_path: Path) -> None:
+    """The failure an operator actually hits, and the one that used to arrive as a traceback.
+
+    Under the shipped systemd unit ProtectSystem makes most of the filesystem read-only, so
+    a state_db left at its per-user default cannot be created.
+    """
+    unwritable = tmp_path / "locked"
+    unwritable.mkdir(mode=0o500)
+    repository = SqliteRunnerRepository(unwritable / "nested" / "state.db")
+
+    with pytest.raises(StorageError, match="state_db"):
+        await repository.save(make_runner())
