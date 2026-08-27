@@ -78,6 +78,53 @@ One sentence of **What**, a table of changes by module, bullets for anything a r
 cannot see in the diff, one line of **Verification**. No narration of the journey — that is
 what the commit body is for.
 
+## Releases
+
+Releases are cut by [release-please](https://github.com/googleapis/release-please), driven by
+the commit messages. There is nothing to tag by hand.
+
+**Every merge to `main`** updates an open pull request titled `chore: release vX.Y.Z`, which
+accumulates the changelog and the version bump. **Merging that pull request** is what cuts
+the release: it creates the tag, publishes the GitHub release, and attaches the amd64 and
+arm64 `.deb` packages.
+
+So a release is two steps, not one. Merging a feature does not publish anything; it queues
+the change for the next release.
+
+### What your commit type does to the version
+
+| Commit | Effect while pre-1.0 |
+|---|---|
+| `fix:` | Patch — `0.1.0` → `0.1.1` |
+| `feat:` | Minor — `0.1.0` → `0.2.0` |
+| `feat!:` or a `BREAKING CHANGE:` footer | Minor, not major, until 1.0 |
+| `docs:`, `ci:`, `refactor:`, `perf:` | Appear in the changelog, no bump on their own |
+| `chore:`, `test:` | Hidden from the changelog |
+
+This is the practical reason the conventional-commit rules above are not decoration: the type
+you write chooses the version number.
+
+### The version lives in two files
+
+`pyproject.toml` and `src/ghspot/__init__.py`. release-please updates both — the second
+through the `x-release-please-version` marker on that line. Removing the marker breaks
+nothing loudly; it silently leaves `__version__` behind while `pyproject.toml` moves on, so
+`tests/unit/test_version.py` asserts both the agreement and the marker.
+
+### Trying it without releasing
+
+```bash
+npx release-please release-pr \
+  --token="$(gh auth token)" \
+  --repo-url=tguisep/gh-spot-docker-runners \
+  --config-file=release-please-config.json \
+  --manifest-file=.release-please-manifest.json \
+  --target-branch=main --dry-run
+```
+
+To build the packages without releasing anything, run the **Release** workflow manually from
+the Actions tab; the `version` input only names what the package will claim.
+
 ## Documentation
 
 Per `CLAUDE.md`: any change to structure, features or deployment updates `CONTEXT.md` and the
