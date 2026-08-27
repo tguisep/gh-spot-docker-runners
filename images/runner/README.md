@@ -19,6 +19,62 @@ The variant name is the image tag *and* the label, so the two cannot drift apart
 than one by giving each its own pool — a job asking for `rhel-9` will only ever land on a
 runner carrying it.
 
+## What is installed
+
+The apt toolset GitHub installs on its own `ubuntu-24.04` image, from
+[`actions/runner-images`](https://github.com/actions/runner-images) —
+`images/ubuntu/toolsets/toolset-2404.json`. The package lists in the Dockerfiles are grouped
+exactly as upstream groups them (`vital`, `common`, `cmd`), so diffing against a future
+toolset stays readable, and the RHEL images map the same list onto RHEL package names.
+
+Beyond the upstream apt list:
+
+| Added | Why |
+|---|---|
+| `git` | `actions/checkout` needs it, and it is not in the apt toolset |
+| `python3`, `pip`, `venv` | Debian ships `python3` without `ensurepip`, so `pip` and `venv` are absent by default |
+| `cmake` | Upstream installs it as a separate pinned tool rather than from apt |
+| `node`, `npm` | Upstream keeps these in a toolcache. A workflow running `npm ci` without `actions/setup-node` is common, and the failure is obscure |
+
+### Deliberately not installed
+
+**Container-hostile packages.** `systemd-coredump` (drags in systemd), `pollinate` (a
+boot-time entropy service) and `haveged` (an entropy daemon the kernel has not needed for
+years) are skipped on every variant.
+
+**Language toolchains.** No preinstalled Go, Java, Ruby, PHP, .NET, or alternative Pythons.
+`actions/setup-python`, `setup-go`, `setup-java` and the rest download what they need at
+runtime, so workflows using them already work — they are simply slower on a cold runner than
+on GitHub's, which ships a toolcache. Replicating that toolcache would mean tens of
+gigabytes per variant.
+
+### Not available on every release
+
+| Tool | Note |
+|---|---|
+| `upx`, `Xvfb` | Dropped in RHEL 10 with no replacement. Use an Ubuntu variant if a workflow needs them |
+| `mediainfo`, `sphinxsearch` | RPM Fusion only; not installed on the RHEL variants |
+
+`7z` and the emoji fonts were *renamed* rather than dropped in RHEL 10; both spellings are
+listed and whichever exists is installed. The build prints which optional tools it got, so an
+image is never quietly missing something.
+
+### Size
+
+Roughly 2.6–2.7 GB per variant, against about 1.7 GB for the runner alone. That is what the
+toolset costs. To trim it, remove packages from the relevant Dockerfile — but note that
+`verify.sh` will then fail, which is the point: it is the list saying what the image promises.
+
+## Verify
+
+```bash
+images/runner/verify.sh ubuntu-24.04
+```
+
+Checks the contract (refuses to start without a configuration, carries no credential, runs
+unprivileged, docker gid matches the host, runner payload present) and that every required
+tool resolves. CI runs it for each variant on every pull request.
+
 ## Build
 
 ```bash
