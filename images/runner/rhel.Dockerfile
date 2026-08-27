@@ -157,6 +157,12 @@ RUN dnf install -y --nodocs pipx \
 # leaving the daemon unable to launch anything until they were rebuilt.
 LABEL io.ghspot.image=runner
 
+# The GitHub CLI, for the same reason as on the Ubuntu image.
+RUN dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo \
+    && dnf install -y --nodocs gh \
+    && dnf clean all && rm -rf /var/cache/dnf \
+    && gh --version
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

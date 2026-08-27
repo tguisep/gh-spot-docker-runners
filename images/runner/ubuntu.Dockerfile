@@ -123,6 +123,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends pipx \
 # leaving the daemon unable to launch anything until they were rebuilt.
 LABEL io.ghspot.image=runner
 
+# The GitHub CLI. GitHub's own images ship it, so workflows use it freely — and our own
+# release workflow does. Without it a job that runs `gh` fails with "command not found",
+# which says nothing about the image being the thing that is missing it.
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && chmod a+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) \
+signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] \
+https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/* \
+    && gh --version
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

@@ -36,6 +36,7 @@ Beyond the upstream apt list:
 | `cmake` | Upstream installs it as a separate pinned tool rather than from apt |
 | `node`, `npm` | Upstream keeps these in a toolcache. A workflow running `npm ci` without `actions/setup-node` is common, and the failure is obscure |
 | `pipx` | Upstream installs it outside apt, at `PIPX_HOME=/opt/pipx` and `PIPX_BIN_DIR=/opt/pipx_bin`. Workflows do `pipx install poetry` and expect it |
+| `gh` | GitHub's own images ship the CLI, so workflows use it freely — including this project's release workflow, which failed with `gh: command not found` the first time it ran on a self-hosted runner |
 
 `pipx`'s directories are owned by the `runner` user here, unlike upstream: a job installing a
 tool at runtime has to be able to write to them, and jobs do not run as root. `verify.sh`
