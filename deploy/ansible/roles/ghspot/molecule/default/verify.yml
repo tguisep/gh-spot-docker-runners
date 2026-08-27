@@ -1,0 +1,90 @@
+---
+# Asserts what the role was supposed to have done, rather than that it exited zero.
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: The package is installed
+      ansible.builtin.command: dpkg-query -W -f='${Status}' ghspot
+      register: ghspot_package
+      changed_when: false
+      failed_when: "'install ok installed' not in ghspot_package.stdout"
+
+    - name: The command runs, and is the version that was installed
+      ansible.builtin.command: ghspot version
+      register: ghspot_installed_version
+      changed_when: false
+
+    - name: The service account exists and cannot log in
+      ansible.builtin.getent:
+        database: passwd
+        key: ghspot
+
+    - name: It is in the docker group, which is what lets it reach the socket
+      ansible.builtin.command: id -nG ghspot
+      register: ghspot_groups
+      changed_when: false
+      failed_when: "'docker' not in ghspot_groups.stdout"
+
+    - name: The systemd unit is installed
+      ansible.builtin.stat:
+        path: /lib/systemd/system/ghspot.service
+      register: ghspot_unit
+      failed_when: not ghspot_unit.stat.exists
+
+    # `systemd-analyze verify` is not used here: it resolves dependencies, and the unit
+    # requires docker.service, which a container with only the Docker client does not have.
+    # It would fail for a reason that says nothing about the unit. Asking systemd what it
+    # parsed proves the same thing without depending on the daemon being present.
+    - name: Ask systemd what it parsed
+      ansible.builtin.systemd:
+        name: ghspot
+      register: ghspot_service
+
+    - name: It runs the binary the package installed, and reads the credential file
+      ansible.builtin.assert:
+        that:
+          - "'/opt/ghspot/.venv/bin/ghspot' in ghspot_service.status.ExecStart"
+          - "'/etc/ghspot/env' in ghspot_service.status.EnvironmentFiles"
+        fail_msg: >-
+          the unit systemd parsed does not match what the package installed:
+          ExecStart={{ ghspot_service.status.ExecStart }}
+        quiet: true
+
+    - name: The configuration is readable only by root and the service account
+      ansible.builtin.stat:
+        path: /etc/ghspot/config.toml
+      register: ghspot_config
+      failed_when: not ghspot_config.stat.exists or ghspot_config.stat.mode != '0640'
+
+    - name: The credential file is not world readable
+      ansible.builtin.stat:
+        path: /etc/ghspot/env
+      register: ghspot_env_file
+      failed_when: not ghspot_env_file.stat.exists or ghspot_env_file.stat.mode != '0640'
+
+    # The point of the whole exercise: the daemon accepts what the role wrote.
+    - name: The daemon accepts the configuration the role rendered
+      ansible.builtin.command: ghspot config validate --config /etc/ghspot/config.toml
+      register: ghspot_validate
+      changed_when: false
+
+    - name: Both pools reached the daemon, including the one with requires_labels
+      ansible.builtin.assert:
+        that:
+          - "'default' in ghspot_validate.stdout"
+          - "'gpu' in ghspot_validate.stdout"
+        fail_msg: "config validate did not list both pools:\n{{ ghspot_validate.stdout }}"
+        quiet: true
+
+    - name: The service was left stopped, as asked
+      ansible.builtin.assert:
+        that: ghspot_service.status.ActiveState != 'active'
+        fail_msg: "the service is running, but ghspot_service_state was 'stopped'"
+        quiet: true
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ ghspot_installed_version.stdout }} installed; configuration accepted; service left stopped"

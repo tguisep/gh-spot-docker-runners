@@ -5,7 +5,14 @@ ghspot_poll_interval: 30s
 ghspot_state_db: /srv/ghspot/state.db
 ghspot_log_level: DEBUG
 ghspot_api_bind: "127.0.0.1:8770"
-ghspot_housekeeping: {enabled: true, every: 6h, containers_older_than: 2h, images_older_than: 48h, volumes: false, build_cache_older_than: 12h, keep_build_cache: 5g}
+ghspot_housekeeping:
+  enabled: true
+  every: 6h
+  containers_older_than: 2h
+  images_older_than: 48h
+  volumes: false
+  build_cache_older_than: 12h
+  keep_build_cache: 5g
 ghspot_pools:
   - name: ubuntu
     repository: tguisep/my-project

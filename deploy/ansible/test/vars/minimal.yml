@@ -5,7 +5,14 @@ ghspot_poll_interval: 15s
 ghspot_state_db: /var/lib/ghspot/state.db
 ghspot_log_level: INFO
 ghspot_api_bind: ""
-ghspot_housekeeping: {enabled: true, every: 1h, containers_older_than: 1h, images_older_than: 24h, volumes: true, build_cache_older_than: 24h, keep_build_cache: 10g}
+ghspot_housekeeping:
+  enabled: true
+  every: 1h
+  containers_older_than: 1h
+  images_older_than: 24h
+  volumes: true
+  build_cache_older_than: 24h
+  keep_build_cache: 10g
 ghspot_pools:
   - name: default
     repository: tguisep/my-project

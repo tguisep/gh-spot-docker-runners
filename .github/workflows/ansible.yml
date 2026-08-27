@@ -57,3 +57,31 @@ jobs:
         run: |
           uv pip install ansible-core
           uv run python deploy/ansible/test/render_and_validate.py
+
+  # Hosted, not on the fleet. Molecule starts a privileged systemd container and mounts the
+  # host's cgroups; on a self-hosted runner that would be a sibling of the runner rather than
+  # a child of it, and the paths it mounts resolve on the host. The same reason packaging is
+  # pinned.
+  molecule:
+    name: Molecule
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+
+      # Converges the role against a container with systemd, runs it a second time and fails
+      # if anything changed, then asserts what it was supposed to have done: the package
+      # installed, the service account in the docker group, the unit systemd parsed pointing
+      # at the binary, and — the point of it — the daemon accepting the configuration the
+      # role rendered.
+      - name: molecule test
+        working-directory: deploy/ansible/roles/ghspot
+        run: |
+          uvx --from molecule \
+              --with 'molecule-plugins[docker]' \
+              --with ansible-core \
+              --with docker \
+              molecule test

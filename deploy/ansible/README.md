@@ -76,8 +76,32 @@ Confirmed to fail on real drift: dropping `requires_labels` from the template re
 `full: requires_labels lost`, and renaming `keep_build_cache` reports
 `full: keep_build_cache lost`.
 
-CI runs both on any change to `deploy/ansible/` **or to the daemon's configuration module**,
-so a key added on one side without the other is caught by whichever moved first.
+### Molecule
+
+```bash
+cd roles/ghspot
+uvx --from molecule --with 'molecule-plugins[docker]' --with ansible-core --with docker \
+  molecule test
+```
+
+Converges the role against a container that actually runs systemd, converges it **again** and
+fails if anything changed, then asserts what it was supposed to have done: the package
+installed, the service account in the `docker` group, the unit systemd parsed pointing at the
+installed binary and reading `/etc/ghspot/env`, and the daemon accepting the configuration the
+role rendered.
+
+It installs the **real release package**, so the path under test is the documented one. It
+does not start the daemon or build runner images: starting it needs a real repository and
+credential, and four images take longer than the rest of CI together. Both are covered
+elsewhere — the packaging workflow installs the `.deb` on a clean system, and the
+runner-images workflow builds every variant.
+
+Finding it made along the way: the role was **not idempotent**. It downloaded the package to
+`/tmp` and deleted it, so every run fetched 35 MB again and reported a change. Packages are
+now cached under `/var/cache/ghspot`, named for their version.
+
+CI runs all of this on any change to `deploy/ansible/` **or to the daemon's configuration
+module**, so a key added on one side without the other is caught by whichever moved first.
 
 ## GPUs
 
