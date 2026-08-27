@@ -34,6 +34,11 @@ repository = "OWNER/REPOSITORY"
 # A job runs here when every label it asks for appears in this list.
 labels = ["self-hosted", "linux", "x64"]
 
+# Labels a job must ask for by name before this pool serves it. Worth setting on a scarce
+# pool — a GPU, say — because label matching is otherwise a subset rule and a plain job
+# would land here.
+# requires_labels = ["gpu-a100"]
+
 min_idle = 0          # runners kept warm; 1 removes container boot from the first job
 max_runners = 2       # hard ceiling for this pool
 idle_timeout = "10m"

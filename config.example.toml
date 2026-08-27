@@ -81,6 +81,14 @@ repository = "tguisep/my-project"
 # a job asking for it has no idea what it will get.
 labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
 
+# Labels a job must ask for *by name* before this pool serves it.
+#
+# Label matching is a subset rule, so a pool carrying extra labels serves jobs that never
+# mentioned them. For an ordinary pool that is the point. For a scarce one — a GPU, or a
+# machine with a licence attached — it means the thing you were protecting gets spent on
+# work that never wanted it.
+# requires_labels = ["gpu-a100"]
+
 min_idle = 1          # runners kept warm so a job doesn't wait for a container to boot
 max_runners = 4       # hard ceiling for this pool
 idle_timeout = "10m"  # reap runners idle longer than this, never below min_idle
