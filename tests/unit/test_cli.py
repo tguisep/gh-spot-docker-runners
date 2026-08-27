@@ -120,3 +120,23 @@ def test_help_lists_every_command_group() -> None:
 
     for command in ("daemon", "doctor", "pool", "runner", "config"):
         assert command in result.stdout
+
+
+def test_the_daemon_reports_a_missing_credential_without_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The commonest misconfiguration there is, and it used to answer with a stack trace.
+
+    Wiring the application resolves the credential, and that happened outside the command's
+    error handling.
+    """
+    monkeypatch.delenv("GHSPOT_GITHUB_TOKEN", raising=False)
+    path = tmp_path / "config.toml"
+    path.write_text(CONFIG.format(token=tmp_path / "absent-token", db=tmp_path / "state.db"))
+
+    result = runner.invoke(app, ["daemon", "--once", "-c", str(path)])
+
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output
+    assert "token" in result.output
+    assert "doctor" in result.output
