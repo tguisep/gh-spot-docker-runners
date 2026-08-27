@@ -35,6 +35,12 @@ Beyond the upstream apt list:
 | `python3`, `pip`, `venv` | Debian ships `python3` without `ensurepip`, so `pip` and `venv` are absent by default |
 | `cmake` | Upstream installs it as a separate pinned tool rather than from apt |
 | `node`, `npm` | Upstream keeps these in a toolcache. A workflow running `npm ci` without `actions/setup-node` is common, and the failure is obscure |
+| `pipx` | Upstream installs it outside apt, at `PIPX_HOME=/opt/pipx` and `PIPX_BIN_DIR=/opt/pipx_bin`. Workflows do `pipx install poetry` and expect it |
+
+`pipx`'s directories are owned by the `runner` user here, unlike upstream: a job installing a
+tool at runtime has to be able to write to them, and jobs do not run as root. `verify.sh`
+checks that by actually installing something, since being on `PATH` and being usable are not
+the same thing.
 
 ### Deliberately not installed
 
@@ -64,6 +70,18 @@ image is never quietly missing something.
 Roughly 2.6–2.7 GB per variant, against about 1.7 GB for the runner alone. That is what the
 toolset costs. To trim it, remove packages from the relevant Dockerfile — but note that
 `verify.sh` will then fail, which is the point: it is the list saying what the image promises.
+
+## CI builds under a different name
+
+CI builds these images as `ghspot/runner-ci:<variant>`, not `ghspot/runner:<variant>`.
+
+On a self-hosted runner the build runs against the *host's* Docker daemon — the same one
+serving the fleet. Building under the operational tag would mean a pull request's CI silently
+replacing the image real jobs run in, and a broken branch taking the fleet down with it. The
+CI images are removed afterwards; the build cache is left alone so rebuilds stay fast.
+
+If you find a stray `ghspot/runner:ci` on a host, it is a leftover from before this split and
+is safe to delete.
 
 ## Verify
 

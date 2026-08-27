@@ -104,12 +104,31 @@ jobs:
         variant: [ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10]
     steps:
       - uses: actions/checkout@v4
+
+      # Built under a separate name from the images the daemon runs jobs in.
+      #
+      # On a self-hosted runner this builds against the *host's* Docker daemon — the same one
+      # serving the fleet. Using the operational tag would mean a pull request's CI silently
+      # replacing the image real jobs run in, and a broken branch taking the fleet with it.
       - name: build
+        env:
+          REGISTRY: ghspot/runner-ci
         run: images/runner/build.sh ${{ matrix.variant }}
+
       # Checks the contract and the toolset. A missing tool does not fail a build — it fails
       # somebody's workflow later, with an error pointing nowhere near the image.
       - name: verify
+        env:
+          REGISTRY: ghspot/runner-ci
         run: images/runner/verify.sh ${{ matrix.variant }}
+
+      # Self-hosted runners keep what they build. Four variants at ~2.7 GB each, every run,
+      # fills a home server quickly. The build cache is left alone, so rebuilds stay fast.
+      - name: clean up
+        if: always()
+        run: |
+          docker image rm -f "ghspot/runner-ci:${{ matrix.variant }}" 2>/dev/null || true
+          docker image prune -f >/dev/null 2>&1 || true
 
   # A NOTE FOR JOBS ADDED LATER
   #

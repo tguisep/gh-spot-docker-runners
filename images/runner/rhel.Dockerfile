@@ -136,6 +136,22 @@ RUN ARCH="$(uname -m)" \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
+
+# pipx, laid out the way GitHub's images lay it out (PIPX_HOME=/opt/pipx,
+# PIPX_BIN_DIR=/opt/pipx_bin on PATH), because workflows written against those images do
+# `pipx install poetry` and expect it to be there.
+#
+# Owned by the runner user, unlike upstream: a job installing a tool at runtime has to be
+# able to write here, and jobs do not run as root.
+ENV PIPX_HOME=/opt/pipx \
+    PIPX_BIN_DIR=/opt/pipx_bin \
+    PATH=/opt/pipx_bin:$PATH
+
+RUN dnf install -y --nodocs pipx \
+    && dnf clean all && rm -rf /var/cache/dnf \
+    && install -d -o runner -g runner "${PIPX_HOME}" "${PIPX_BIN_DIR}" \
+    && pipx --version
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

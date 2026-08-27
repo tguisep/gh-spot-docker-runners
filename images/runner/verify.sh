@@ -18,7 +18,7 @@ IMAGE="${REGISTRY:-ghspot/runner}:${VARIANT}"
 REQUIRED="
 gcc g++ make cmake autoconf automake libtoolize m4 flex bison swig patchelf pkg-config
 curl wget git ssh rsync aria2c
-python3 pip3 node npm
+python3 pip3 pipx node npm
 jq shellcheck file tree parallel time sqlite3 hg
 tar unzip zip bzip2 xz gzip brotli lz4 pigz 7z
 gpg rpm fakeroot sudo getfacl
@@ -68,6 +68,13 @@ MISSING="$(docker run --rm --entrypoint sh "${IMAGE}" -c "
 ")"
 [ -z "${MISSING}" ] || fail "missing required tools: ${MISSING}"
 echo "    ok: every required tool present"
+
+# pipx has to be usable *by the runner user*, not merely present: upstream owns its
+# directories as root, and a job installing a tool at runtime is not root.
+docker run --rm --entrypoint sh "${IMAGE}" -c '
+    pipx install "poetry==2.1.1" >/dev/null 2>&1 && command -v poetry >/dev/null
+' || fail "the runner user cannot pipx install"
+echo "    ok: the runner user can pipx install"
 
 ABSENT="$(docker run --rm --entrypoint sh "${IMAGE}" -c "
     for t in ${OPTIONAL}; do command -v \"\$t\" >/dev/null 2>&1 || printf '%s ' \"\$t\"; done
