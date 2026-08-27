@@ -35,6 +35,17 @@ class PoolSpec:
     """Ceiling on how many runners may be started in a single tick, to avoid a thundering herd
     when a large matrix lands all at once."""
 
+    requires_labels: LabelSet | None = None
+    """Labels a job must ask for *by name* before this pool will serve it.
+
+    Label matching is a subset rule, so a pool carrying extra labels serves jobs that never
+    mentioned them: a pool labelled ``self-hosted, linux, x64, gpu`` will happily take a job
+    asking only for ``self-hosted, linux, x64``. For an ordinary pool that is the point. For
+    a scarce or expensive one — a GPU, a machine with a licence attached — it means the thing
+    you were protecting gets spent on work that never wanted it.
+
+    Naming a label here inverts the rule for that label: the job must have asked."""
+
     def __post_init__(self) -> None:
         if not _POOL_NAME.match(self.name):
             raise InvalidPoolSpecError(
@@ -58,10 +69,28 @@ class PoolSpec:
             raise InvalidPoolSpecError(
                 f"pool {self.name!r}: max_launch_per_tick must be at least 1"
             )
+        # A required label the pool does not carry can never match, so the pool would sit
+        # idle while its jobs queued — a configuration mistake worth catching at load.
+        if self.requires_labels is not None and not self.labels.satisfies(self.requires_labels):
+            missing = [label for label in self.requires_labels if label not in self.labels]
+            raise InvalidPoolSpecError(
+                f"pool {self.name!r}: requires_labels names {missing}, which this pool does "
+                "not carry, so it could never serve anything"
+            )
 
     def can_serve(self, job: QueuedJob) -> bool:
-        """Whether a job belongs to this pool: same repository, and labels this pool carries."""
-        return job.repository == self.repository and self.labels.satisfies(job.labels)
+        """Whether a job belongs to this pool.
+
+        Same repository, labels this pool carries, and — if the pool demands any — labels the
+        job asked for explicitly.
+        """
+        if job.repository != self.repository:
+            return False
+        if not self.labels.satisfies(job.labels):
+            return False
+        if self.requires_labels is None:
+            return True
+        return job.labels.satisfies(self.requires_labels)
 
 
 @dataclass(slots=True)
