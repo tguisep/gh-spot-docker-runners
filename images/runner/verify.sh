@@ -19,7 +19,7 @@ REQUIRED="
 gcc g++ make cmake autoconf automake libtoolize m4 flex bison swig patchelf pkg-config
 curl wget git ssh rsync aria2c
 python3 pip3 pipx node npm
-jq shellcheck file tree parallel time sqlite3 hg
+jq gh shellcheck file tree parallel time sqlite3 hg
 tar unzip zip bzip2 xz gzip brotli lz4 pigz 7z
 gpg rpm fakeroot sudo getfacl
 nc telnet ftp sshpass
