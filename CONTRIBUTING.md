@@ -78,6 +78,40 @@ One sentence of **What**, a table of changes by module, bullets for anything a r
 cannot see in the diff, one line of **Verification**. No narration of the journey — that is
 what the commit body is for.
 
+## What CI runs, and when
+
+One workflow per concern, each with its own `paths:` filter, so a change only starts the work
+it can affect:
+
+| Workflow | Runs when |
+|---|---|
+| `python.yml` | `src/`, `tests/`, `pyproject.toml`, `uv.lock` |
+| `runner-images.yml` | `images/runner/` |
+| `packaging.yml` | `packaging/`, `deploy/`, `src/`, `docs/operations.md` |
+| `upstream-toolset.yml` | `images/runner/`, and weekly |
+| `release.yml` | pushes to `main` |
+
+Each workflow also lists its own file, so a change to the gating is validated by the thing it
+gates.
+
+Two entries are deliberate rather than obvious:
+
+- **`src/` starts packaging**, because the `.deb` embeds the application.
+- **`docs/operations.md` starts packaging**, because `verify-source-install.sh` runs the
+  commands that file tells people to run. Editing them without running them is exactly how
+  they were wrong three times.
+
+`select-runner.yml` is a reusable workflow rather than a job copied into each one — a rule
+about where jobs may run is a rule that will be wrong in one of four copies. Note that
+**GitHub Actions does not support YAML anchors**, so the path lists are spelled out under
+both `push` and `pull_request` rather than shared.
+
+### If you turn on branch protection
+
+Require the checks from workflows that always run. A workflow filtered out by `paths` does
+not report at all — neither success nor failure — so requiring it would leave a
+documentation-only pull request waiting forever for a check that was correctly never started.
+
 ## Releases
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please), driven by

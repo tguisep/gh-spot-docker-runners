@@ -1,0 +1,56 @@
+name: Runner images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "images/runner/**"
+      - ".github/workflows/runner-images.yml"
+  pull_request:
+    paths:
+      - "images/runner/**"
+      - ".github/workflows/runner-images.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Pinned to GitHub-hosted rather than using select-runner, for three reasons that all point
+  # the same way: the images CI builds are throwaway, so nothing is gained by building them
+  # on the fleet host; four variants at roughly 2.7 GB each every run fills a home server;
+  # and rhel-10 needs the x86-64-v3 microarchitecture level, which a virtual machine
+  # presenting a generic CPU does not have.
+  build:
+    name: ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Built under a name the fleet does not use. If this is ever routed back onto
+      # self-hosted runners it would build against the host's Docker daemon — the same one
+      # serving real jobs — and the operational tag would be silently replaced.
+      - name: build
+        env:
+          REGISTRY: ghspot/runner-ci
+        run: images/runner/build.sh ${{ matrix.variant }}
+
+      # Checks the contract and the toolset. A missing tool does not fail a build — it fails
+      # somebody's workflow later, with an error pointing nowhere near the image.
+      - name: verify
+        env:
+          REGISTRY: ghspot/runner-ci
+        run: images/runner/verify.sh ${{ matrix.variant }}
+
+      - name: clean up
+        if: always()
+        run: |
+          docker image rm -f "ghspot/runner-ci:${{ matrix.variant }}" 2>/dev/null || true
+          docker image prune -f >/dev/null 2>&1 || true

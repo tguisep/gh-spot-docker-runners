@@ -1,0 +1,67 @@
+name: Python
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/python.yml"
+      - ".github/workflows/select-runner.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/python.yml"
+      - ".github/workflows/select-runner.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  runner:
+    uses: ./.github/workflows/select-runner.yml
+
+  lint:
+    needs: runner
+    runs-on: ${{ fromJSON(needs.runner.outputs.labels) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras
+      - name: ruff check
+        run: uv run ruff check --output-format=github .
+      - name: ruff format
+        run: uv run ruff format --check .
+      - name: mypy
+        run: uv run mypy
+
+  test:
+    needs: runner
+    runs-on: ${{ fromJSON(needs.runner.outputs.labels) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --all-extras
+      - name: unit and integration tests
+        run: uv run pytest -m "not e2e" --cov --cov-report=term-missing

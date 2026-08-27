@@ -1,0 +1,61 @@
+name: Packaging
+
+# src/ and pyproject.toml are listed because the .deb embeds the application — a change to
+# either changes what the package contains.
+#
+# docs/operations.md is listed because verify-source-install.sh runs the commands that file
+# tells people to run. Editing them without running them is exactly how they were wrong
+# three times.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packaging/**"
+      - "deploy/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "docs/operations.md"
+      - ".github/workflows/packaging.yml"
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "deploy/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "docs/operations.md"
+      - ".github/workflows/packaging.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Neither of these can move onto a self-hosted runner: both bind-mount the workspace into a
+  # container, and there the Docker client talks to the host's daemon, so a workspace path
+  # resolves on the host where it does not exist and Docker mounts an empty directory.
+  deb:
+    name: Debian package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The same container build used locally, so there is only one path to keep working.
+      - name: build
+        run: packaging/deb/build-in-docker.sh
+      # Verified on a newer Ubuntu than the builder, which is the point of bundling the
+      # interpreter: a regression here means the package would break on any host whose python
+      # differs from the runner's.
+      - name: verify on a clean system
+        run: packaging/deb/verify.sh dist/*.deb
+
+  install-docs:
+    name: Documented install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: packaging/verify-source-install.sh
