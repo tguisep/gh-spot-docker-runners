@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from ghspot.domain.errors import BackendError
 from ghspot.domain.ports.backend import ContainerSpec
 from ghspot.infrastructure.docker.backend import (
     DOCKER_SOCKET,
@@ -119,3 +120,42 @@ def test_a_timestamp_without_a_zone_is_assumed_utc() -> None:
 def test_nanosecond_precision_with_an_offset_is_handled() -> None:
     parsed = _parse_time("2026-08-26T12:00:00.123456789+02:00")
     assert parsed is not None and parsed.microsecond == 123456
+
+
+# ---------------------------------------------------------------- gpus
+
+
+@pytest.mark.parametrize(
+    ("setting", "expected"),
+    [
+        ("all", {"Count": -1, "DeviceIDs": []}),
+        ("ALL", {"Count": -1, "DeviceIDs": []}),
+        (2, {"Count": 2, "DeviceIDs": []}),
+        (("0", "GPU-abc"), {"Count": 0, "DeviceIDs": ["0", "GPU-abc"]}),
+    ],
+)
+def test_a_gpu_selection_becomes_a_device_request(
+    setting: object, expected: dict[str, object]
+) -> None:
+    """The same shape `docker run --gpus` produces."""
+    requests = _run_arguments(spec(gpus=setting))["device_requests"]
+
+    assert len(requests) == 1
+    sent = dict(requests[0])
+    assert sent["Capabilities"] == [["gpu"]]
+    for key, value in expected.items():
+        assert sent[key] == value
+
+
+def test_no_gpu_means_no_device_request() -> None:
+    """A container handed a GPU it does not need holds it against every other runner."""
+    assert "device_requests" not in _run_arguments(spec())
+
+
+def test_an_empty_id_list_asks_for_nothing() -> None:
+    assert "device_requests" not in _run_arguments(spec(gpus=()))
+
+
+def test_a_nonsense_selection_is_refused() -> None:
+    with pytest.raises(BackendError, match="not a GPU selection"):
+        _run_arguments(spec(gpus="lots"))

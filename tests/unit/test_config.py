@@ -337,3 +337,56 @@ def test_an_installation_id_is_read_as_an_integer(tmp_path: Path) -> None:
     )
 
     assert parse(text).github.installation_id == 98765  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------- gpus
+
+
+@pytest.mark.parametrize(
+    ("written", "expected"),
+    [
+        ('gpus = "all"', "all"),
+        ('gpus = "ALL"', "all"),
+        ("gpus = 2", 2),
+        ('gpus = "2"', 2),
+        ('gpus = ["0", "1"]', ("0", "1")),
+        ("gpus = false", None),
+        ('gpus = "none"', None),
+    ],
+)
+def test_a_pool_can_ask_for_gpus(written: str, expected: object) -> None:
+    settings = parse(
+        MINIMAL.replace(
+            'image = "ghspot/runner:ubuntu-24.04"',
+            f'image = "ghspot/runner:ubuntu-24.04"\n{written}',
+        )
+    )
+
+    assert settings.pools[0].template.gpus == expected  # type: ignore[attr-defined]
+
+
+def test_pools_ask_for_no_gpu_unless_they_say_so() -> None:
+    assert parse(MINIMAL).pools[0].template.gpus is None  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("written", ['gpus = "lots"', "gpus = []", "gpus = -1"])
+def test_a_nonsense_gpu_selection_is_refused(written: str) -> None:
+    with pytest.raises(ConfigError, match=r"(?i)gpu"):
+        parse(
+            MINIMAL.replace(
+                'image = "ghspot/runner:ubuntu-24.04"',
+                f'image = "ghspot/runner:ubuntu-24.04"\n{written}',
+            )
+        )
+
+
+def test_asking_for_zero_gpus_means_none() -> None:
+    """`0` and `false` say the same thing, and refusing one of them would be pedantry."""
+    settings = parse(
+        MINIMAL.replace(
+            'image = "ghspot/runner:ubuntu-24.04"',
+            'image = "ghspot/runner:ubuntu-24.04"\ngpus = 0',
+        )
+    )
+
+    assert settings.pools[0].template.gpus is None  # type: ignore[attr-defined]
