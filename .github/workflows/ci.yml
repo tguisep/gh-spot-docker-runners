@@ -95,15 +95,21 @@ jobs:
   # it works over the mounted socket; jobs that bind-mount a workspace path do not, and stay
   # on GitHub-hosted (see below).
   runner-image:
+    name: Runner image (${{ matrix.variant }})
     needs: select-runner
     runs-on: ${{ fromJSON(needs.select-runner.outputs.labels) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10]
     steps:
       - uses: actions/checkout@v4
-      - name: build the runner image
-        run: docker build -t ghspot/runner:ci images/runner/
-      - name: the image must not carry a token
-        run: |
-          docker run --rm ghspot/runner:ci env | grep -qiE 'token|jitconfig' && exit 1 || exit 0
+      - name: build
+        run: images/runner/build.sh ${{ matrix.variant }}
+      # Checks the contract and the toolset. A missing tool does not fail a build — it fails
+      # somebody's workflow later, with an error pointing nowhere near the image.
+      - name: verify
+        run: images/runner/verify.sh ${{ matrix.variant }}
 
   # A NOTE FOR JOBS ADDED LATER
   #
