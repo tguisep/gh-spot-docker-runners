@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ghspot.application.commands.housekeeping import ReclaimHostSpace, parse_size
 from ghspot.application.commands.provision import ProvisionRunner
 from ghspot.application.commands.retire import RetireRunner
 from ghspot.application.reconciliation import ReconciliationService
+from ghspot.domain.ports.backend import PruneRequest
 from ghspot.infrastructure.config.settings import Settings
 from ghspot.infrastructure.docker.backend import DockerRunnerBackend
 from ghspot.infrastructure.github.auth import (
@@ -34,6 +36,7 @@ class Application:
     runners: SqliteRunnerRepository
     events: SqliteEventLog
     reconciler: ReconciliationService
+    housekeeping: ReclaimHostSpace
     clock: SystemClock
     provision: ProvisionRunner
     retire: RetireRunner
@@ -114,6 +117,23 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
         retire=retire,
     )
 
+    keep = settings.housekeeping
+    housekeeping = ReclaimHostSpace(
+        backend=container_backend,
+        clock=clock,
+        every=keep.every,
+        enabled=keep.enabled,
+        request=PruneRequest(
+            containers_older_than=keep.containers_older_than,
+            images_older_than=keep.images_older_than,
+            volumes=keep.volumes,
+            build_cache_older_than=keep.build_cache_older_than,
+            keep_build_cache_bytes=(
+                parse_size(keep.keep_build_cache) if keep.keep_build_cache else None
+            ),
+        ),
+    )
+
     return Application(
         settings=settings,
         forge=forge,
@@ -121,6 +141,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
         runners=runners,
         events=events,
         reconciler=reconciler,
+        housekeeping=housekeeping,
         clock=clock,
         provision=provision,
         retire=retire,

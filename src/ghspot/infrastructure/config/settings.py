@@ -64,6 +64,26 @@ class DaemonSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class HousekeepingSettings:
+    """What the daemon reclaims from the host, and how often.
+
+    Jobs reach the host's Docker daemon through the mounted socket, so what they build, pull
+    and create outlives them. This bounds that; it does not eliminate it. A job that leaves a
+    container *running* is never touched, because telling that apart from something the
+    operator started deliberately is not possible.
+    """
+
+    enabled: bool = True
+    every: timedelta = timedelta(hours=1)
+    containers_older_than: timedelta | None = timedelta(hours=1)
+    images_older_than: timedelta | None = timedelta(hours=24)
+    volumes: bool = True
+    build_cache_older_than: timedelta | None = timedelta(hours=24)
+    keep_build_cache: str | None = "10g"
+    """Build cache below this is kept, because discarding it makes every rebuild cold."""
+
+
+@dataclass(frozen=True, slots=True)
 class GitHubSettings:
     """How to reach GitHub, and how to prove who we are.
 
@@ -143,6 +163,7 @@ class Settings:
 
     github: GitHubSettings
     daemon: DaemonSettings
+    housekeeping: HousekeepingSettings = field(default_factory=HousekeepingSettings)
     pools: tuple[PoolConfiguration, ...] = field(default=())
     source: Path | None = None
 
@@ -171,6 +192,7 @@ def from_mapping(raw: dict[str, Any], source: Path | None = None) -> Settings:
     """Build settings from an already-parsed mapping. Used by tests and by ``load``."""
     github = _github(_section(raw, "github"))
     daemon = _daemon(_section(raw, "daemon"))
+    housekeeping = _housekeeping(_section(raw, "housekeeping"))
 
     pool_tables = raw.get("pool", [])
     if isinstance(pool_tables, dict):  # a single [pool] table rather than [[pool]]
@@ -181,7 +203,13 @@ def from_mapping(raw: dict[str, Any], source: Path | None = None) -> Settings:
     pools = tuple(_pool(table, index) for index, table in enumerate(pool_tables))
     _reject_duplicate_names(pools)
 
-    return Settings(github=github, daemon=daemon, pools=pools, source=source)
+    return Settings(
+        github=github,
+        daemon=daemon,
+        housekeeping=housekeeping,
+        pools=pools,
+        source=source,
+    )
 
 
 # -- sections ------------------------------------------------------------------------
@@ -226,6 +254,26 @@ def _daemon(table: dict[str, Any]) -> DaemonSettings:
         stop_timeout=_duration(table.get("stop_timeout", "30s"), "daemon.stop_timeout"),
         log_level=str(table.get("log_level", "INFO")).upper(),
         log_format=log_format,
+    )
+
+
+def _housekeeping(table: dict[str, Any]) -> HousekeepingSettings:
+    def age(key: str, default: str | None) -> timedelta | None:
+        value = table.get(key, default)
+        if value in (None, False, "never", ""):
+            return None
+        return _duration(value, f"housekeeping.{key}")
+
+    return HousekeepingSettings(
+        enabled=bool(table.get("enabled", True)),
+        every=_duration(table.get("every", "1h"), "housekeeping.every"),
+        containers_older_than=age("containers_older_than", "1h"),
+        images_older_than=age("images_older_than", "24h"),
+        volumes=bool(table.get("volumes", True)),
+        build_cache_older_than=age("build_cache_older_than", "24h"),
+        keep_build_cache=(
+            str(table["keep_build_cache"]) if table.get("keep_build_cache") else None
+        ),
     )
 
 

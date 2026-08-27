@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol
 
 
@@ -57,6 +57,57 @@ class ContainerStatus:
         return self.state in {"exited", "dead"}
 
 
+#: Images carrying this label are what runners start from, so housekeeping must never
+#: reclaim them however long they sit unused.
+PROTECTED_IMAGE_LABEL = "io.ghspot.image=runner"
+
+
+@dataclass(frozen=True, slots=True)
+class PruneRequest:
+    """What housekeeping is allowed to reclaim.
+
+    Every age is a floor, not a target: nothing younger is touched, so a job that is still
+    running cannot have the image it is using pulled out from under it.
+    """
+
+    containers_older_than: timedelta | None = None
+    """Stopped containers. Running ones are never touched — a job may have started something
+    deliberately, and guessing which is rubbish is how you delete somebody's database."""
+
+    images_older_than: timedelta | None = None
+    volumes: bool = False
+    build_cache_older_than: timedelta | None = None
+    keep_build_cache_bytes: int | None = None
+
+    @property
+    def is_noop(self) -> bool:
+        return not any(
+            (
+                self.containers_older_than,
+                self.images_older_than,
+                self.volumes,
+                self.build_cache_older_than,
+                self.keep_build_cache_bytes is not None,
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PruneReport:
+    """What housekeeping actually reclaimed."""
+
+    containers: int = 0
+    images: int = 0
+    volumes: int = 0
+    build_cache_bytes: int = 0
+    reclaimed_bytes: int = 0
+    errors: tuple[str, ...] = ()
+
+    @property
+    def removed_anything(self) -> bool:
+        return bool(self.containers or self.images or self.volumes or self.reclaimed_bytes)
+
+
 class RunnerBackend(Protocol):
     """Container lifecycle operations, all of them idempotent where that is meaningful."""
 
@@ -93,4 +144,12 @@ class RunnerBackend(Protocol):
 
     async def image_exists(self, image: str) -> bool:
         """Whether the runner image is present locally."""
+        ...
+
+    async def prune(self, request: PruneRequest) -> PruneReport:
+        """Reclaim what jobs left behind on the host.
+
+        Implementations must never remove an image carrying
+        :data:`PROTECTED_IMAGE_LABEL`, nor any running container.
+        """
         ...

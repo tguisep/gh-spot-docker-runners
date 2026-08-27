@@ -17,7 +17,12 @@ from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.runner import Runner, RunnerId
 from ghspot.domain.model.target import RepositoryTarget
-from ghspot.domain.ports.backend import ContainerSpec, ContainerStatus
+from ghspot.domain.ports.backend import (
+    ContainerSpec,
+    ContainerStatus,
+    PruneReport,
+    PruneRequest,
+)
 from ghspot.domain.ports.forge import ForgeRunner, JitRegistration
 
 
@@ -159,6 +164,7 @@ class FakeBackend:
     removed: list[str] = field(default_factory=list)
     killed: list[str] = field(default_factory=list)
     images: set[str] = field(default_factory=lambda: {"ghspot/runner:test"})
+    pruned: list[PruneRequest] = field(default_factory=list)
     now: datetime = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
     _next_id: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
 
@@ -219,6 +225,11 @@ class FakeBackend:
     async def ping(self) -> bool:
         self._guard("ping")
         return True
+
+    async def prune(self, request: PruneRequest) -> PruneReport:
+        self._guard("prune")
+        self.pruned.append(request)
+        return PruneReport(containers=1, images=2, volumes=1, reclaimed_bytes=1_000_000)
 
     # -- helpers a test uses to simulate Docker's side --------------------------------
 

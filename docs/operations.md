@@ -430,6 +430,63 @@ where it does not exist — Docker mounts an empty directory and the job fails c
 Moving them would require the runner's work directory to be a host bind mount at an identical
 path inside the container. That is a change to the runner image, not to the workflow.
 
+## What a job leaves behind
+
+Runner containers are removed when their job ends, taking the working directory with them.
+But with `docker_socket = true` a job talks to **your** Docker daemon, so what it does there
+is yours afterwards:
+
+| The job did this | After the runner is removed |
+|---|---|
+| Wrote files under `_work` | Gone |
+| Pulled or built an image | **Still on the host** |
+| Created a volume | **Still on the host** |
+| Left a container running | **Still running** |
+| `docker build` layers | **Still in the build cache** |
+
+That is inherent to sharing the daemon, and it is the trade recorded in
+[ADR 5](adr/0005-docker-socket-over-dind.md).
+
+### Housekeeping bounds it
+
+The daemon reclaims unused Docker objects on a schedule:
+
+```toml
+[housekeeping]
+every = "1h"
+containers_older_than = "1h"     # stopped containers
+images_older_than = "24h"        # unused images
+volumes = true                   # anonymous volumes
+build_cache_older_than = "24h"
+keep_build_cache = "10g"
+```
+
+Every age is a floor, so a running job cannot have something it is using removed underneath
+it. Runner images carry `io.ghspot.image=runner` and are **never** reclaimed — without that
+the daemon would eventually delete the images it starts runners from. Named volumes are left
+alone, since a named volume is something somebody chose to create.
+
+Set any age to `"never"` to disable that sweep, or `enabled = false` for all of it.
+
+### It is not a guarantee, and the difference matters
+
+Two things housekeeping deliberately will not do:
+
+- **A container the job left running is never touched.** Nothing distinguishes it from
+  something you started on purpose, and guessing wrong means deleting somebody's database.
+- **Nothing is removed immediately.** Residue is bounded by the interval and the age floors,
+  not eliminated.
+
+If you need a real guarantee that a job leaves nothing, the answer is not a bigger broom: it
+is giving each runner its own Docker daemon, so there is no shared state to leave anything
+in. That means Docker-in-Docker, and costs the shared layer cache — every job re-pulls what
+it needs. `RunnerBackend.create()` takes a `ContainerSpec`, so it is a new spec rather than a
+change to any calling code, but it is a real architectural change and not currently
+implemented.
+
+The narrow case is easy, though: a pool with `docker_socket = false` leaves nothing at all,
+because the job never reaches the host daemon in the first place.
+
 ## Tuning
 
 | Setting | Raise it when | Lower it when |

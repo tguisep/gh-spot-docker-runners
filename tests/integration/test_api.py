@@ -12,11 +12,13 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from ghspot.application.commands.housekeeping import ReclaimHostSpace
 from ghspot.application.commands.provision import ProvisionRunner, RunnerTemplate
 from ghspot.application.commands.retire import RetireRunner
 from ghspot.application.reconciliation import PoolConfiguration, ReconciliationService
 from ghspot.composition import Application
 from ghspot.domain.model.runner import RunnerState
+from ghspot.domain.ports.backend import PruneRequest
 from ghspot.infrastructure.config.settings import DaemonSettings, GitHubSettings, Settings
 from ghspot.interfaces.api.app import create_app
 from tests.fakes.adapters import (
@@ -65,6 +67,12 @@ class Harness:
                 events=self.events,
                 provision=provision,
                 retire=retire,
+            ),
+            housekeeping=ReclaimHostSpace(
+                backend=self.backend,
+                clock=self.clock,
+                every=timedelta(hours=1),
+                request=PruneRequest(),
             ),
             clock=self.clock,  # type: ignore[arg-type]
             provision=provision,

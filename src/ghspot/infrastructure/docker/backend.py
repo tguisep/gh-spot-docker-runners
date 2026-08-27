@@ -12,14 +12,20 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import docker
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
 
 from ghspot.domain.errors import BackendError, ImageNotFoundError
-from ghspot.domain.ports.backend import ContainerSpec, ContainerStatus
+from ghspot.domain.ports.backend import (
+    PROTECTED_IMAGE_LABEL,
+    ContainerSpec,
+    ContainerStatus,
+    PruneReport,
+    PruneRequest,
+)
 
 DOCKER_SOCKET = "/var/run/docker.sock"
 
@@ -99,6 +105,93 @@ class DockerRunnerBackend:
             except (APIError, DockerException) as error:
                 raise BackendError(f"could not inspect the image {image!r}: {error}") from error
             return True
+
+        return await asyncio.to_thread(run)
+
+    async def prune(self, request: PruneRequest) -> PruneReport:
+        """Reclaim what jobs left behind.
+
+        Jobs reach the host's daemon through the mounted socket, so what they build, pull and
+        create is the host's to clean up. Docker's own prune endpoints do the work; the care
+        here is entirely in what is *excluded*.
+        """
+        if request.is_noop:
+            return PruneReport()
+
+        def run() -> PruneReport:
+            containers = images = volumes = 0
+            reclaimed = 0
+            cache_bytes = 0
+            errors: list[str] = []
+
+            def attempt(what: str, action: Any) -> Any:
+                try:
+                    return action()
+                except (APIError, DockerException) as error:
+                    errors.append(f"{what}: {error}")
+                    return None
+
+            if request.containers_older_than is not None:
+                # Stopped only — Docker's container prune never touches a running one.
+                result = attempt(
+                    "containers",
+                    lambda: self._client.containers.prune(
+                        filters={"until": _duration(request.containers_older_than)}
+                    ),
+                )
+                if result:
+                    containers = len(result.get("ContainersDeleted") or [])
+                    reclaimed += int(result.get("SpaceReclaimed") or 0)
+
+            if request.images_older_than is not None:
+                # `dangling: False` widens this to unused *tagged* images, which is where a
+                # job's build output lives. The label filter is what stops it reclaiming the
+                # runner images themselves.
+                label_key, _, label_value = PROTECTED_IMAGE_LABEL.partition("=")
+                result = attempt(
+                    "images",
+                    lambda: self._client.images.prune(
+                        filters={
+                            "until": _duration(request.images_older_than),
+                            "dangling": False,
+                            "label!": f"{label_key}={label_value}",
+                        }
+                    ),
+                )
+                if result:
+                    images = len(result.get("ImagesDeleted") or [])
+                    reclaimed += int(result.get("SpaceReclaimed") or 0)
+
+            if request.volumes:
+                # Anonymous volumes only. A named volume is something somebody chose to
+                # create, including any cache a pool is configured with.
+                result = attempt(
+                    "volumes",
+                    lambda: self._client.volumes.prune(filters={"all": "false"}),
+                )
+                if result:
+                    volumes = len(result.get("VolumesDeleted") or [])
+                    reclaimed += int(result.get("SpaceReclaimed") or 0)
+
+            if request.build_cache_older_than is not None or request.keep_build_cache_bytes:
+                arguments: dict[str, Any] = {}
+                if request.build_cache_older_than is not None:
+                    arguments["filters"] = {"until": _duration(request.build_cache_older_than)}
+                if request.keep_build_cache_bytes is not None:
+                    arguments["keep_storage"] = request.keep_build_cache_bytes
+                result = attempt("build cache", lambda: self._client.api.prune_builds(**arguments))
+                if result:
+                    cache_bytes = int(result.get("SpaceReclaimed") or 0)
+                    reclaimed += cache_bytes
+
+            return PruneReport(
+                containers=containers,
+                images=images,
+                volumes=volumes,
+                build_cache_bytes=cache_bytes,
+                reclaimed_bytes=reclaimed,
+                errors=tuple(errors),
+            )
 
         return await asyncio.to_thread(run)
 
@@ -208,3 +301,9 @@ def _split_offset(tail: str) -> tuple[str, str, str]:
             fraction, _, offset = tail.partition(sign)
             return fraction, sign, offset
     return tail, "", ""
+
+
+def _duration(delta: timedelta) -> str:
+    """Docker's `until` filter wants a Go duration, and rejects fractional hours."""
+    seconds = max(1, int(delta.total_seconds()))
+    return f"{seconds}s"

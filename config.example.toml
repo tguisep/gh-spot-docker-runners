@@ -45,6 +45,27 @@ state_db = "~/.local/state/ghspot/state.db"
 # log_level = "INFO"
 # log_format = "auto"                      # auto | console | json
 
+# Reclaiming what jobs leave on this host.
+#
+# Jobs reach the host's Docker daemon through the mounted socket, so the images they build,
+# the images they pull and the volumes they create outlive them — removing the runner
+# container does not take those with it.
+#
+# This bounds that. It does not eliminate it: a job that leaves a container *running* is
+# never touched, because nothing tells it apart from something you started yourself. Genuine
+# zero-residue needs each runner to have its own Docker daemon, which is a different
+# architecture. See docs/operations.md.
+[housekeeping]
+# enabled = true
+# every = "1h"                     # wall clock, not ticks
+
+# Nothing younger than these is touched, so a running job cannot lose what it is using.
+# containers_older_than = "1h"     # stopped only; "never" to disable
+# images_older_than = "24h"        # unused images. Runner images are labelled and exempt.
+# volumes = true                   # anonymous volumes only; named ones are yours
+# build_cache_older_than = "24h"
+# keep_build_cache = "10g"         # kept below this, or every rebuild starts cold
+
 [[pool]]
 name = "default"
 repository = "tguisep/my-project"

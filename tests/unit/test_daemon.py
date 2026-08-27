@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+from datetime import timedelta
 
+from ghspot.application.commands.housekeeping import ReclaimHostSpace
 from ghspot.application.dto import TickReport
 from ghspot.composition import Application
 from ghspot.daemon import Daemon
+from ghspot.domain.ports.backend import PruneRequest
 from ghspot.infrastructure.config.settings import DaemonSettings, GitHubSettings, Settings
+from tests.fakes.adapters import FakeBackend, FakeClock
 from tests.unit.conftest import T0
 
 
@@ -41,6 +45,12 @@ def build_daemon(reconciler: object, interval_seconds: float = 0.01) -> Daemon:
         runners=None,  # type: ignore[arg-type]
         events=None,  # type: ignore[arg-type]
         reconciler=reconciler,  # type: ignore[arg-type]
+        housekeeping=ReclaimHostSpace(
+            backend=FakeBackend(),
+            clock=FakeClock(T0),
+            every=timedelta(hours=1),
+            request=PruneRequest(),
+        ),
         clock=None,  # type: ignore[arg-type]
         provision=None,  # type: ignore[arg-type]
         retire=None,  # type: ignore[arg-type]
