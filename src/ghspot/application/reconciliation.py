@@ -8,6 +8,7 @@ at most one tick.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -101,9 +102,7 @@ class ReconciliationService:
                     if await self._retire_by_id(pool, runner_id, "idle timeout", force=False):
                         retired += 1
 
-                for _ in range(plan.launch):
-                    await self._provision(spec, configuration.template)
-                    launched += 1
+                launched += await self._launch(spec, configuration.template, plan.launch)
 
             except GhSpotError as error:
                 errors.append(f"[{spec.name}] {error}")
@@ -300,6 +299,26 @@ class ReconciliationService:
         if repository not in cache:
             cache[repository] = await self._forge.list_queued_jobs(repository)
         return cache[repository]
+
+    async def _launch(self, spec: PoolSpec, template: RunnerTemplate, count: int) -> int:
+        """Start ``count`` runners, together rather than one after another.
+
+        Each one is a round trip to mint its configuration and another to create its
+        container. In sequence that is the difference between a pool absorbing a burst and a
+        pool trickling into it — and max_launch_per_tick already bounds how many there can
+        be, so there is no separate limit to impose here.
+
+        One failure does not stop the others: a partly-served burst beats an unserved one,
+        and whatever failed is reported and retried next tick.
+        """
+        if count <= 0:
+            return 0
+
+        outcomes = await asyncio.gather(
+            *(self._provision(spec, template) for _ in range(count)),
+            return_exceptions=True,
+        )
+        return sum(1 for outcome in outcomes if not isinstance(outcome, BaseException))
 
     async def _retire_by_id(
         self, pool: RunnerPool, runner_id: RunnerId, reason: str, *, force: bool
