@@ -23,7 +23,7 @@ from ghspot.domain.errors import BackendError
 from ghspot.domain.model.pool import PoolSpec
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
 from ghspot.domain.model.target import RepositoryTarget
-from ghspot.domain.ports.backend import ContainerStatus
+from ghspot.domain.ports.backend import ContainerSpec, ContainerStatus
 from ghspot.domain.ports.forge import ForgeRunner
 from tests.fakes.adapters import (
     FakeBackend,
@@ -449,9 +449,9 @@ async def test_a_burst_is_launched_together_not_one_at_a_time() -> None:
     arrived = asyncio.Barrier(wanted)
     original = harness_.backend.create
 
-    async def wait_for_the_others(container_spec: object) -> str:
+    async def wait_for_the_others(spec: ContainerSpec) -> str:
         await arrived.wait()
-        return await original(container_spec)  # type: ignore[arg-type]
+        return await original(spec)
 
     harness_.backend.create = wait_for_the_others  # type: ignore[method-assign]
 
@@ -469,11 +469,11 @@ async def test_one_failed_launch_does_not_abandon_the_rest(harness: Harness) -> 
     calls = {"n": 0}
     original = harness_.backend.create
 
-    async def fail_the_second(container_spec: object) -> str:
+    async def fail_the_second(spec: ContainerSpec) -> str:
         calls["n"] += 1
         if calls["n"] == 2:
             raise BackendError("no space left on device")
-        return await original(container_spec)  # type: ignore[arg-type]
+        return await original(spec)
 
     harness_.backend.create = fail_the_second  # type: ignore[method-assign]
 
