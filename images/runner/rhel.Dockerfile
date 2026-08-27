@@ -29,29 +29,67 @@ ARG DOCKER_GID=999
 ENV RUNNER_MANUALLY_TRAP_SIG=1 \
     ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT=1
 
-# `dnf` on a minimal base does not install documentation or weak dependencies, which keeps
-# the image close in size to the Ubuntu one.
+# EPEL and CRB carry the RHEL equivalents of a good part of GitHub's toolset — ShellCheck,
+# aria2, patchelf, upx, sshpass and others live there rather than in the base repositories.
+RUN dnf install -y --nodocs epel-release dnf-plugins-core \
+    && dnf config-manager --set-enabled crb \
+    && dnf clean all
+
+# The same toolset GitHub installs on its ubuntu images
+# (actions/runner-images: images/ubuntu/toolsets/toolset-2404.json), mapped to RHEL package
+# names and grouped the same way, so the two images can be diffed against each other.
 #
 # --allowerasing is needed for curl: RHEL 9 ships curl-minimal, which conflicts with the full
-# package. Workflows expect the full curl that GitHub's own images provide, so the minimal
-# one is replaced rather than kept.
+# package workflows expect.
+#
+# Left out because they cannot work in a container: systemd-coredump, pollinate, haveged.
+# Left out because RHEL has no packaging for them: mediainfo and sphinxsearch (RPM Fusion
+# only). A workflow needing those should use the Ubuntu variant.
 RUN dnf install -y --allowerasing --setopt=install_weak_deps=False --nodocs \
-        ca-certificates \
-        curl \
-        findutils \
-        git \
-        gzip \
-        hostname \
-        jq \
-        openssl \
-        procps-ng \
-        rsync \
-        shadow-utils \
-        sudo \
-        tar \
-        unzip \
+        `# vital_packages` \
+        bzip2 curl gcc gcc-c++ jq make tar unzip wget \
+        `# common_packages` \
+        autoconf automake bind-utils dbus dpkg fakeroot glibc-langpack-en gnupg2 \
+        google-noto-emoji-color-fonts iproute iputils libicu-devel libtool libyaml-devel \
+        mercurial openssh-clients openssl-devel p7zip-plugins pkgconf-pkg-config rpm \
+        sqlite-devel texinfo tk tree tzdata xz zsync \
+        `# cmd_packages` \
+        acl aria2 binutils bison brotli coreutils file findutils flex ftp lz4 m4 net-tools \
+        nmap-ncat nss-tools parallel patchelf pigz rsync ShellCheck sqlite sshpass \
+        sudo swig telnet time zip \
+        `# not upstream, but a runner without them is surprising` \
+        ca-certificates cmake git gzip hostname procps-ng python3 python3-pip shadow-utils \
         which \
-        zip \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+# Packages that were renamed or dropped between RHEL 9 and RHEL 10. Both spellings are listed
+# and `strict=0` takes whichever exists, so one Dockerfile serves both releases.
+#
+#   p7zip, p7zip-plugins -> 7zip                         (renamed in RHEL 10)
+#   google-noto-emoji-color-fonts -> google-noto-color-emoji-fonts
+#   upx, xorg-x11-server-Xvfb                            (dropped in RHEL 10, no replacement)
+#
+# The result is printed rather than assumed: an image quietly missing a tool is how a
+# workflow ends up failing for a reason nobody can see.
+RUN dnf install -y --setopt=strict=0 --setopt=install_weak_deps=False --nodocs \
+        7zip p7zip p7zip-plugins \
+        google-noto-color-emoji-fonts google-noto-emoji-color-fonts \
+        upx xorg-x11-server-Xvfb \
+    ; dnf clean all && rm -rf /var/cache/dnf \
+    && echo "optional tools present:" \
+    && for t in 7z upx Xvfb; do \
+           printf '  %-6s %s\n' "$t" "$(command -v $t || echo 'not available on this release')"; \
+       done
+
+# Node and npm, the same major version as the Ubuntu image. GitHub keeps these in a
+# toolcache; here they are installed, because a workflow running `npm ci` without
+# actions/setup-node is common and the failure is obscure. Other toolchains are not
+# preinstalled: actions/setup-python, setup-go and setup-java fetch what they need.
+ARG NODE_MAJOR=22
+RUN curl -fsSL "https://rpm.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
+    && dnf install -y --nodocs nodejs \
+    && npm --version \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
