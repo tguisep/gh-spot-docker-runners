@@ -326,6 +326,7 @@ def _template(container: dict[str, Any], where: str, name: str) -> RunnerTemplat
 
     cpus = container.get("cpus")
     return RunnerTemplate(
+        gpus=_gpus(container.get("gpus"), where, name),
         image=str(container["image"]),
         cpus=float(cpus) if cpus is not None else None,
         memory=str(container["memory"]) if container.get("memory") else None,
@@ -337,6 +338,32 @@ def _template(container: dict[str, Any], where: str, name: str) -> RunnerTemplat
 
 
 # -- helpers -------------------------------------------------------------------------
+
+
+def _gpus(value: Any, where: str, name: str) -> str | int | tuple[str, ...] | None:
+    """Read a pool's GPU selection: ``"all"``, a count, or a list of device ids."""
+    if value in (None, False, "", "none"):
+        return None
+    if isinstance(value, bool):
+        return "all" if value else None
+    if isinstance(value, int):
+        if value < 1:
+            raise ConfigError(f"{where} ({name}): 'gpus' must be at least 1, or \"all\"")
+        return value
+    if isinstance(value, list):
+        ids = tuple(str(item) for item in value if str(item).strip())
+        if not ids:
+            raise ConfigError(f"{where} ({name}): 'gpus' is an empty list")
+        return ids
+    text = str(value).strip()
+    if text.casefold() == "all":
+        return "all"
+    if text.isdigit():
+        return int(text)
+    raise ConfigError(
+        f"{where} ({name}): {value!r} is not a GPU selection. "
+        'Use "all", a count, or a list of device ids.'
+    )
 
 
 def _locate(path: Path | str | None) -> Path:
