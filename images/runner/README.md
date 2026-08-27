@@ -65,6 +65,33 @@ gigabytes per variant.
 listed and whichever exists is installed. The build prints which optional tools it got, so an
 image is never quietly missing something.
 
+### rhel-10 needs a modern CPU
+
+RHEL 10 raised its baseline to the **x86-64-v3** microarchitecture level (AVX2, BMI, FMA).
+On a machine without it the base image aborts on its first command:
+
+```
+Fatal glibc error: CPU does not support x86-64-v3
+```
+
+That looks like a broken Dockerfile and is not one, so `build.sh` checks first and says so.
+The usual cause is a virtual machine presenting a generic CPU instead of the real one:
+
+| Hypervisor | Fix |
+|---|---|
+| Proxmox / QEMU | Set the CPU type to `host` |
+| VMware | Enable host CPU feature passthrough |
+| libvirt | `<cpu mode='host-passthrough'/>` |
+
+Check what a machine reports with:
+
+```bash
+/lib64/ld-linux-x86-64.so.2 --help | grep x86-64-v
+```
+
+If the physical CPU genuinely predates v3 — roughly pre-2015 Intel, pre-2017 AMD — use
+`rhel-9`, which has no such requirement.
+
 ### Size
 
 Roughly 2.6–2.7 GB per variant, against about 1.7 GB for the runner alone. That is what the
@@ -73,12 +100,14 @@ toolset costs. To trim it, remove packages from the relevant Dockerfile — but 
 
 ## CI builds under a different name
 
-CI builds these images as `ghspot/runner-ci:<variant>`, not `ghspot/runner:<variant>`.
+CI builds these on **GitHub-hosted** runners, as `ghspot/runner-ci:<variant>`.
 
-On a self-hosted runner the build runs against the *host's* Docker daemon — the same one
-serving the fleet. Building under the operational tag would mean a pull request's CI silently
-replacing the image real jobs run in, and a broken branch taking the fleet down with it. The
-CI images are removed afterwards; the build cache is left alone so rebuilds stay fast.
+Hosted, because the images CI builds are throwaway, four variants at ~2.7 GB each would fill
+a home server, and `rhel-10` cannot build on a host whose CPU lacks x86-64-v3.
+
+Namespaced, because if that is ever routed back onto the fleet the build would run against
+the *host's* Docker daemon — the same one serving real jobs — and building under the
+operational tag would let a pull request silently replace the image those jobs run in.
 
 If you find a stray `ghspot/runner:ci` on a host, it is a leftover from before this split and
 is safe to delete.
