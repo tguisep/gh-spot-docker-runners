@@ -101,11 +101,10 @@ jobs:
 
 - Linux host with Docker, and a user in the `docker` group
 - Python 3.12+
-- Credentials with **Administration: read & write** (to mint runner configs) and
-  **Actions: read** (to see queued jobs) — either a fine-grained personal access token, or a
-  [GitHub App](docs/operations.md#authentication), which is preferred for anything
-  long-lived: its rate limit belongs to the installation rather than to you, and its tokens
-  rotate hourly on their own
+- Credentials with **Administration: read & write** (to register runners) and **Actions:
+  read** (to see queued jobs) — either a fine-grained personal access token or a GitHub App.
+  [`docs/authentication.md`](docs/authentication.md) sets up both, and explains why each
+  permission is needed
 
 ## Commands
 
@@ -131,6 +130,8 @@ repositories you control and unacceptable for one that accepts fork pull request
 
 ## Documentation
 
+- [`docs/authentication.md`](docs/authentication.md) — setting up a token or a GitHub App,
+  and the exact permissions
 - [`docs/architecture.md`](docs/architecture.md) — how the pieces fit together, and why
 - [`docs/operations.md`](docs/operations.md) — install, configure, run, tune, troubleshoot
 - [`docs/adr/`](docs/adr/) — the decisions, with the alternatives that were rejected
