@@ -2,12 +2,25 @@
 
 ## Setting up
 
+With [mise](https://mise.jdx.dev), which installs the pinned python and uv and gives you the
+project's tasks:
+
 ```bash
-git clone https://github.com/tguisep/gh-spot-docker-runners.git
-cd gh-spot-docker-runners
+mise install
+mise run check          # lint and tests, the same invocations CI uses
+mise tasks              # what else there is
+```
+
+Without it, uv alone is enough:
+
+```bash
 uv sync --all-extras
 uv run pre-commit install
 ```
+
+CI deliberately does **not** use mise — workflows install uv through `setup-uv`, which caches
+better on a hosted runner. `.mise.toml` is for a developer's machine, and for the runner
+images, which carry mise so a workflow can honour a file like it.
 
 ## The checks
 
