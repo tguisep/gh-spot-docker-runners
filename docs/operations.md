@@ -286,7 +286,15 @@ reverse proxy with auth in front of it.
 ```bash
 images/runner/build.sh                 # all of them
 images/runner/build.sh rhel-9          # just one
+images/runner/verify.sh rhel-9         # check the contract and the toolset
 ```
+
+Each image carries the apt toolset GitHub installs on its own hosted runners, plus `git`,
+`cmake`, `node`/`npm` and a working `pip`. Language toolchains are **not** preinstalled:
+`actions/setup-python`, `setup-go`, `setup-java` and the rest fetch what they need at
+runtime, so workflows using them work as-is, just slower on a cold runner than on GitHub's
+toolcache-equipped images. See [`images/runner/README.md`](../images/runner/README.md) for
+the full list and the handful of tools unavailable on RHEL 10.
 
 The variant name is the image tag *and* the label. Keeping them the same string is what stops
 a pool from advertising an OS it is not actually running.

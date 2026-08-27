@@ -104,42 +104,12 @@ jobs:
         variant: [ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10]
     steps:
       - uses: actions/checkout@v4
-
       - name: build
         run: images/runner/build.sh ${{ matrix.variant }}
-
-      # The property the whole design rests on: a job never sees a credential.
-      - name: the image must not carry a token
-        run: |
-          docker run --rm --entrypoint env ghspot/runner:${{ matrix.variant }} \
-            | grep -qiE 'token|jitconfig' && exit 1 || exit 0
-
-      # Without a config the entrypoint must refuse, rather than starting a runner that
-      # cannot register.
-      - name: it refuses to start without a configuration
-        run: |
-          docker run --rm ghspot/runner:${{ matrix.variant }} >/dev/null 2>&1
-          test $? -eq 64
-
-      # A mismatched group id here surfaces later as a job failing on the Docker socket,
-      # which looks nothing like a build problem. The RHEL packages create their own docker
-      # group, so this is a real hazard rather than a theoretical one.
-      - name: the docker group id matches the host
-        run: |
-          EXPECTED="$(getent group docker | cut -d: -f3)"
-          ACTUAL="$(docker run --rm --entrypoint sh ghspot/runner:${{ matrix.variant }} \
-                      -c 'getent group docker | cut -d: -f3')"
-          test "${EXPECTED}" = "${ACTUAL}" \
-            || { echo "::error::docker gid ${ACTUAL} != host ${EXPECTED}"; exit 1; }
-
-      - name: it runs unprivileged and has the runner payload
-        run: |
-          docker run --rm --entrypoint sh ghspot/runner:${{ matrix.variant }} -c '
-            test "$(id -u)" != "0" || { echo "runs as root"; exit 1; }
-            test -f run.sh || { echo "no runner payload"; exit 1; }
-            docker --version >/dev/null || { echo "no docker cli"; exit 1; }
-            git --version >/dev/null || { echo "no git"; exit 1; }
-          ' 
+      # Checks the contract and the toolset. A missing tool does not fail a build — it fails
+      # somebody's workflow later, with an error pointing nowhere near the image.
+      - name: verify
+        run: images/runner/verify.sh ${{ matrix.variant }}
 
   # A NOTE FOR JOBS ADDED LATER
   #
