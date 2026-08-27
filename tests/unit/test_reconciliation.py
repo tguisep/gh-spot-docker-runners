@@ -391,6 +391,59 @@ async def test_an_unreachable_container_backend_is_reported_not_raised(
     assert any("container backend unreachable" in error for error in report.errors)
 
 
+async def test_a_tick_that_cannot_see_containers_destroys_nothing(harness: Harness) -> None:
+    """The bug this test exists for tore down a whole fleet mid-job.
+
+    Retirement is decided by comparing runners against the containers backing them. A failed
+    Docker query used to yield an empty list, which is indistinguishable from "no containers
+    exist" — so every runner looked abandoned, and the loop deleted the lot. The jobs then
+    hung with no logs, because their runners had been removed from under them.
+    """
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    assert runner.github_runner_id is not None and runner.container_id is not None
+    harness.forge.bring_online(runner.github_runner_id, busy=True)
+    await harness.service.tick()
+    assert harness.runner_states()[str(runner.id)] is RunnerState.BUSY
+
+    # Docker goes away mid-job.
+    harness.backend.fail_on.add("list_owned")
+    report = await harness.service.tick()
+
+    assert report.errors, "a blind tick should say so"
+    assert harness.runner_states()[str(runner.id)] is RunnerState.BUSY, (
+        "the runner was retired while running a job"
+    )
+    assert runner.container_id in harness.backend.containers, "its container was removed"
+    assert harness.forge.deleted == [], "its registration was deleted from under the job"
+    assert not report.changed_anything, "a blind tick must change nothing at all"
+
+
+async def test_a_blind_tick_does_not_start_anything_either(harness: Harness) -> None:
+    """Launching without seeing the fleet would double up on every runner already running."""
+    harness.forge.queued[REPO] = [make_job(1), make_job(2)]
+    harness.backend.fail_on.add("list_owned")
+
+    report = await harness.service.tick()
+
+    assert report.launched == 0
+    assert harness.backend.created == []
+
+
+async def test_the_loop_recovers_once_docker_returns(harness: Harness) -> None:
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    assert runner.github_runner_id is not None
+    harness.forge.bring_online(runner.github_runner_id)
+
+    harness.backend.fail_on.add("list_owned")
+    await harness.service.tick()
+    harness.backend.fail_on.discard("list_owned")
+
+    report = await harness.service.tick()
+
+    assert not report.errors
+    assert harness.runner_states()[str(runner.id)] is RunnerState.IDLE
+
+
 async def test_the_report_describes_what_happened(harness: Harness) -> None:
     harness.forge.queued[REPO] = [make_job(1), make_job(2)]
 

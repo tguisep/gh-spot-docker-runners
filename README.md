@@ -23,6 +23,8 @@ when the job finishes.
   bounds you set. No inbound ports, so it works behind NAT on a home server.
 - **Genuinely testable.** Domain logic is pure Python with no I/O; Docker and GitHub sit behind
   ports, so the scaling policy and the reconciliation loop are unit-tested without either.
+- **GPUs, if the host has them.** A pool can hand its jobs every card, a count, or specific
+  ones — and `requires_labels` keeps plain CPU work off them.
 
 [jit]: https://docs.github.com/en/rest/actions/self-hosted-runners#create-configuration-for-a-just-in-time-runner-for-a-repository
 
@@ -94,6 +96,42 @@ jobs:
   build:
     runs-on: [self-hosted, linux, x64, home-vm]
 ```
+
+## GPUs
+
+A pool can give its jobs the host's GPUs, provided the
+[NVIDIA Container Toolkit](https://docs.docker.com/engine/containers/resource_constraints/#gpu)
+is installed:
+
+```toml
+[[pool]]
+name = "gpu"
+labels = ["self-hosted", "linux", "x64", "gpu-a100"]
+
+# Without this, a job asking only for [self-hosted, linux, x64] lands here and
+# spends the GPU on unit tests — label matching is a subset rule.
+requires_labels = ["gpu-a100"]
+
+max_runners = 1                       # one runner per card
+
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+gpus = "all"                          # or 1  —  or ["0", "1"]
+```
+
+```yaml
+jobs:
+  train:
+    runs-on: [self-hosted, gpu-a100]
+```
+
+Name the hardware rather than the category — `gpu-a100`, not `gpu` — so a job needing 24 GB of
+VRAM cannot land on a card with 8. `ghspot doctor` checks the toolkit whenever a pool asks for
+GPUs, because without it every runner in that pool fails to start with an error pointing
+nowhere near the cause.
+
+Full detail, including what `requires_labels` cannot prevent:
+[`docs/operations.md`](docs/operations.md#gpus).
 
 ## Requirements
 

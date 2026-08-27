@@ -78,7 +78,25 @@ class ReconciliationService:
         errors: list[str] = []
         notes: list[str] = []
 
-        containers = await self._owned_containers(errors)
+        # Observed first, and fatal to the tick if it fails.
+        #
+        # Everything below decides what to retire by comparing runners against the containers
+        # backing them. If that list is wrong — and a failed query yields an empty one — then
+        # every runner looks abandoned, and the loop tears down the whole fleet mid-job. The
+        # jobs then hang with no logs, because their runners were deleted from under them.
+        #
+        # A tick that cannot see is a tick that must not act.
+        try:
+            containers = await self._owned_containers()
+        except GhSpotError as error:
+            # Reported rather than logged here: the daemon logs a report's errors, and the
+            # application layer has no business knowing how logging works.
+            return TickReport(
+                started_at=started,
+                duration_seconds=(self._clock.now() - started).total_seconds(),
+                errors=[f"container backend unreachable, doing nothing this tick: {error}"],
+            )
+
         demand_by_repository: dict[RepositoryTarget, Sequence[QueuedJob]] = {}
 
         for configuration in self._pools:
@@ -276,12 +294,14 @@ class ReconciliationService:
 
     # -- helpers --------------------------------------------------------------------
 
-    async def _owned_containers(self, errors: list[str]) -> dict[RunnerId, ContainerStatus]:
-        try:
-            listed = await self._backend.list_owned(bookkeeping.OWNED_SELECTOR)
-        except GhSpotError as error:
-            errors.append(f"container backend unreachable: {error}")
-            return {}
+    async def _owned_containers(self) -> dict[RunnerId, ContainerStatus]:
+        """Every container this daemon owns.
+
+        Raises rather than returning nothing when Docker cannot be reached. An empty answer
+        from a failed question is not evidence that there are no containers, and the caller
+        cannot tell the two apart.
+        """
+        listed = await self._backend.list_owned(bookkeeping.OWNED_SELECTOR)
 
         found: dict[RunnerId, ContainerStatus] = {}
         for status in listed:

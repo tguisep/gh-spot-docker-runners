@@ -656,6 +656,18 @@ does not take effect until the installation *accepts* it.
 Set `docker_socket = true` for the pool, and confirm the image was built with the host's
 `DOCKER_GID`. Inside a runner, `docker ps` should work as the `runner` user.
 
+**A job sits with no logs, and its runner has vanished.**
+The runner was removed while the job was running, so nothing ever reported back. Look for
+`tick.blind` or `container backend unreachable` in the journal around the time it started:
+
+```bash
+journalctl -u ghspot --since "1 hour ago" | grep -E "blind|unreachable|retired"
+```
+
+A tick that cannot reach Docker now does nothing at all rather than concluding that no
+containers exist — that conclusion used to tear down the fleet mid-job. If you see this on an
+older version, upgrade. A Docker restart while jobs were running is the usual trigger.
+
 **The daemon exits immediately.**
 Almost always configuration. Run `ghspot config validate` — it names the field.
 
