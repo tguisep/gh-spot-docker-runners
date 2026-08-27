@@ -29,6 +29,24 @@ case "$1" in
 
         install -d -o "${USER_NAME}" -g "${USER_NAME}" -m 0750 "${HOME_DIR}"
         install -d -o root -g "${USER_NAME}" -m 0750 /etc/ghspot
+
+        # Created empty, with the right ownership and mode, so the operator has somewhere to
+        # put the credential rather than having to get `chmod 600` right themselves.
+        if [ ! -e /etc/ghspot/env ]; then
+            install -o root -g "${USER_NAME}" -m 0640 /dev/null /etc/ghspot/env
+            cat > /etc/ghspot/env <<'ENVFILE'
+# Credentials for ghspot. This file is read by systemd; keep it mode 0640.
+#
+# A personal access token:
+# GHSPOT_GITHUB_TOKEN=github_pat_...
+#
+# Or a GitHub App (EnvironmentFile cannot hold real newlines, so escape them):
+# GHSPOT_GITHUB_APP_ID=123456
+# GHSPOT_GITHUB_APP_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...
+ENVFILE
+            chown root:"${USER_NAME}" /etc/ghspot/env
+            chmod 0640 /etc/ghspot/env
+        fi
         if [ -f /etc/ghspot/config.toml ]; then
             chown root:"${USER_NAME}" /etc/ghspot/config.toml
             chmod 0640 /etc/ghspot/config.toml

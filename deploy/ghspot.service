@@ -17,6 +17,12 @@ After=docker.service network-online.target
 Wants=network-online.target
 Requires=docker.service
 
+# Give up after five rapid failures rather than retrying forever. A configuration mistake
+# would otherwise loop every ten seconds, burying the one useful line in the journal under
+# thousands of identical ones. Failing loudly is what gets it looked at.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Service]
 Type=simple
 User=ghspot
@@ -25,10 +31,15 @@ SupplementaryGroups=docker
 
 ExecStart=/opt/ghspot/.venv/bin/ghspot daemon --config /etc/ghspot/config.toml
 
-# The token is read from this file rather than passed as an argument, so it never
+# The credential is read from this file rather than passed as an argument, so it never
 # appears in `ps` or in the journal.
-# Format: GHSPOT_GITHUB_TOKEN=ghp_...
-EnvironmentFile=/etc/ghspot/env
+#   GHSPOT_GITHUB_TOKEN=github_pat_...
+# or GHSPOT_GITHUB_APP_ID= and GHSPOT_GITHUB_APP_PRIVATE_KEY=
+#
+# Prefixed with "-" so a missing file is not an error. Without it systemd refuses to start
+# the unit at all, and the journal says only that the environment file could not be read —
+# which tells an operator far less than ghspot's own "no GitHub token: set ... or ..." does.
+EnvironmentFile=-/etc/ghspot/env
 
 Restart=always
 RestartSec=10s
@@ -42,6 +53,10 @@ StateDirectory=ghspot
 ConfigurationDirectory=ghspot
 
 # The daemon needs the Docker socket and its own state. It needs nothing else.
+#
+# ReadWritePaths is "-" prefixed for the same reason: a path that does not exist is an error
+# otherwise, so a host where Docker is not running yet fails with 226/NAMESPACE and no
+# indication that the socket is what is missing.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -55,7 +70,7 @@ RestrictRealtime=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
-ReadWritePaths=/var/run/docker.sock
+ReadWritePaths=-/var/run/docker.sock
 
 StandardOutput=journal
 StandardError=journal
