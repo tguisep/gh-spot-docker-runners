@@ -1,18 +1,54 @@
-# The runner image
+# The runner images
 
-Ubuntu 24.04 plus the GitHub Actions runner. It holds no credentials, makes no API calls of
-its own, and contains no logic beyond forwarding a signal.
+The GitHub Actions runner on Ubuntu or the RHEL family. They hold no credentials, make no API
+calls of their own, and contain no logic beyond forwarding a signal.
+
+Both are built from the same `entrypoint.sh` and honour the same contract, so a workflow does
+not have to care which one it landed on beyond the package manager it can call.
+
+## Variants
+
+| Variant | Base | Label a workflow asks for |
+|---|---|---|
+| `ubuntu-24.04` | `ubuntu:24.04` | `runs-on: [self-hosted, ubuntu-24.04]` |
+| `ubuntu-22.04` | `ubuntu:22.04` | `runs-on: [self-hosted, ubuntu-22.04]` |
+| `rhel-9` | `almalinux:9` | `runs-on: [self-hosted, rhel-9]` |
+| `rhel-10` | `almalinux:10` | `runs-on: [self-hosted, rhel-10]` |
+
+The variant name is the image tag *and* the label, so the two cannot drift apart. Serve more
+than one by giving each its own pool — a job asking for `rhel-9` will only ever land on a
+runner carrying it.
 
 ## Build
 
 ```bash
-docker build -t ghspot/runner:ubuntu-24.04 \
-  --build-arg DOCKER_GID="$(getent group docker | cut -d: -f3)" \
-  images/runner/
+images/runner/build.sh                 # every variant
+images/runner/build.sh rhel-9          # just one
 ```
 
-`DOCKER_GID` must match the host's `docker` group so the mounted socket is usable by the
-unprivileged `runner` user. `ghspot doctor` checks this.
+The script detects the host's `docker` group id and passes it in. That id must match, or the
+unprivileged `runner` user cannot use the mounted socket — and the failure looks like a job
+saying `permission denied` on `/var/run/docker.sock`, not like a build problem.
+
+The images assert it at build time rather than letting it slip: on the RHEL family the Docker
+CE package creates its own `docker` group first, so a plain `groupadd` silently does nothing
+and the id ends up wrong.
+
+### Which RHEL rebuild
+
+`rhel.Dockerfile` takes `BASE_IMAGE`, defaulting to AlmaLinux — a faithful RHEL rebuild with
+complete repositories and no subscription. Also valid:
+
+```bash
+docker build -f images/runner/rhel.Dockerfile \
+  --build-arg BASE_IMAGE=registry.access.redhat.com/ubi9/ubi \
+  --build-arg DOCKER_GID="$(getent group docker | cut -d: -f3)" \
+  -t ghspot/runner:rhel-9 images/runner/
+```
+
+`rockylinux/rockylinux:9` and `quay.io/centos/centos:stream9` work the same way. Red Hat's own
+UBI is the closest to genuine RHEL, at the cost of a reduced package set — some things a
+workflow expects simply are not in its repositories.
 
 ## Contract
 
@@ -28,7 +64,7 @@ is testable.
 
 ## Updating the runner version
 
-`RUNNER_VERSION` and the two `RUNNER_SHA256_*` values are pinned in the `Dockerfile`. GitHub
+`RUNNER_VERSION` and the two `RUNNER_SHA256_*` values are pinned in each `Dockerfile`. GitHub
 requires runners to be no more than 30 days behind the current release. The checksums are
 published in the release notes, so bumping does not mean trusting a download:
 

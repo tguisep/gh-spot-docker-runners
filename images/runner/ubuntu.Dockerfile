@@ -1,12 +1,13 @@
 # syntax=docker/dockerfile:1
 
-# The GitHub Actions runner, and nothing clever.
+# The GitHub Actions runner on Ubuntu, and nothing clever.
 #
 # This image holds no credentials and makes no API calls. It receives a single-use
 # just-in-time configuration in RUNNER_JIT_CONFIG, runs one job, and exits. Everything that
 # decides *whether* a runner should exist lives in the daemon on the host, where it can be
 # tested.
-FROM ubuntu:24.04
+ARG UBUNTU_VERSION=24.04
+FROM ubuntu:${UBUNTU_VERSION}
 
 # Pinned explicitly rather than resolved at build time: a reproducible image matters more
 # than being current, and the daemon reports when a newer runner is available.
@@ -46,11 +47,20 @@ https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_C
         docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -g "${DOCKER_GID}" docker || true \
+# The mounted socket is only usable by the unprivileged runner if this group id matches the
+# host's. `groupadd || true` is not enough: the Docker CE RPM creates a `docker` group during
+# install, so the add silently fails and the id is whatever the package chose. Force it.
+RUN if getent group docker >/dev/null; then \
+        groupmod -o -g "${DOCKER_GID}" docker; \
+    else \
+        groupadd -o -g "${DOCKER_GID}" docker; \
+    fi \
     && useradd -m -s /bin/bash runner \
     && usermod -aG docker runner \
     && echo "runner ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/runner \
-    && chmod 0440 /etc/sudoers.d/runner
+    && chmod 0440 /etc/sudoers.d/runner \
+    && test "$(getent group docker | cut -d: -f3)" = "${DOCKER_GID}" \
+       || { echo "docker gid is not ${DOCKER_GID}" >&2; exit 1; }
 
 WORKDIR /home/runner
 
