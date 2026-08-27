@@ -72,6 +72,30 @@ class Daemon:
         if self._on_tick is not None:
             self._on_tick(report)
 
+        await self._reclaim()
+
+    async def _reclaim(self) -> None:
+        """Clear what jobs left on the host, when it is due.
+
+        Deliberately after reconciliation rather than before: reconciling is what the daemon
+        is for, and housekeeping should never delay starting a runner someone is waiting on.
+        """
+        result = await self._application.housekeeping()
+        if result is None:
+            return
+
+        for problem in result.errors:
+            log.warning("housekeeping.error", detail=problem)
+
+        if result.removed_anything:
+            log.info(
+                "housekeeping.done",
+                containers=result.containers,
+                images=result.images,
+                volumes=result.volumes,
+                reclaimed_mb=round(result.reclaimed_bytes / 1_000_000, 1),
+            )
+
     def _report(self, report: TickReport) -> None:
         for problem in report.errors:
             log.warning("tick.error", detail=problem)
