@@ -445,6 +445,76 @@ where it does not exist — Docker mounts an empty directory and the job fails c
 Moving them would require the runner's work directory to be a host bind mount at an identical
 path inside the container. That is a change to the runner image, not to the workflow.
 
+## GPUs
+
+A pool can hand its jobs the host's GPUs:
+
+```toml
+[[pool]]
+name = "gpu"
+repository = "you/your-project"
+labels = ["self-hosted", "linux", "x64", "gpu"]
+max_runners = 1
+
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+gpus = "all"          # or a count: 1  —  or specific ids: ["0", "1"]
+```
+
+`gpus` is the same selection `docker run --gpus` takes. Device ids are as `nvidia-smi -L`
+numbers them.
+
+### The host needs the NVIDIA Container Toolkit
+
+Drivers alone are not enough — the Engine needs the toolkit to pass a device through:
+
+```bash
+# Ubuntu / Debian
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+  | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt update && sudo apt install -y nvidia-container-toolkit
+
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+Check it before configuring a pool:
+
+```bash
+docker run --rm --gpus all ubuntu:24.04 nvidia-smi
+```
+
+`ghspot doctor` checks for the toolkit whenever a pool asks for GPUs, because without it
+**every runner in that pool fails to start** — with an error about device requests that says
+nothing about a missing toolkit.
+
+### Give GPU runners their own pool
+
+Jobs get no GPU unless a pool says so, and that default is deliberate: a runner holding a GPU
+it does not need holds it against every other runner on the machine.
+
+So put GPU work in its own pool with its own label, and set `max_runners` to the number of
+GPUs you actually have. Two runners sharing one GPU will both run — and both be slower than
+either alone.
+
+```yaml
+jobs:
+  train:
+    runs-on: [self-hosted, gpu]
+```
+
+### What the image does and does not carry
+
+The toolkit injects the driver libraries, so `nvidia-smi` and anything CUDA-runtime works
+inside a job without the image carrying drivers.
+
+It does **not** provide the CUDA toolkit — there is no `nvcc`. Compiling CUDA means either a
+container built for it, or a `setup-` action that fetches one. Baking CUDA into the runner
+image would add several gigabytes to every variant for the sake of a minority of jobs.
+
 ## What a job leaves behind
 
 Runner containers are removed when their job ends, taking the working directory with them.

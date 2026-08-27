@@ -17,6 +17,7 @@ from typing import Any
 
 import docker
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
+from docker.types import DeviceRequest
 
 from ghspot.domain.errors import BackendError, ImageNotFoundError
 from ghspot.domain.ports.backend import (
@@ -253,6 +254,9 @@ def _run_arguments(spec: ContainerSpec) -> dict[str, Any]:
         "restart_policy": {"Name": "no"},
         "auto_remove": False,
     }
+    request = _gpu_request(spec.gpus)
+    if request is not None:
+        arguments["device_requests"] = [request]
     if spec.cpus is not None:
         arguments["nano_cpus"] = int(spec.cpus * 1_000_000_000)
     if spec.memory is not None:
@@ -307,3 +311,33 @@ def _duration(delta: timedelta) -> str:
     """Docker's `until` filter wants a Go duration, and rejects fractional hours."""
     seconds = max(1, int(delta.total_seconds()))
     return f"{seconds}s"
+
+
+def _gpu_request(gpus: str | int | tuple[str, ...] | None) -> DeviceRequest | None:
+    """Translate a pool's ``gpus`` setting into what the Engine expects.
+
+    The same thing `docker run --gpus` produces. Reaching the GPU still requires the NVIDIA
+    Container Toolkit on the host: without it the Engine rejects the request outright, which
+    is better than a container starting with no GPU and a job failing later for reasons that
+    point nowhere near the configuration.
+    """
+    if gpus is None:
+        return None
+
+    capabilities = [["gpu"]]
+
+    if isinstance(gpus, tuple):
+        if not gpus:
+            return None
+        return DeviceRequest(device_ids=list(gpus), capabilities=capabilities)
+
+    if isinstance(gpus, int):
+        # -1 is the Engine's spelling of "every GPU on the host".
+        return DeviceRequest(count=gpus, capabilities=capabilities)
+
+    if gpus.strip().casefold() == "all":
+        return DeviceRequest(count=-1, capabilities=capabilities)
+
+    raise BackendError(
+        f'{gpus!r} is not a GPU selection. Use "all", a count, or a list of device ids.'
+    )

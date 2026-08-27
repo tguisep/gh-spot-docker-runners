@@ -56,6 +56,29 @@ a secret, and Ansible logs template contents by default.
 Setting either up, with the exact permissions:
 [`docs/authentication.md`](../../docs/authentication.md).
 
+## GPUs
+
+Set `gpus` on a pool's container, the same way the daemon takes it:
+
+```yaml
+ghspot_pools:
+  - name: gpu
+    repository: you/your-project
+    labels: [self-hosted, linux, x64, gpu]
+    max_runners: 1
+    container:
+      image: ghspot/runner:ubuntu-24.04
+      gpus: all          # or a count: 1  —  or ids: ["0", "1"]
+```
+
+The role does **not** install the NVIDIA Container Toolkit. That is driver territory and
+varies too much per host to do behind someone's back. Install it first — see
+[GPUs in the operations guide](../../docs/operations.md#gpus) — and the run will confirm it,
+since `ghspot doctor` fails the play when a pool asks for GPUs the host cannot provide.
+
+Give GPU work its own pool, and set `max_runners` to the number of GPUs you have: two runners
+sharing one GPU both run, and both are slower than either alone.
+
 ## Building images takes a while
 
 Each variant is a couple of gigabytes and several minutes. The role skips any already on the

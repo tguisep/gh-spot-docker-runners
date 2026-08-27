@@ -6,6 +6,7 @@ runner. Each check reports what it found and, when it fails, the command that fi
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -90,8 +91,35 @@ async def _docker(settings: Settings) -> list[Check]:
         )
         if pool.template.mount_docker_socket:
             checks.append(_socket_check(pool.spec.name))
+        if pool.template.gpus is not None:
+            checks.append(_gpu_check(pool.spec.name, pool.template.gpus))
 
     return checks
+
+
+def _gpu_check(pool: str, gpus: object) -> Check:
+    """Whether the host can actually hand a GPU to a container.
+
+    Without the NVIDIA Container Toolkit the Engine refuses the device request, so every
+    runner in the pool fails to start — with an error about device requests that says
+    nothing about a missing toolkit.
+    """
+    toolkit = shutil.which("nvidia-ctk") or shutil.which("nvidia-container-runtime")
+    driver = shutil.which("nvidia-smi")
+
+    if toolkit and driver:
+        return Check(name=f"gpu [{pool}]", ok=True, detail=f"requesting {gpus}")
+
+    missing = "the NVIDIA Container Toolkit" if not toolkit else "the NVIDIA driver"
+    return Check(
+        name=f"gpu [{pool}]",
+        ok=False,
+        detail=f"this pool asks for {gpus}, but {missing} is not installed",
+        remedy=(
+            "install it, then: sudo nvidia-ctk runtime configure --runtime=docker "
+            "&& sudo systemctl restart docker  —  or remove 'gpus' from this pool"
+        ),
+    )
 
 
 def _docker_remedy(error: Exception) -> str:
