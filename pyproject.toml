@@ -1,6 +1,6 @@
 [project]
 name = "gh-spot-docker-runners"
-version = "0.2.0"
+version = "0.2.1"
 description = "Self-hosted GitHub Actions runners on Docker, with full lifecycle management and continuous reconciliation."
 readme = "README.md"
 requires-python = ">=3.12"
