@@ -37,7 +37,7 @@ jobs:
       matrix:
         variant: [ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Built under a name the fleet does not use. If this is ever routed back onto
       # self-hosted runners it would build against the host's Docker daemon — the same one
