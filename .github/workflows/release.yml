@@ -1,20 +1,65 @@
 name: Release
 
+# Releases are cut by release-please rather than by tagging.
+#
+# Every merge to main updates a release pull request that accumulates the changelog and the
+# version bump. Merging *that* pull request is what cuts the release: release-please creates
+# the tag and the GitHub release, and the jobs below attach the packages to it.
+#
+# release-please lives in this workflow rather than its own because a tag pushed with
+# GITHUB_TOKEN deliberately does not trigger other workflows. A separate tag-triggered
+# workflow would sit there and never run.
+
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to build (without the leading v). Builds only; publishes nothing."
+        description: "Build the packages without releasing anything, at this version."
         required: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  release-please:
+    name: Release pull request
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Report
+        run: |
+          if [ "${{ steps.release.outputs.release_created }}" = "true" ]; then
+            echo "Released ${{ steps.release.outputs.tag_name }}; packages follow."
+          else
+            echo "No release this time. The release pull request has been opened or updated."
+          fi
+
   build:
     name: Build ${{ matrix.arch }} package
+    needs: [release-please]
+    # `always()` so a manual build still runs when release-please was skipped entirely.
+    if: >-
+      always() &&
+      (needs.release-please.outputs.released == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -26,34 +71,23 @@ jobs:
             runner: ubuntu-24.04-arm
 
     steps:
+      # A release builds the tag release-please just created, not the branch head, so the
+      # package cannot contain anything the release does not.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag || github.ref }}
 
       - name: Derive the version
         id: version
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            VERSION="${{ inputs.version }}"
-            [ -n "${VERSION}" ] || VERSION="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
-          fi
+          VERSION="${{ needs.release-please.outputs.version }}"
+          [ -n "${VERSION}" ] || VERSION="${{ inputs.version }}"
+          [ -n "${VERSION}" ] || VERSION="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Building ghspot ${VERSION} for ${{ matrix.arch }}"
 
-      # A tag must match the version the package will claim, or `apt` and the release
-      # disagree about what is installed.
-      - name: The tag must match pyproject
-        if: github.ref_type == 'tag'
-        run: |
-          DECLARED="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
-          if [ "${DECLARED}" != "${{ steps.version.outputs.version }}" ]; then
-            echo "::error::tag v${{ steps.version.outputs.version }} does not match" \
-                 "pyproject version ${DECLARED}. Bump one of them."
-            exit 1
-          fi
-
-      # Built in a container, the same way it builds locally, so there is only one path
-      # to keep working. The runner's own architecture decides the package architecture.
+      # Built in a container, the same way it builds locally, so there is only one path to
+      # keep working. The runner's own architecture decides the package architecture.
       - name: Build the package
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -69,16 +103,14 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish release
-    needs: build
-    if: github.ref_type == 'tag'
+    name: Attach packages to the release
+    needs: [release-please, build]
+    if: needs.release-please.outputs.released == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           pattern: ghspot-*-deb
@@ -91,13 +123,25 @@ jobs:
           sha256sum *.deb > SHA256SUMS
           cat SHA256SUMS
 
-      - name: Publish
+      # release-please has already created the release with the changelog as its notes, so
+      # this uploads to it and appends installation instructions rather than replacing them.
+      - name: Upload the packages
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+        run: gh release upload "${TAG}" dist/*.deb dist/SHA256SUMS --clobber
+
+      - name: Append the installation notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag }}
         run: |
           NOTES="$(mktemp)"
-          cat > "${NOTES}" <<'BODY'
+          gh release view "${TAG}" --json body --jq .body > "${NOTES}"
+          cat >> "${NOTES}" <<'BODY'
+
+          ---
+
           ## Install
 
           ```bash
@@ -118,8 +162,4 @@ jobs:
           Verify a download against `SHA256SUMS`.
           BODY
 
-          gh release create "${TAG}" \
-            --title "ghspot ${TAG}" \
-            --notes-file "${NOTES}" \
-            --verify-tag \
-            dist/*.deb dist/SHA256SUMS
+          gh release edit "${TAG}" --notes-file "${NOTES}"
