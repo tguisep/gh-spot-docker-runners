@@ -50,10 +50,29 @@ class ConfigError(GhSpotError):
     """The configuration file is missing, malformed, or internally inconsistent."""
 
 
+#: systemd sets this when a unit declares StateDirectory=. Honouring it is what keeps the
+#: unit and the daemon agreeing about where state lives without the operator restating it.
+STATE_DIRECTORY_ENV = "STATE_DIRECTORY"
+
+
+def default_state_db() -> Path:
+    """Where the projection lives when the configuration does not say.
+
+    Under systemd that is the directory the unit already had created for it. Run by hand it
+    is the usual per-user location. Getting this wrong is not obvious: the daemon starts,
+    then fails on every tick trying to write somewhere ProtectSystem has made read-only.
+    """
+    managed = os.environ.get(STATE_DIRECTORY_ENV, "").strip()
+    if managed:
+        # systemd may hand over a colon-separated list; the first entry is ours.
+        return Path(managed.split(":")[0]) / "state.db"
+    return Path("~/.local/state/ghspot/state.db").expanduser()
+
+
 @dataclass(frozen=True, slots=True)
 class DaemonSettings:
     poll_interval: timedelta = timedelta(seconds=15)
-    state_db: Path = Path("~/.local/state/ghspot/state.db")
+    state_db: Path = field(default_factory=default_state_db)
     api_bind: str | None = None
     """``host:port`` to serve the REST API on, or ``None`` to run without it."""
 
@@ -221,7 +240,11 @@ def _daemon(table: dict[str, Any]) -> DaemonSettings:
 
     return DaemonSettings(
         poll_interval=_duration(table.get("poll_interval", "15s"), "daemon.poll_interval"),
-        state_db=Path(str(table.get("state_db", "~/.local/state/ghspot/state.db"))).expanduser(),
+        state_db=(
+            Path(str(table["state_db"])).expanduser()
+            if table.get("state_db")
+            else default_state_db()
+        ),
         api_bind=str(table["api_bind"]) if table.get("api_bind") else None,
         stop_timeout=_duration(table.get("stop_timeout", "30s"), "daemon.stop_timeout"),
         log_level=str(table.get("log_level", "INFO")).upper(),
