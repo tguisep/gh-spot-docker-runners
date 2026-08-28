@@ -297,3 +297,62 @@ would turn a busy host into a stuck one, and there is a test for it.
 - **`0 == False` in Python**, so the first version of the config parser read
   `max_containers = 0` as "not configured" — silently unlimited, the opposite of what anyone
   writing that means. The parser now tests identity. The test suite caught it, not review.
+
+## 2026-08-28 — a dashboard, and the numbers behind it
+
+An alternative to the CLI rather than a replacement: the same pools, runners, logs and usage
+report, plus the two interventions — stop a runner, force a tick. React and TypeScript, built
+by Vite, served by the daemon itself.
+
+### Why /ui and not /
+
+The dashboard's own routes are named after the same things the API's are — `/runners`,
+`/pools`. Mounting it at the root would have the two shadow each other, and which one won
+would depend on registration order. `/ui` costs one path segment and removes the class of bug;
+`/` redirects there. The mount happens after every API route is registered, so nothing the
+dashboard adds can shadow one.
+
+It is optional in the strongest sense. The daemon does not build it, does not require it, and
+starts normally when it is absent; a package built on a machine without `npm` simply has no
+dashboard. A directory without an `index.html` is not a dashboard either — otherwise a
+half-finished build would be mounted and 404 every page instead of reading as "not built".
+
+### CPU and memory
+
+`docker stats` per container, off by default everywhere: the CLI's listings and the API's
+`/runners` are otherwise a file read, and sampling would put an Engine call per runner behind
+them. `--usage` on the CLI, `?usage=true` on the API, a checkbox on the dashboard.
+
+Two details in the derivation are worth keeping:
+
+- **CPU is a rate and the Engine reports counters**, so it comes from the two snapshots every
+  sample carries. A just-started container has identical snapshots, so the system delta is
+  zero — reported as 0%, not as a division error.
+- **Memory subtracts the page cache.** Without that, a job that merely read a large file looks
+  like a job that leaked, because Linux charges cache to the cgroup until something needs the
+  pages.
+
+A runner with no sample keeps `None`, never zero. "Not measured" and "idle" are different
+facts, and a container that has exited is not using nothing — it is not there.
+
+### `--watch`
+
+`watch ghspot pool status` was the habit this replaces. `watch` re-runs the whole command, so
+every refresh re-reads the configuration and reopens the database, and it drops the colours
+unless told otherwise. `--watch 2` keeps the process up and repaints the frame. Ctrl-C is how
+it is meant to end, so it exits 0.
+
+### Notes for later
+
+- The log view polls the existing endpoint every two seconds rather than adding a streaming
+  one. At a runner's log volume that is indistinguishable from a follow, and it holds no
+  connection open per viewer. If logs ever get long enough for that to hurt, the endpoint to
+  add is a real one, not a faster poll.
+- Polling pauses while the browser tab is hidden, and a failed poll keeps the last good data
+  on screen rather than blanking the page.
+- `RunnerView` gained three optional fields rather than a nested object, because the CLI
+  renders them as two columns and a nested null is more awkward to thread than three.
+- The web tests mount the app against a stubbed `fetch`. A React app that throws on mount
+  serves a 200 with an empty body, which every check short of opening it in a browser reports
+  as healthy — this was the cheapest substitute available for actually opening it, which is
+  still worth doing before release.
