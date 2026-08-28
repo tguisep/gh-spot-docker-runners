@@ -19,6 +19,9 @@ sides, when the job finishes.
   declared configuration, and converges both ways. Runners stuck `Offline` after a hard kill, and
   containers orphaned by a daemon crash, are repaired on the next tick. There is no cleanup
   script to run.
+- **`pm`, as php-fpm means it.** A pool declares whether it keeps runners `static`, `dynamic`
+  or `ondemand`, and a setting that does not apply to its mode is refused rather than
+  silently ignored.
 - **Demand-driven.** The daemon polls for queued jobs and scales the pool to match, within the
   bounds you set. No inbound ports, so it works behind NAT on a home server.
 - **No I/O in the domain.** Docker and GitHub sit behind ports, so the scaling policy and the
