@@ -22,7 +22,7 @@ from ghspot.application.commands.provision import RunnerTemplate
 from ghspot.application.reconciliation import PoolConfiguration
 from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.labels import LabelSet
-from ghspot.domain.model.pool import PoolSpec
+from ghspot.domain.model.pool import PoolSpec, ProcessManager
 from ghspot.domain.model.target import RepositoryTarget
 
 TOKEN_ENV = "GHSPOT_GITHUB_TOKEN"
@@ -300,13 +300,13 @@ def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
             name=str(name),
             repository=RepositoryTarget.parse(str(repository)),
             labels=LabelSet.from_iterable(str(label) for label in labels),
-            min_idle=int(table.get("min_idle", 0)),
             max_runners=int(table.get("max_runners", 2)),
             idle_timeout=parse_duration(table.get("idle_timeout", "10m"), f"{where}.idle_timeout"),
             max_job_duration=parse_duration(
                 table.get("max_job_duration", "2h"), f"{where}.max_job_duration"
             ),
             max_launch_per_tick=int(table.get("max_launch_per_tick", 2)),
+            **_process_manager(table, where, str(name)),
             requires_labels=_required_labels(table.get("requires_labels"), where, str(name)),
         )
     except GhSpotError as error:
@@ -341,6 +341,67 @@ def _template(container: dict[str, Any], where: str, name: str) -> RunnerTemplat
 
 
 # -- helpers -------------------------------------------------------------------------
+
+
+def _process_manager(table: dict[str, Any], where: str, name: str) -> dict[str, Any]:
+    """Read `pm` and the knobs that belong to it.
+
+    Knobs that do not apply to the chosen mode are refused rather than ignored, the way
+    php-fpm refuses `pm.min_spare_servers` under `pm = static`. A setting that is quietly
+    doing nothing is worse than one that will not load: the pool behaves unlike its
+    configuration and nothing says so.
+    """
+    written = table.get("pm")
+    if written in (None, ""):
+        mode = ProcessManager.DYNAMIC
+    else:
+        try:
+            mode = ProcessManager(str(written).strip().lower())
+        except ValueError:
+            allowed = ", ".join(one.value for one in ProcessManager)
+            raise ConfigError(
+                f"{where} ({name}): {written!r} is not a process manager. Use one of: {allowed}"
+            ) from None
+
+    def refuse(keys: tuple[str, ...]) -> None:
+        for key in keys:
+            if key in table:
+                raise ConfigError(
+                    f"{where} ({name}): '{key}' does nothing under pm = \"{mode.value}\". "
+                    + _PM_ADVICE[mode]
+                )
+
+    if mode is ProcessManager.STATIC:
+        refuse(("min_idle", "max_idle", "idle_timeout"))
+        return {"pm": mode}
+
+    if mode is ProcessManager.ONDEMAND:
+        refuse(("min_idle", "max_idle"))
+        return {"pm": mode}
+
+    min_idle = int(table.get("min_idle", 0))
+    max_idle = table.get("max_idle")
+    if max_idle in (None, ""):
+        return {"pm": mode, "min_idle": min_idle}
+
+    ceiling = int(max_idle)
+    if ceiling < min_idle:
+        raise ConfigError(
+            f"{where} ({name}): max_idle={ceiling} is below min_idle={min_idle}, so the pool "
+            "would start runners and immediately reap them"
+        )
+    return {"pm": mode, "min_idle": min_idle, "max_idle": ceiling}
+
+
+_PM_ADVICE = {
+    ProcessManager.STATIC: (
+        'static keeps exactly max_runners up and never reaps them; use pm = "dynamic" for a band.'
+    ),
+    ProcessManager.ONDEMAND: (
+        "ondemand keeps nothing warm; idle_timeout still decides how long a spent runner lingers."
+    ),
+    ProcessManager.DYNAMIC: "",
+}
 
 
 def _required_labels(value: Any, where: str, name: str) -> LabelSet | None:

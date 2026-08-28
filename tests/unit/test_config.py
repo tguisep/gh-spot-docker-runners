@@ -430,3 +430,64 @@ def test_requires_labels_must_be_a_list() -> None:
                 'labels = ["self-hosted", "linux"]\nrequires_labels = "gpu-a100"',
             )
         )
+
+
+# ---------------------------------------------------------------- pm
+
+
+def with_pool(*lines: str) -> str:
+    return MINIMAL.replace(
+        'labels = ["self-hosted", "linux"]',
+        'labels = ["self-hosted", "linux"]\n' + "\n".join(lines),
+    )
+
+
+def test_a_pool_manages_its_runners_dynamically_unless_it_says_otherwise() -> None:
+    assert parse(MINIMAL).pools[0].spec.pm.value == "dynamic"  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("mode", ["static", "dynamic", "ondemand"])
+def test_every_mode_is_accepted(mode: str) -> None:
+    settings = parse(with_pool(f'pm = "{mode}"'))
+
+    assert settings.pools[0].spec.pm.value == mode  # type: ignore[attr-defined]
+
+
+def test_a_mode_that_does_not_exist_lists_the_ones_that_do() -> None:
+    with pytest.raises(ConfigError, match="static, dynamic, ondemand"):
+        parse(with_pool('pm = "adaptive"'))
+
+
+@pytest.mark.parametrize("key", ["min_idle = 2", "max_idle = 2", 'idle_timeout = "5m"'])
+def test_static_refuses_the_knobs_that_would_do_nothing(key: str) -> None:
+    """php-fpm refuses pm.min_spare_servers under static for the same reason: a setting that
+    is quietly doing nothing is worse than one that will not load."""
+    with pytest.raises(ConfigError, match="does nothing under"):
+        parse(with_pool('pm = "static"', key))
+
+
+@pytest.mark.parametrize("key", ["min_idle = 2", "max_idle = 2"])
+def test_ondemand_refuses_the_warm_pool_knobs(key: str) -> None:
+    with pytest.raises(ConfigError, match="does nothing under"):
+        parse(with_pool('pm = "ondemand"', key))
+
+
+def test_ondemand_keeps_its_idle_timeout() -> None:
+    """It decides how long a spent runner lingers, which ondemand very much still has."""
+    settings = parse(with_pool('pm = "ondemand"', 'idle_timeout = "3m"'))
+
+    assert settings.pools[0].spec.idle_timeout.total_seconds() == 180  # type: ignore[attr-defined]
+
+
+def test_dynamic_takes_a_band() -> None:
+    settings = parse(with_pool('pm = "dynamic"', "min_idle = 1", "max_idle = 4"))
+
+    spec = settings.pools[0].spec  # type: ignore[attr-defined]
+    assert (spec.min_idle, spec.max_idle) == (1, 4)
+
+
+def test_a_band_that_is_upside_down_is_refused() -> None:
+    """The pool would start runners to reach min_idle and reap them for exceeding max_idle,
+    every tick, forever."""
+    with pytest.raises(ConfigError, match="below min_idle"):
+        parse(with_pool("min_idle = 4", "max_idle = 2"))
