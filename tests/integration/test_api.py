@@ -374,3 +374,47 @@ async def test_a_runner_with_no_sample_keeps_nulls(client: TestClient, harness: 
 
     assert body[0]["cpu_percent"] is None
     assert body[0]["memory_percent"] is None
+
+
+# ---------------------------------------------------------------- job logs
+
+
+async def test_a_running_job_has_no_forge_log_yet(client: TestClient, harness: Harness) -> None:
+    """GitHub writes the log when the job finishes, so a job in progress has none. That is
+    the normal state, not an error — and it must not read as an empty log."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    runner.mark_online(at=T0)
+    runner.assign_job(job_id=4242, at=T0)
+    await harness.repository.save(runner)
+
+    body = client.get(f"/runners/{runner.id}/job-logs").json()
+
+    assert body["job_id"] == 4242
+    assert body["available"] is False
+    assert body["lines"] == ""
+
+
+async def test_the_forge_log_appears_once_the_job_is_done(
+    client: TestClient, harness: Harness
+) -> None:
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    runner.mark_online(at=T0)
+    runner.assign_job(job_id=4242, at=T0)
+    await harness.repository.save(runner)
+    harness.forge.job_output[4242] = "2026-08-28T14:24:17Z Run actions/checkout@v4"
+
+    body = client.get(f"/runners/{runner.id}/job-logs").json()
+
+    assert body["available"] is True
+    assert "actions/checkout" in body["lines"]
+
+
+async def test_a_runner_with_no_job_is_answered_plainly(
+    client: TestClient, harness: Harness
+) -> None:
+    runner = await harness.provision(harness.spec, TEMPLATE)
+
+    body = client.get(f"/runners/{runner.id}/job-logs").json()
+
+    assert body["job_id"] is None
+    assert body["available"] is False

@@ -31,6 +31,7 @@ from ghspot.interfaces.api import dashboard
 from ghspot.interfaces.api.schemas import (
     ErrorResponse,
     HealthResponse,
+    JobLogsResponse,
     LogsResponse,
     PoolResponse,
     RunnerResponse,
@@ -163,6 +164,29 @@ def create_app(application: Application) -> FastAPI:
             else await app.backend.logs(runner.container_id, tail=tail)
         )
         return LogsResponse(runner_id=str(runner.id), lines=lines)
+
+    @api.get("/runners/{reference}/job-logs", response_model=JobLogsResponse, tags=["runners"])
+    async def get_job_logs(
+        reference: str,
+        app: Wired,
+        tail: Annotated[int, Query(ge=1, le=10_000)] = 500,
+    ) -> JobLogsResponse:
+        """The forge's log for this runner's job.
+
+        The container's own output is the live view — the runner prints the job to stdout.
+        This is the other half: written when the job finishes, and it outlives the container,
+        which a just-in-time runner takes with it seconds later.
+        """
+        runner = await ResolveRunner(app.runners)(reference)
+        lines = None
+        if runner.current_job_id is not None:
+            lines = await app.forge.job_logs(runner.repository, runner.current_job_id, tail=tail)
+        return JobLogsResponse(
+            runner_id=str(runner.id),
+            job_id=runner.current_job_id,
+            available=lines is not None,
+            lines=lines or "",
+        )
 
     @api.delete("/runners/{reference}", response_model=RunnerResponse, tags=["runners"])
     async def stop_runner(

@@ -193,5 +193,17 @@ class LogsResponse(BaseModel):
     lines: str
 
 
+class JobLogsResponse(BaseModel):
+    """The forge's log for the job a runner is running, when the forge has one."""
+
+    runner_id: str
+    job_id: int | None
+    available: bool
+    """False while the job is still running: GitHub writes the log when it finishes, so
+    there is nothing to fetch yet. Distinct from an empty log."""
+
+    lines: str
+
+
 class ErrorResponse(BaseModel):
     detail: str
