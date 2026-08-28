@@ -157,7 +157,7 @@ ghspot daemon                  run the reconciliation loop
 ghspot pool list               pools and what they hold
 ghspot pool status <name>      one pool, with its runners
 ghspot runner list [--all]     runners, from the local projection
-ghspot runner logs <ref>       container output
+ghspot runner logs <ref>       container output, or --job for GitHub's own
 ghspot runner stop <ref>       retire on both sides
 ghspot stats [--since 7d]      runners, jobs, failures and time spent
 ghspot config validate         load the config and report what it means, from every file

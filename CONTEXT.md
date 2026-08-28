@@ -356,3 +356,37 @@ it is meant to end, so it exits 0.
   serves a 200 with an empty body, which every check short of opening it in a browser reports
   as healthy — this was the cheapest substitute available for actually opening it, which is
   still worth doing before release.
+
+## 2026-08-28 — the forge's log, alongside the container's
+
+A runner has two logs, and the difference between them is a schedule, not a format:
+
+| | What | When |
+|---|---|---|
+| container | The job as it happens — the runner prints its work to stdout, so `docker logs` *is* the live job output | Now, and gone with the container seconds after the job ends |
+| GitHub | Its own log, timestamped and grouped by step | Written when the job **finishes** |
+
+**There is no live GitHub log, and this was checked rather than assumed.** Asking
+`GET /repos/{o}/{r}/actions/jobs/{id}/logs` for a job in progress answers
+`404 BlobNotFound`; the same request after it completes answers 200. So "live GitHub logs"
+is not an implementation difficulty, it is a thing the API does not do.
+
+What the endpoint buys instead is the half the container cannot give. A just-in-time runner
+is removed the moment its job ends, taking its log with it — `ghspot runner logs` on a
+retired runner had nothing to show. GitHub's copy is what remains.
+
+The dashboard shows both panes side by side: the left one live, the right one saying what it
+is waiting for and filling itself when the job ends.
+
+### Notes for later
+
+- **The download is two requests on purpose.** GitHub answers 302 with a signed URL on its
+  blob store, and that host is not GitHub. Following the redirect with the Authorization
+  header still attached would hand a credential that can register runners to somebody else's
+  domain. The redirect is read, then fetched with a clean client — and there is a test that
+  fails if the header ever appears on the second request.
+- 404 is mapped to `None`, not to an error: a job in progress is the normal case, and it has
+  to be distinguishable from an empty log so the UI can say which it is.
+- The forge pane polls at ten seconds against the container's two. Until the job ends, every
+  one of those requests is a 404 that spends rate limit to learn nothing.
+- Only the tail is returned. A completed job's log runs to megabytes.
