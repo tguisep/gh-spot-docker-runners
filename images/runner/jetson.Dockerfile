@@ -8,9 +8,14 @@
 #
 # Why not nvcr.io/nvidia/l4t-base:r32.7.1, the obvious base: it is Ubuntu 18.04, and the
 # GitHub Actions runner has shipped .NET 8 since v2.317, which needs glibc 2.28. Ubuntu 18.04
-# has 2.27. The host's 18.04 userspace does not constrain us — a container brings its own —
-# so this builds on 20.04 instead, the oldest release GitHub still supports for a runner.
-ARG BASE_IMAGE=ghspot/runner:ubuntu-20.04
+# has 2.27. The host's 18.04 userspace does not constrain us — a container brings its own.
+#
+# Why 22.04 and not 20.04, which is nearer the board's own release and would seem the safer
+# hedge: focal ships Python 3.8, and the toolset contract every variant is held to includes
+# `pipx install poetry`, which needs 3.9. A base that cannot pass verify.sh is not a base.
+# The injected driver is the old side of the pairing either way, and old libraries under a
+# newer glibc is the direction that works.
+ARG BASE_IMAGE=ghspot/runner:ubuntu-22.04
 FROM ${BASE_IMAGE}
 
 USER root

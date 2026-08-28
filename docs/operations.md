@@ -297,10 +297,9 @@ reverse proxy with auth in front of it.
 |---|---|---|
 | `ubuntu-24.04` | `ubuntu:24.04` | `runs-on: [self-hosted, ubuntu-24.04]` |
 | `ubuntu-22.04` | `ubuntu:22.04` | `runs-on: [self-hosted, ubuntu-22.04]` |
-| `ubuntu-20.04` | `ubuntu:20.04` | `runs-on: [self-hosted, ubuntu-20.04]` |
 | `rhel-9` | `almalinux:9` | `runs-on: [self-hosted, rhel-9]` |
 | `rhel-10` | `almalinux:10` | `runs-on: [self-hosted, rhel-10]` |
-| `jetson-r32` | `ghspot/runner:ubuntu-20.04` | `runs-on: [self-hosted, jetson-r32]` |
+| `jetson-r32` | `ghspot/runner:ubuntu-22.04` | `runs-on: [self-hosted, jetson-r32]` |
 
 ```bash
 images/runner/build.sh                 # all of them

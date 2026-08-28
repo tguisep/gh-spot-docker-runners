@@ -22,10 +22,9 @@ REGISTRY="${REGISTRY:-ghspot/runner}"
 VARIANTS="
 ubuntu-24.04:ubuntu.Dockerfile:ubuntu:24.04
 ubuntu-22.04:ubuntu.Dockerfile:ubuntu:22.04
-ubuntu-20.04:ubuntu.Dockerfile:ubuntu:20.04
 rhel-9:rhel.Dockerfile:almalinux:9
 rhel-10:rhel.Dockerfile:almalinux:10
-jetson-r32:jetson.Dockerfile:ghspot/runner:ubuntu-20.04
+jetson-r32:jetson.Dockerfile:ghspot/runner:ubuntu-22.04
 "
 
 # Variants that only make sense on one architecture.
@@ -110,7 +109,7 @@ error: ${name} is an ${want} image and this machine is ${have}.
       docker run --privileged --rm tonistiigi/binfmt --install arm64
       docker buildx build --platform linux/arm64 \\
           --file images/runner/jetson.Dockerfile \\
-          --build-arg BASE_IMAGE=ghspot/runner:ubuntu-20.04 \\
+          --build-arg BASE_IMAGE=ghspot/runner:ubuntu-22.04 \\
           --tag ghspot/runner:${name} images/runner/
 MSG
         return 1

@@ -24,7 +24,7 @@ jobs:
   # Three reasons pointing the same way:
   #   - what CI builds here is deleted at the end of the job, so building it on the fleet
   #     host gains nothing;
-  #   - five variants at roughly 2.7 GB each, every run, fills a home server;
+  #   - four variants at roughly 2.7 GB each, every run, fills a home server;
   #   - rhel-10 needs the x86-64-v3 microarchitecture level, which a virtual machine
   #     presenting a generic CPU does not expose. Moving this job would mean either fixing
   #     the hypervisor's CPU model or dropping rhel-10 from the matrix — and a variant that
@@ -38,7 +38,7 @@ jobs:
         # jetson-r32 is absent on purpose: it is arm64, and building 2.7 GB under qemu
         # costs more than it finds. Its guards are checked by the job below instead, and
         # the board is where it actually gets proven.
-        variant: [ubuntu-24.04, ubuntu-22.04, ubuntu-20.04, rhel-9, rhel-10]
+        variant: [ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -94,5 +94,3 @@ jobs:
             || { echo "building every variant failed:"; cat output.txt; exit 1; }
           grep -q "skipping jetson-r32" output.txt \
             || { echo "jetson-r32 was not skipped:"; cat output.txt; exit 1; }
-          grep -q "ubuntu-20.04" output.txt \
-            || { echo "ubuntu-20.04 is not in the variant list"; cat output.txt; exit 1; }

@@ -138,14 +138,19 @@ is granted by running the container under JetPack's own runtime.
 So pools gained a `runtime` key, plumbed through `RunnerTemplate` and `ContainerSpec` to the
 Engine. `gpus` and `runtime` are alternatives, and on a Jetson only the second one works.
 
-The image is the `ubuntu-20.04` variant plus two lines, not a base of its own. Two choices in
-it are worth keeping:
+The image is the `ubuntu-22.04` variant plus two lines, not a base of its own. Three choices
+in it are worth keeping:
 
 - **Not `nvcr.io/nvidia/l4t-base:r32.7.1`**, the obvious base. It is Ubuntu 18.04, and the
   runner has shipped .NET 8 since v2.317, which needs glibc 2.28; 18.04 has 2.27. The board's
-  own 18.04 userspace never constrained the image — a container brings its own — so the
-  variant builds on 20.04, the oldest release GitHub still supports for a runner. It was
+  own 18.04 userspace never constrained the image — a container brings its own. It was
   briefly mistaken for a blocker on the whole feature, which it is not.
+- **Not 20.04 either**, which was the first choice on the reasoning that a container nearer
+  the board's own 18.04 has less to go wrong. CI disproved it: focal ships Python 3.8, and
+  `verify.sh` holds every variant to a toolset contract that includes `pipx install poetry`,
+  which needs 3.9. The image built and failed its own contract. The distance argument was a
+  hedge rather than a requirement — the injected driver is the old side of the pairing
+  whatever the base, and old libraries under a newer glibc is the direction that works.
 - **Both `ld.so.conf.d` and `LD_LIBRARY_PATH`**, which looks redundant and is not.
   `/etc/ld.so.cache` is generated at build time, when the tegra directories are still empty.
   `ld.so` reads the cache and then only its trusted defaults, so a path listed in
