@@ -179,6 +179,7 @@ def test_the_credential_file_takes_both_forms() -> None:
         render("env.j2", app_vars, rendered_app)
         body = rendered_app.read_text()
         check("GHSPOT_GITHUB_APP_ID=123456" in body, "env: app id not written")
+        check("GHSPOT_WEB_ROOT" not in body, "env: a web root nobody asked for")
         check("\\n" in body, "env: newlines not escaped for systemd's EnvironmentFile")
         check("GHSPOT_GITHUB_TOKEN" not in body, "env: token written alongside an App")
 
@@ -255,6 +256,25 @@ def test_pools_can_be_rendered_one_file_each() -> None:
             )
 
 
+def test_the_dashboard_location_is_only_written_when_set() -> None:
+    """The daemon finds the packaged dashboard on its own; the variable is the override."""
+    with tempfile.TemporaryDirectory() as directory:
+        variables = Path(directory) / "web.yml"
+        variables.write_text(
+            "ghspot_github_token: t\n"
+            "ghspot_github_app_id: ''\n"
+            "ghspot_github_app_private_key: ''\n"
+            "ghspot_web_root: /srv/ghspot/web\n"
+        )
+        rendered = Path(directory) / "env"
+        render("env.j2", variables, rendered)
+
+        check(
+            "GHSPOT_WEB_ROOT=/srv/ghspot/web" in rendered.read_text(),
+            "env: web root lost",
+        )
+
+
 def main() -> int:
     for test in (
         test_minimal,
@@ -262,6 +282,7 @@ def main() -> int:
         test_housekeeping_can_be_turned_off,
         test_the_credential_file_takes_both_forms,
         test_pools_can_be_rendered_one_file_each,
+        test_the_dashboard_location_is_only_written_when_set,
     ):
         test()
         print(f"  {'FAIL' if failures else 'ok  '}  {test.__name__}")

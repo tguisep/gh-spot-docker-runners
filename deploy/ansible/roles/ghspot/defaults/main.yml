@@ -35,8 +35,18 @@ ghspot_github_app_private_key: ""
 ghspot_api_url: https://api.github.com
 ghspot_poll_interval: 15s
 ghspot_state_db: /var/lib/ghspot/state.db
+# The REST API, and with it the web dashboard at /ui. Unset means neither is served and no
+# port is opened, which is the right default for a machine nobody asked to expose.
+#
+# There is no authentication on either. "127.0.0.1:8770" keeps it on the host, reachable
+# over an SSH tunnel:  ssh -L 8770:localhost:8770 the-host
 ghspot_api_bind: ""
 ghspot_log_level: INFO
+
+# Where the daemon looks for the built dashboard. Empty means the packaged location, which
+# is what the .deb installs and what almost everyone wants. Set it only when serving a build
+# from somewhere else.
+ghspot_web_root: ""
 
 # Reclaiming what jobs leave on the host.
 #

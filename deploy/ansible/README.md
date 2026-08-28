@@ -42,6 +42,8 @@ green run means the daemon can actually do its job, not merely that files were c
 | `ghspot_images` | `[ubuntu-24.04]` | Which runner images to build |
 | `ghspot_install_docker` | `false` | Install Docker as well |
 | `ghspot_service_state` | `started` | `stopped` to configure without running |
+| `ghspot_api_bind` | `""` | Serve the API and the dashboard, e.g. `127.0.0.1:8770` |
+| `ghspot_web_root` | `""` | Where the dashboard was built, when not the packaged location |
 
 Everything else is in [`roles/ghspot/defaults/main.yml`](roles/ghspot/defaults/main.yml).
 
@@ -129,6 +131,37 @@ since `ghspot doctor` fails the play when a pool asks for GPUs the host cannot p
 Give GPU work its own pool, and set `max_runners` to the number of GPUs you have: two runners
 sharing one GPU both run, and both are slower than either alone.
 
+## The dashboard
+
+The package carries a web dashboard covering the same ground as the CLI. The role installs
+nothing extra for it — it rides in the `.deb` — but it is only *served* when the API is
+bound:
+
+```yaml
+ghspot_api_bind: "127.0.0.1:8770"
+```
+
+Then it is at `http://127.0.0.1:8770/ui`, on the host. Neither it nor the API has any
+authentication, which is why the default is unset and why the address above is loopback.
+Reach it over a tunnel:
+
+```bash
+ssh -L 8770:localhost:8770 the-host      # then open http://localhost:8770/ui
+```
+
+A run reports which of three states the host ended in, so a deploy says what happened
+instead of leaving a URL to guess at:
+
+| After a run | What it means |
+|---|---|
+| `dashboard: http://…/ui` | Bound and installed |
+| `the API is bound … but no dashboard is installed` | The package was built without `npm`. The API itself is unaffected |
+| `a dashboard is installed but ghspot_api_bind is unset` | Nothing is served; set the bind address |
+
+`ghspot_web_root` overrides where the daemon looks, for a build kept somewhere other than the
+packaged location. Leave it empty otherwise: an explicit value is authoritative, so a typo
+serves nothing rather than quietly falling back to a different directory.
+
 ## Building images takes a while
 
 Each variant is a couple of gigabytes and several minutes. The role skips any already on the
@@ -161,7 +194,8 @@ The same arrangement, and the same rules, as `php-fpm.d`.
 
 - **It does not add your user to the `docker` group.** The package puts the *service*
   account there, which is what the daemon needs. Doing it for a human is your call.
-- **It does not open ports.** `ghspot_api_bind` defaults to unset, and the API has no
-  authentication — keep it on localhost.
+- **It does not open ports.** `ghspot_api_bind` defaults to unset, so neither the API nor
+  the dashboard is served and nothing listens. Neither has authentication — keep it on
+  localhost.
 - **It does not manage the repository side.** Registering runners is the daemon's job; there
   is nothing to configure on GitHub beyond the credential.
