@@ -20,6 +20,7 @@ from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.ports.backend import (
     ContainerSpec,
     ContainerStatus,
+    ContainerUsage,
     HostLoad,
     PruneReport,
     PruneRequest,
@@ -180,6 +181,9 @@ class FakeBackend:
     load: HostLoad = field(default_factory=HostLoad)
     """What `host_load()` reports."""
 
+    samples: dict[str, ContainerUsage] = field(default_factory=dict)
+    """What `usage()` reports, keyed by container id."""
+
     now: datetime = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
     _next_id: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
 
@@ -234,6 +238,18 @@ class FakeBackend:
         """Whatever a test set. The default reads as an unmeasurable host, which is the
         state that must never block a launch."""
         return self.load
+
+    async def usage(self, container_ids: Sequence[str]) -> Mapping[str, ContainerUsage]:
+        """Whatever a test put in ``samples``, for the ids that are still running.
+
+        Absent ids are simply missing, which is what the real backend does when a container
+        went away between the listing and the sample.
+        """
+        return {
+            container_id: self.samples[container_id]
+            for container_id in container_ids
+            if container_id in self.samples
+        }
 
     async def logs(self, container_id: str, tail: int = 200) -> str:
         self._guard("logs")

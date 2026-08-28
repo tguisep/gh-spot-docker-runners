@@ -17,6 +17,7 @@ from ghspot.infrastructure.docker.backend import (
     _parse_time,
     _run_arguments,
     _to_status,
+    _usage_from_stats,
 )
 
 
@@ -217,3 +218,95 @@ def test_a_field_docker_omitted_is_not_invented() -> None:
     assert backend_module._positive(0, allow_zero=True) == 0
     assert backend_module._positive(True) is None  # a bool is not a count
     assert backend_module._positive(8) == 8
+
+
+# ---------------------------------------------------------------- usage
+
+
+def stats_sample(
+    *,
+    used: int = 0,
+    used_before: int = 0,
+    system: int = 0,
+    system_before: int = 0,
+    cores: int = 4,
+    memory: int = 0,
+    cache: int = 0,
+    limit: int = 0,
+) -> dict[str, object]:
+    """A `docker stats` reply, in the shape the Engine actually sends."""
+    return {
+        "cpu_stats": {
+            "cpu_usage": {"total_usage": used},
+            "system_cpu_usage": system,
+            "online_cpus": cores,
+        },
+        "precpu_stats": {
+            "cpu_usage": {"total_usage": used_before},
+            "system_cpu_usage": system_before,
+        },
+        "memory_stats": {"usage": memory, "limit": limit, "stats": {"inactive_file": cache}},
+    }
+
+
+def test_cpu_is_derived_from_the_two_snapshots() -> None:
+    """One core of four fully busy is 100%, not 25%: `docker stats` counts per core."""
+    usage = _usage_from_stats(
+        "c1",
+        stats_sample(used=1_000_000, used_before=0, system=4_000_000, system_before=0, cores=4),
+    )
+
+    assert usage is not None
+    assert usage.cpu_percent == 100.0
+
+
+def test_every_core_busy_reads_above_one_hundred_percent() -> None:
+    usage = _usage_from_stats(
+        "c1",
+        stats_sample(used=4_000_000, used_before=0, system=4_000_000, system_before=0, cores=4),
+    )
+
+    assert usage is not None
+    assert usage.cpu_percent == 400.0
+
+
+def test_a_first_sample_reports_zero_rather_than_dividing_by_zero() -> None:
+    """A just-started container has identical snapshots, so there is no rate to report yet."""
+    usage = _usage_from_stats(
+        "c1", stats_sample(used=500, used_before=500, system=9, system_before=9)
+    )
+
+    assert usage is not None
+    assert usage.cpu_percent == 0.0
+
+
+def test_page_cache_is_not_counted_as_memory_in_use() -> None:
+    """Otherwise a job that merely read a large file looks like a job that leaked."""
+    usage = _usage_from_stats(
+        "c1", stats_sample(memory=900_000_000, cache=600_000_000, limit=2_000_000_000)
+    )
+
+    assert usage is not None
+    assert usage.memory_bytes == 300_000_000
+    assert usage.memory_percent == pytest.approx(15.0)
+
+
+def test_an_unlimited_container_has_no_memory_share() -> None:
+    usage = _usage_from_stats("c1", stats_sample(memory=1_000, limit=0))
+
+    assert usage is not None
+    assert usage.memory_limit_bytes is None
+    assert usage.memory_percent == 0.0
+
+
+def test_missing_fields_read_as_zero_rather_than_raising() -> None:
+    """Docker omits a field instead of sending zero, and a sample is not worth an exception."""
+    usage = _usage_from_stats("c1", {})
+
+    assert usage is not None
+    assert usage.cpu_percent == 0.0
+    assert usage.memory_bytes == 0
+
+
+def test_a_reply_that_is_not_a_sample_is_refused() -> None:
+    assert _usage_from_stats("c1", None) is None

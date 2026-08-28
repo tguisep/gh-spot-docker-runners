@@ -30,6 +30,19 @@ class RunnerView:
     time_in_state_seconds: float = 0.0
     failure_reason: str | None = None
 
+    cpu_percent: float | None = None
+    """Across all cores, as `docker stats` reports it. ``None`` when not sampled — which is
+    the default, because sampling costs a call per container and most reads do not need it."""
+
+    memory_bytes: int | None = None
+    memory_limit_bytes: int | None = None
+
+    @property
+    def memory_percent(self) -> float | None:
+        if self.memory_bytes is None or not self.memory_limit_bytes:
+            return None
+        return 100.0 * self.memory_bytes / self.memory_limit_bytes
+
     @property
     def short_container_id(self) -> str:
         return (self.container_id or "")[:12]
