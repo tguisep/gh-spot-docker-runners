@@ -5,7 +5,7 @@
  * proxies these paths to it. There is nothing to configure and no base URL to get wrong.
  */
 
-import type { Health, Logs, Pool, Runner, Stats, Tick } from './types';
+import type { Health, JobLogs, Logs, Pool, Runner, Stats, Tick } from './types';
 
 /** A failure the UI can show a person, rather than a stack trace or a bare `TypeError`. */
 export class ApiError extends Error {
@@ -64,6 +64,9 @@ export const api = {
 
     logs: (reference: string, tail = 200) =>
         request<Logs>(`/runners/${encodeURIComponent(reference)}/logs?tail=${tail}`),
+
+    jobLogs: (reference: string, tail = 500) =>
+        request<JobLogs>(`/runners/${encodeURIComponent(reference)}/job-logs?tail=${tail}`),
 
     stop: (reference: string, force = false) =>
         request<Runner>(`/runners/${encodeURIComponent(reference)}?force=${force}`, {

@@ -77,6 +77,14 @@ export interface Logs {
     lines: string;
 }
 
+export interface JobLogs {
+    runner_id: string;
+    job_id: number | null;
+    /** False while the job is still running: GitHub writes its log when the job finishes. */
+    available: boolean;
+    lines: string;
+}
+
 export interface Usage {
     key: string;
     runners: number;

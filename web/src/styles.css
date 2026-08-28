@@ -370,3 +370,22 @@ a.button {
 a.button:hover {
     border-color: var(--accent);
 }
+
+/* Two log panes on one screen. Stacks below a laptop width, where side-by-side would give
+   each pane forty columns and neither would be readable. */
+.split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+@media (max-width: 1100px) {
+    .split {
+        grid-template-columns: 1fr;
+    }
+}
+
+.split .logs {
+    max-height: 55vh;
+}
