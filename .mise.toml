@@ -1,0 +1,73 @@
+# Project tooling, declared once.
+#
+#   mise install    # everything below, at these versions
+#   mise run check  # what CI runs
+#
+# CI does not use mise: workflows install uv directly through setup-uv, which caches better
+# on a hosted runner. This is for a developer's machine, and for the runner images, which
+# carry mise so a workflow can honour a file like this one.
+
+[tools]
+python = "3.12"
+uv = "0.12.6"
+
+# The Ansible toolchain, so `mise install` gets everything rather than leaving the role's
+# tests to a uvx incantation nobody remembers.
+#
+# ansible-core is its own tool rather than only a dependency of the others: molecule shells
+# out to `ansible`, so it has to be on PATH, not merely importable. Discovered by installing
+# it the other way first and watching molecule fail inside ansible_compat.
+"pipx:ansible-core" = "2.21.3"
+"pipx:ansible-lint" = "26.8.0"
+"pipx:molecule" = { version = "26.8.0", uvx_args = "--with molecule-plugins[docker] --with ansible-core --with docker" }
+
+[env]
+# uv reads this; keeping it here means `uv sync` behaves the same for everyone.
+UV_FROZEN = "1"
+
+[tasks.install]
+description = "Install dependencies, including the development ones"
+run = "uv sync --all-extras"
+
+[tasks.lint]
+description = "ruff and mypy, the same invocations CI uses"
+run = [
+  "uv run ruff check .",
+  "uv run ruff format --check .",
+  "uv run mypy",
+]
+
+[tasks.format]
+description = "Apply formatting rather than checking it"
+run = "uv run ruff format ."
+
+[tasks.test]
+description = "Unit and integration tests, skipping the ones that need a real token"
+run = "uv run pytest -m 'not e2e'"
+
+[tasks.check]
+description = "Everything CI would run against a Python change"
+depends = ["lint", "test"]
+
+[tasks.images]
+description = "Build every runner image"
+run = "images/runner/build.sh"
+
+[tasks.ansible]
+description = "Lint the role and check it renders configuration the daemon accepts"
+run = [
+  "ansible-lint deploy/ansible",
+  "uv run python deploy/ansible/test/render_and_validate.py",
+]
+
+[tasks.molecule]
+description = "Converge the role against a container with systemd, and verify it"
+dir = "deploy/ansible/roles/ghspot"
+run = "molecule test"
+
+[tasks.deb]
+description = "Build the Debian package and install it on a clean system"
+run = [
+  "packaging/deb/build-in-docker.sh",
+  "packaging/deb/verify.sh dist/ghspot_*.deb",
+]

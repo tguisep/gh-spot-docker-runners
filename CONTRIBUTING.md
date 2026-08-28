@@ -2,12 +2,32 @@
 
 ## Setting up
 
+With [mise](https://mise.jdx.dev), which installs the pinned python and uv and gives you the
+project's tasks:
+
 ```bash
-git clone https://github.com/tguisep/gh-spot-docker-runners.git
-cd gh-spot-docker-runners
+mise install            # python, uv, ansible-core, ansible-lint, molecule — all pinned
+mise run check          # lint and tests, the same invocations CI uses
+mise run ansible        # lint the role, and check it renders config the daemon accepts
+mise run molecule       # converge the role against a container with systemd
+mise tasks              # what else there is
+```
+
+That includes the Ansible toolchain, so testing the role does not mean remembering a `uvx`
+line with four `--with` flags. `ansible-core` is declared as a tool in its own right rather
+than only as a dependency: molecule shells out to `ansible`, so it has to be on `PATH`, not
+merely importable.
+
+Without it, uv alone is enough:
+
+```bash
 uv sync --all-extras
 uv run pre-commit install
 ```
+
+CI deliberately does **not** use mise — workflows install uv through `setup-uv`, which caches
+better on a hosted runner. `.mise.toml` is for a developer's machine, and for the runner
+images, which carry mise so a workflow can honour a file like it.
 
 ## The checks
 
