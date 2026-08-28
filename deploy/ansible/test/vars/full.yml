@@ -1,0 +1,47 @@
+# Everything the template can emit, so a key that stops round-tripping is caught.
+ghspot_api_url: https://github.example.com/api/v3
+ghspot_github_app_id: "123456"
+ghspot_poll_interval: 30s
+ghspot_state_db: /srv/ghspot/state.db
+ghspot_log_level: DEBUG
+ghspot_api_bind: "127.0.0.1:8770"
+ghspot_housekeeping:
+  enabled: true
+  every: 6h
+  containers_older_than: 2h
+  images_older_than: 48h
+  volumes: false
+  build_cache_older_than: 12h
+  keep_build_cache: 5g
+ghspot_pools:
+  - name: ubuntu
+    repository: tguisep/my-project
+    labels: [self-hosted, linux, x64, ubuntu-24.04]
+    min_idle: 2
+    max_runners: 6
+    idle_timeout: 20m
+    max_job_duration: 4h
+    max_launch_per_tick: 3
+    container:
+      image: ghspot/runner:ubuntu-24.04
+      cpus: 4.0
+      memory: 8g
+      docker_socket: true
+      network: ghspot-net
+      volumes:
+        /srv/cache: /home/runner/.cache
+  - name: gpu
+    repository: tguisep/my-project
+    labels: [self-hosted, linux, x64, gpu-a100]
+    requires_labels: [gpu-a100]
+    max_runners: 1
+    container:
+      image: ghspot/runner:ubuntu-24.04
+      gpus: all
+      docker_socket: true
+  - name: rhel
+    repository: tguisep/other-project
+    labels: [self-hosted, linux, x64, rhel-9]
+    container:
+      image: ghspot/runner:rhel-9
+      gpus: ["0", "1"]

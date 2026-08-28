@@ -1,0 +1,46 @@
+---
+# The scenario mounts the host's Docker socket, but the test image has no Docker client, so
+# the role's "is Docker reachable" check has nothing to ask with. A real host running runners
+# has both; this gives the container the same.
+#
+# Only the client. Running a second daemon inside the container would test something nobody
+# deploys.
+- name: Prepare
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Install what the Docker repository needs
+      ansible.builtin.apt:
+        name: [ca-certificates, curl]
+        state: present
+        update_cache: true
+
+    - name: Add Docker's signing key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker's repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu
+          {{ ansible_distribution_release }} stable
+        filename: docker
+        state: present
+
+    - name: Install the Docker client
+      ansible.builtin.apt:
+        name: docker-ce-cli
+        state: present
+        update_cache: true
+
+    # The daemon package creates this group; the client alone does not. Without it the
+    # package's postinst has no group to add the service account to and skips that step —
+    # correctly, but it would make the test assert something no real Docker host looks like.
+    - name: Create the docker group, as a host running Docker would have
+      ansible.builtin.group:
+        name: docker
+        state: present

@@ -72,3 +72,10 @@ ghspot_pools: []
 # Whether to start the service. Set false to configure a host without running it yet.
 ghspot_service_enabled: true
 ghspot_service_state: started
+
+# Whether a run must end with a working daemon.
+#
+# `ghspot doctor` runs either way and its output is always shown; this decides whether its
+# verdict fails the play. Set false to configure a host before its credential exists — or in
+# a test, where there is no real repository to reach.
+ghspot_verify: true

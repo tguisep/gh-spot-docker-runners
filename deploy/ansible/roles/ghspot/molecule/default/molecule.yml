@@ -1,0 +1,73 @@
+---
+# Runs the role against a container that actually has systemd, so the parts that matter —
+# the unit, the service account, the rendered configuration — are exercised rather than
+# assumed.
+#
+# What is deliberately not exercised: starting the daemon, and building runner images.
+# Starting it needs a real repository and credential, and building four images takes longer
+# than the rest of CI put together. Both are covered elsewhere: the packaging workflow
+# installs the .deb on a clean system, and the runner-images workflow builds every variant.
+driver:
+  name: docker
+
+platforms:
+  - name: ghspot-ubuntu-2404
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    # systemd needs both, and the role installs a unit.
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      # The role requires Docker to be reachable, and so does `ghspot doctor`.
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: /usr/sbin/init
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  env:
+    # Molecule runs from its own temporary directory, so the role under test is not on the
+    # default search path and converge.yml cannot find it. MOLECULE_PROJECT_DIRECTORY is the
+    # role; its parent is the roles directory.
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..
+    # The test image's home directory is not writable by the connecting user, so Ansible
+    # cannot create its usual staging directory and every task reports UNREACHABLE.
+    ANSIBLE_REMOTE_TMP: /tmp/.ansible-tmp
+  inventory:
+    group_vars:
+      all:
+        # The real release package, so the install path under test is the documented one.
+        ghspot_version: latest
+
+        # Four images at ~2.7 GB each is not a unit test.
+        ghspot_build_images: false
+
+        # No repository to reach and no credential worth having, so the daemon is configured
+        # but not started, and doctor's verdict does not fail the play.
+        ghspot_service_enabled: false
+        ghspot_service_state: stopped
+        ghspot_verify: false
+
+        ghspot_github_token: github_pat_not_a_real_token
+        ghspot_pools:
+          - name: default
+            repository: tguisep/gh-spot-docker-runners
+            labels: [self-hosted, linux, x64, ubuntu-24.04]
+            min_idle: 1
+            max_runners: 3
+            container:
+              image: ghspot/runner:ubuntu-24.04
+              cpus: 2.0
+              memory: 4g
+              docker_socket: true
+          - name: gpu
+            repository: tguisep/gh-spot-docker-runners
+            labels: [self-hosted, linux, x64, gpu-a100]
+            requires_labels: [gpu-a100]
+            max_runners: 1
+            container:
+              image: ghspot/runner:ubuntu-24.04
+              gpus: all
+
+verifier:
+  name: ansible

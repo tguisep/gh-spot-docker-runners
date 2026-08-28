@@ -1,0 +1,12 @@
+---
+# The role passes the strictest profile; keeping it named here means a regression is a
+# failure rather than a quiet downgrade.
+profile: production
+
+exclude_paths:
+  - .cache/
+  - inventory/hosts.example.ini
+
+# Fixture variables for the render test are data, not tasks.
+kinds:
+  - vars: test/vars/*.yml

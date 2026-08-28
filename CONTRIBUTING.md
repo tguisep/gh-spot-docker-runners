@@ -108,6 +108,7 @@ it can affect:
 | `python.yml` | `src/`, `tests/`, `pyproject.toml`, `uv.lock` |
 | `runner-images.yml` | `images/runner/` |
 | `packaging.yml` | `packaging/`, `deploy/`, `src/`, `docs/operations.md` |
+| `ansible.yml` | `deploy/ansible/`, and the daemon's configuration module |
 | `upstream-toolset.yml` | `images/runner/`, and weekly |
 | `release.yml` | pushes to `main` |
 

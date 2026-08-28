@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""Render the role's templates and load the result with ghspot's own parser.
+
+The role restates the daemon's configuration schema in a Jinja template. Nothing fails when
+those two drift: the role keeps rendering a file the daemon quietly ignores, and the drift
+surfaces months later as a setting that does nothing. This is the check that turns that into
+a red build.
+
+Rendered with Ansible itself, not a stand-in Jinja environment, so the filters the template
+actually uses are the ones under test.
+
+    uv run python deploy/ansible/test/render_and_validate.py
+
+Needs `ansible` on PATH and `ghspot` importable.
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+import tempfile
+from datetime import timedelta
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+TEMPLATES = ROOT / "deploy/ansible/roles/ghspot/templates"
+VARS = Path(__file__).resolve().parent / "vars"
+
+sys.path.insert(0, str(ROOT / "src"))
+from ghspot.infrastructure.config.settings import Settings, load  # noqa: E402
+
+failures: list[str] = []
+
+
+def check(condition: bool, message: str) -> None:
+    if not condition:
+        failures.append(message)
+
+
+def render(template: str, variables: Path, destination: Path) -> None:
+    """Render one template through Ansible, as the role itself would."""
+    result = subprocess.run(
+        [
+            "ansible",
+            "localhost",
+            "-c",
+            "local",
+            "-m",
+            "ansible.builtin.template",
+            "-a",
+            f"src={TEMPLATES / template} dest={destination}",
+            "-e",
+            f"@{variables}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if not destination.exists():
+        sys.exit(f"rendering {template} with {variables.name} failed:\n{result.stdout}")
+
+
+def settings_for(variables: Path) -> Settings:
+    with tempfile.TemporaryDirectory() as directory:
+        rendered = Path(directory) / "config.toml"
+        render("config.toml.j2", variables, rendered)
+        return load(rendered)
+
+
+def test_minimal() -> None:
+    """Defaults the template fills in are the defaults the daemon would have chosen."""
+    settings = settings_for(VARS / "minimal.yml")
+
+    check(len(settings.pools) == 1, "minimal: expected one pool")
+    pool = settings.pools[0]
+    check(pool.spec.name == "default", "minimal: pool name lost")
+    check(str(pool.spec.repository) == "tguisep/my-project", "minimal: repository lost")
+    check(pool.template.image == "ghspot/runner:ubuntu-24.04", "minimal: image lost")
+    check(pool.template.gpus is None, "minimal: a pool asked for a GPU it never wanted")
+    check(pool.spec.requires_labels is None, "minimal: unexpected requires_labels")
+    check(not pool.template.mount_docker_socket, "minimal: socket mounted by default")
+
+
+def test_everything_round_trips() -> None:
+    """Every key the template can emit survives the daemon reading it back."""
+    settings = settings_for(VARS / "full.yml")
+
+    check(settings.github.api_url == "https://github.example.com/api/v3", "full: api_url lost")
+    check(settings.github.app_id == "123456", "full: app_id lost")
+    check(settings.daemon.poll_interval == timedelta(seconds=30), "full: poll_interval lost")
+    check(str(settings.daemon.state_db) == "/srv/ghspot/state.db", "full: state_db lost")
+    check(settings.daemon.api_bind == "127.0.0.1:8770", "full: api_bind lost")
+
+    keep = settings.housekeeping
+    check(keep.every == timedelta(hours=6), "full: housekeeping.every lost")
+    check(keep.images_older_than == timedelta(hours=48), "full: images_older_than lost")
+    check(keep.volumes is False, "full: housekeeping.volumes lost")
+    check(keep.keep_build_cache == "5g", "full: keep_build_cache lost")
+
+    pools = {pool.spec.name: pool for pool in settings.pools}
+    check(set(pools) == {"ubuntu", "gpu", "rhel"}, f"full: pools are {sorted(pools)}")
+
+    ubuntu = pools["ubuntu"]
+    check(ubuntu.spec.min_idle == 2, "full: min_idle lost")
+    check(ubuntu.spec.max_runners == 6, "full: max_runners lost")
+    check(ubuntu.spec.idle_timeout == timedelta(minutes=20), "full: idle_timeout lost")
+    check(ubuntu.spec.max_job_duration == timedelta(hours=4), "full: max_job_duration lost")
+    check(ubuntu.spec.max_launch_per_tick == 3, "full: max_launch_per_tick lost")
+    check(ubuntu.template.cpus == 4.0, "full: cpus lost")
+    check(ubuntu.template.memory == "8g", "full: memory lost")
+    check(ubuntu.template.network == "ghspot-net", "full: network lost")
+    check(
+        dict(ubuntu.template.volumes) == {"/srv/cache": "/home/runner/.cache"},
+        "full: volumes lost",
+    )
+    check(
+        ubuntu.spec.labels.as_list() == ["self-hosted", "linux", "x64", "ubuntu-24.04"],
+        "full: labels lost or reordered",
+    )
+
+    gpu = pools["gpu"]
+    check(gpu.template.gpus == "all", f"full: gpus is {gpu.template.gpus!r}, expected 'all'")
+    required = gpu.spec.requires_labels
+    check(required is not None and required.as_list() == ["gpu-a100"], "full: requires_labels lost")
+
+    rhel = pools["rhel"]
+    check(rhel.template.gpus == ("0", "1"), f"full: gpu ids are {rhel.template.gpus!r}")
+    check(str(rhel.spec.repository) == "tguisep/other-project", "full: second repository lost")
+
+
+def test_housekeeping_can_be_turned_off() -> None:
+    """`never` and omitted keys are read as 'do not', not as a parse error."""
+    settings = settings_for(VARS / "housekeeping-off.yml")
+    keep = settings.housekeeping
+
+    check(keep.enabled is False, "off: housekeeping still enabled")
+    check(keep.containers_older_than is None, "off: containers sweep still set")
+    check(keep.images_older_than is None, "off: images sweep still set")
+    check(keep.build_cache_older_than is None, "off: build cache sweep still set")
+    check(keep.keep_build_cache is None, "off: keep_build_cache still set")
+
+
+def test_the_credential_file_takes_both_forms() -> None:
+    """A token, and an App key with the newlines systemd's EnvironmentFile cannot hold."""
+    with tempfile.TemporaryDirectory() as directory:
+        token_vars = Path(directory) / "token.yml"
+        token_vars.write_text(
+            "ghspot_github_token: github_pat_example\n"
+            "ghspot_github_app_id: ''\n"
+            "ghspot_github_app_private_key: ''\n"
+        )
+        rendered = Path(directory) / "env"
+        render("env.j2", token_vars, rendered)
+        body = rendered.read_text()
+        check("GHSPOT_GITHUB_TOKEN=github_pat_example" in body, "env: token not written")
+        check("APP_ID" not in body, "env: app variables written alongside a token")
+
+        app_vars = Path(directory) / "app.yml"
+        app_vars.write_text(
+            "ghspot_github_token: ''\n"
+            "ghspot_github_app_id: '123456'\n"
+            'ghspot_github_app_private_key: "-----BEGIN PRIVATE KEY-----\\nSECOND\\n"\n'
+        )
+        rendered_app = Path(directory) / "env-app"
+        render("env.j2", app_vars, rendered_app)
+        body = rendered_app.read_text()
+        check("GHSPOT_GITHUB_APP_ID=123456" in body, "env: app id not written")
+        check("\\n" in body, "env: newlines not escaped for systemd's EnvironmentFile")
+        check("GHSPOT_GITHUB_TOKEN" not in body, "env: token written alongside an App")
+
+
+def main() -> int:
+    for test in (
+        test_minimal,
+        test_everything_round_trips,
+        test_housekeeping_can_be_turned_off,
+        test_the_credential_file_takes_both_forms,
+    ):
+        test()
+        print(f"  {'FAIL' if failures else 'ok  '}  {test.__name__}")
+        if failures:
+            for failure in failures:
+                print(f"        {failure}")
+            return 1
+    print("the role renders configuration the daemon accepts")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

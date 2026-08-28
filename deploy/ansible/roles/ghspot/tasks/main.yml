@@ -72,41 +72,60 @@
 
     - name: Pick the package for this architecture
       ansible.builtin.set_fact:
-        ghspot_deb_url: >-
+        ghspot_deb_asset: >-
           {{ ghspot_release.json.assets
              | selectattr('name', 'search', '_' + (
                  ansible_architecture
                  | replace('x86_64', 'amd64')
                  | replace('aarch64', 'arm64')
-               ) + '\.deb$')
-             | map(attribute='browser_download_url') | first }}
+               ) + '\.deb$') | first }}
+
+    # Cached under its own name rather than downloaded to /tmp and deleted. Deleting it made
+    # every run download 35 MB again and report a change, so the role was never idempotent —
+    # and a role you cannot re-run without it claiming to have done something is a role you
+    # stop trusting. The filename carries the version, so an upgrade still fetches.
+    - name: Keep downloaded packages somewhere stable
+      ansible.builtin.file:
+        path: /var/cache/ghspot
+        state: directory
+        mode: "0755"
 
     - name: Download it
       ansible.builtin.get_url:
-        url: "{{ ghspot_deb_url }}"
-        dest: /tmp/ghspot.deb
+        url: "{{ ghspot_deb_asset.browser_download_url }}"
+        dest: "/var/cache/ghspot/{{ ghspot_deb_asset.name }}"
         mode: "0644"
-      register: ghspot_download
 
-- name: Copy a locally built package
+    - name: Note where it landed
+      ansible.builtin.set_fact:
+        ghspot_deb_path: "/var/cache/ghspot/{{ ghspot_deb_asset.name }}"
+
+- name: Use a locally built package instead
   when: ghspot_deb_local | length > 0
-  ansible.builtin.copy:
-    src: "{{ ghspot_deb_local }}"
-    dest: /tmp/ghspot.deb
-    mode: "0644"
+  block:
+    - name: Keep it somewhere stable too
+      ansible.builtin.file:
+        path: /var/cache/ghspot
+        state: directory
+        mode: "0755"
+
+    - name: Copy it
+      ansible.builtin.copy:
+        src: "{{ ghspot_deb_local }}"
+        dest: "/var/cache/ghspot/{{ ghspot_deb_local | basename }}"
+        mode: "0644"
+
+    - name: Note where it landed
+      ansible.builtin.set_fact:
+        ghspot_deb_path: "/var/cache/ghspot/{{ ghspot_deb_local | basename }}"
 
 # The package creates the ghspot user, the systemd unit and /etc/ghspot, and deliberately
-# does not start anything.
+# does not start anything. apt compares versions, so re-running installs nothing.
 - name: Install ghspot
   ansible.builtin.apt:
-    deb: /tmp/ghspot.deb
+    deb: "{{ ghspot_deb_path }}"
     state: present
   notify: Restart ghspot
-
-- name: Remove the downloaded package
-  ansible.builtin.file:
-    path: /tmp/ghspot.deb
-    state: absent
 
 # --- configuration -----------------------------------------------------------------------
 
@@ -189,9 +208,11 @@
     msg: "{{ ghspot_doctor.stdout_lines }}"
 
 - name: Fail if the daemon cannot work
+  when: ghspot_verify | bool
   ansible.builtin.assert:
     that: ghspot_doctor.rc == 0
     fail_msg: >-
       ghspot doctor reported a problem — see the output above. The service is installed but
-      will not be able to start runners until it is fixed.
+      will not be able to start runners until it is fixed. Set ghspot_verify: false to
+      configure a host before its credential exists.
     quiet: true

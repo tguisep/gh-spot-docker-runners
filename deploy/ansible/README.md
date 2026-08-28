@@ -56,6 +56,53 @@ a secret, and Ansible logs template contents by default.
 Setting either up, with the exact permissions:
 [`docs/authentication.md`](../../docs/authentication.md).
 
+## Tests
+
+```bash
+uvx --from ansible-lint ansible-lint deploy/ansible
+uv run python deploy/ansible/test/render_and_validate.py
+```
+
+The second is the one that matters. The role restates the daemon's configuration schema in a
+Jinja template, and **nothing fails when the two drift** — the role keeps rendering a file the
+daemon quietly ignores, and it surfaces months later as a setting that does nothing.
+
+So it renders the templates with Ansible itself, using the filters the template actually
+uses, and loads the result with `ghspot`'s own parser. Fixtures in `test/vars/` cover a
+minimal pool, every key the template can emit, and housekeeping turned off — the last
+because `never` and omitted keys take different paths.
+
+Confirmed to fail on real drift: dropping `requires_labels` from the template reports
+`full: requires_labels lost`, and renaming `keep_build_cache` reports
+`full: keep_build_cache lost`.
+
+### Molecule
+
+```bash
+cd roles/ghspot
+uvx --from molecule --with 'molecule-plugins[docker]' --with ansible-core --with docker \
+  molecule test
+```
+
+Converges the role against a container that actually runs systemd, converges it **again** and
+fails if anything changed, then asserts what it was supposed to have done: the package
+installed, the service account in the `docker` group, the unit systemd parsed pointing at the
+installed binary and reading `/etc/ghspot/env`, and the daemon accepting the configuration the
+role rendered.
+
+It installs the **real release package**, so the path under test is the documented one. It
+does not start the daemon or build runner images: starting it needs a real repository and
+credential, and four images take longer than the rest of CI together. Both are covered
+elsewhere — the packaging workflow installs the `.deb` on a clean system, and the
+runner-images workflow builds every variant.
+
+Finding it made along the way: the role was **not idempotent**. It downloaded the package to
+`/tmp` and deleted it, so every run fetched 35 MB again and reported a change. Packages are
+now cached under `/var/cache/ghspot`, named for their version.
+
+CI runs all of this on any change to `deploy/ansible/` **or to the daemon's configuration
+module**, so a key added on one side without the other is caught by whichever moved first.
+
 ## GPUs
 
 Set `gpus` on a pool's container, the same way the daemon takes it:
