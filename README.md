@@ -1,12 +1,12 @@
 # gh-spot-docker-runners
 
-Self-hosted GitHub Actions runners as ephemeral Docker containers, with full lifecycle management
-from a single Python daemon.
+Self-hosted GitHub Actions runners as ephemeral Docker containers, managed by a single
+Python daemon.
 
 GitHub's free plan caps Actions minutes on private repositories. Self-hosted runners don't consume
 those minutes. This project turns one Linux host into an on-demand runner fleet: it watches your
-repositories for queued jobs, starts a fresh container per job, and tears it down — on both sides —
-when the job finishes.
+repositories for queued jobs, starts a fresh container per job, and tears it down, on both
+sides, when the job finishes.
 
 > **Status:** alpha, under active development. Not yet published to PyPI.
 
@@ -16,13 +16,13 @@ when the job finishes.
   [just-in-time config API][jit]. The container receives a single-use, pre-scoped config blob —
   never your token or your app's key. A compromised job cannot register more runners.
 - **Continuous reconciliation.** A control loop observes Docker and GitHub, diffs them against your
-  declared configuration, and converges both ways. Runners stuck `Offline` after a hard kill, or
-  containers orphaned by a daemon crash, are repaired on the next tick rather than by a cleanup
-  script you remember to run.
+  declared configuration, and converges both ways. Runners stuck `Offline` after a hard kill, and
+  containers orphaned by a daemon crash, are repaired on the next tick. There is no cleanup
+  script to run.
 - **Demand-driven.** The daemon polls for queued jobs and scales the pool to match, within the
   bounds you set. No inbound ports, so it works behind NAT on a home server.
-- **Genuinely testable.** Domain logic is pure Python with no I/O; Docker and GitHub sit behind
-  ports, so the scaling policy and the reconciliation loop are unit-tested without either.
+- **No I/O in the domain.** Docker and GitHub sit behind ports, so the scaling policy and the
+  reconciliation loop are unit-tested without a daemon or a network.
 - **GPUs, if the host has them.** A pool can hand its jobs every card, a count, or specific
   ones — and `requires_labels` keeps plain CPU work off them.
 
@@ -127,8 +127,8 @@ jobs:
 
 Name the hardware rather than the category — `gpu-a100`, not `gpu` — so a job needing 24 GB of
 VRAM cannot land on a card with 8. `ghspot doctor` checks the toolkit whenever a pool asks for
-GPUs, because without it every runner in that pool fails to start with an error pointing
-nowhere near the cause.
+GPUs, because without it every runner in that pool fails to start, and the error does not
+mention the toolkit.
 
 Full detail, including what `requires_labels` cannot prevent:
 [`docs/operations.md`](docs/operations.md#gpus).
