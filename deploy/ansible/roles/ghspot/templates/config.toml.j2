@@ -34,9 +34,22 @@ keep_build_cache = "{{ ghspot_housekeeping.keep_build_cache }}"
 name = "{{ pool.name }}"
 repository = "{{ pool.repository }}"
 labels = [{{ pool.labels | map('tojson') | join(', ') }}]
+{% if pool.pm is defined %}
+pm = "{{ pool.pm }}"
+{% endif %}
+{# Each mode refuses the keys that would do nothing under it, so the template has to know
+   which ones those are — the same table as the daemon's, one layer out. #}
+{% set mode = pool.pm | default('dynamic') %}
+{% if mode == 'dynamic' %}
 min_idle = {{ pool.min_idle | default(0) }}
+{% if pool.max_idle is defined %}
+max_idle = {{ pool.max_idle }}
+{% endif %}
+{% endif %}
 max_runners = {{ pool.max_runners | default(2) }}
+{% if mode != 'static' %}
 idle_timeout = "{{ pool.idle_timeout | default('10m') }}"
+{% endif %}
 max_job_duration = "{{ pool.max_job_duration | default('2h') }}"
 max_launch_per_tick = {{ pool.max_launch_per_tick | default(2) }}
 {% if pool.requires_labels is defined and pool.requires_labels %}

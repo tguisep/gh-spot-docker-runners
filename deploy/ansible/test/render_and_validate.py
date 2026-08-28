@@ -78,6 +78,7 @@ def test_minimal() -> None:
     check(pool.template.image == "ghspot/runner:ubuntu-24.04", "minimal: image lost")
     check(pool.template.gpus is None, "minimal: a pool asked for a GPU it never wanted")
     check(pool.spec.requires_labels is None, "minimal: unexpected requires_labels")
+    check(pool.spec.pm.value == "dynamic", "minimal: a pool is not managed dynamically")
     check(not pool.template.mount_docker_socket, "minimal: socket mounted by default")
 
 
@@ -101,6 +102,8 @@ def test_everything_round_trips() -> None:
     check(set(pools) == {"ubuntu", "gpu", "rhel"}, f"full: pools are {sorted(pools)}")
 
     ubuntu = pools["ubuntu"]
+    check(ubuntu.spec.pm.value == "dynamic", f"full: pm is {ubuntu.spec.pm}")
+    check(ubuntu.spec.max_idle == 4, f"full: max_idle is {ubuntu.spec.max_idle}")
     check(ubuntu.spec.min_idle == 2, "full: min_idle lost")
     check(ubuntu.spec.max_runners == 6, "full: max_runners lost")
     check(ubuntu.spec.idle_timeout == timedelta(minutes=20), "full: idle_timeout lost")
@@ -119,6 +122,7 @@ def test_everything_round_trips() -> None:
     )
 
     gpu = pools["gpu"]
+    check(gpu.spec.pm.value == "ondemand", f"full: gpu pm is {gpu.spec.pm}")
     check(gpu.template.gpus == "all", f"full: gpus is {gpu.template.gpus!r}, expected 'all'")
     required = gpu.spec.requires_labels
     check(required is not None and required.as_list() == ["gpu-a100"], "full: requires_labels lost")
