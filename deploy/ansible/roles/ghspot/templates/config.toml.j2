@@ -1,5 +1,10 @@
 # Managed by Ansible — edits here are overwritten on the next run.
 # Change the role's variables instead.
+{% if ghspot_pools_in_directory | default(false) | bool %}
+
+{# Above the first [section]: TOML gives a bare key to whichever table precedes it. #}
+include = "{{ ghspot_pools_directory }}/*.toml"
+{% endif %}
 
 [github]
 api_url = "{{ ghspot_api_url }}"
@@ -28,6 +33,7 @@ volumes = {{ ghspot_housekeeping.volumes | bool | lower }}
 {% if ghspot_housekeeping.keep_build_cache is defined and ghspot_housekeeping.keep_build_cache %}
 keep_build_cache = "{{ ghspot_housekeeping.keep_build_cache }}"
 {% endif %}
+{% if not (ghspot_pools_in_directory | default(false) | bool) %}
 {% for pool in ghspot_pools %}
 
 [[pool]]
@@ -85,3 +91,4 @@ network = "{{ pool.container.network }}"
 {% endfor %}
 {% endif %}
 {% endfor %}
+{% endif %}

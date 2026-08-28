@@ -173,12 +173,57 @@ def test_the_credential_file_takes_both_forms() -> None:
         check("GHSPOT_GITHUB_TOKEN" not in body, "env: token written alongside an App")
 
 
+def test_pools_can_be_rendered_one_file_each() -> None:
+    """Directory mode: the main file carries only `include`, and each pool is its own file.
+
+    Rendered the way the role renders them, then loaded together — which is the only way to
+    find out that the two templates still agree on the schema.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        pools_d = root / "pools.d"
+        pools_d.mkdir()
+
+        variables = root / "vars.yml"
+        variables.write_text(
+            (VARS / "full.yml").read_text()
+            + f"\nghspot_pools_in_directory: true\nghspot_pools_directory: {pools_d}\n"
+        )
+
+        main = root / "config.toml"
+        render("config.toml.j2", variables, main)
+        body = main.read_text()
+        check("include = " in body, "directory: the main file has no include")
+        check("[[pool]]" not in body, "directory: pools were written inline as well")
+
+        # The role loops the template over each pool; here that loop is the test's.
+        for name in ("ubuntu", "gpu", "rhel"):
+            one = root / f"{name}.yml"
+            one.write_text(
+                (VARS / "full.yml").read_text()
+                + f"\npool: \"{{{{ ghspot_pools | selectattr('name', 'equalto', '{name}') "
+                '| first }}"\n'
+            )
+            render("pool.toml.j2", one, pools_d / f"{name}.toml")
+
+        settings = load(main)
+        found = {pool.spec.name for pool in settings.pools}
+        check(found == {"ubuntu", "gpu", "rhel"}, f"directory: pools are {sorted(found)}")
+
+        by_name = {pool.spec.name: pool for pool in settings.pools}
+        check(
+            by_name["gpu"].template.gpus == "all",
+            "directory: a pool file lost a key the inline form keeps",
+        )
+
+
 def main() -> int:
     for test in (
         test_minimal,
         test_everything_round_trips,
         test_housekeeping_can_be_turned_off,
         test_the_credential_file_takes_both_forms,
+        test_pools_can_be_rendered_one_file_each,
     ):
         test()
         print(f"  {'FAIL' if failures else 'ok  '}  {test.__name__}")

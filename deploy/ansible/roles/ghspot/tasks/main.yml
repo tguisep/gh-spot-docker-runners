@@ -138,6 +138,52 @@
     mode: "0640"
   notify: Restart ghspot
 
+# One file per pool, when asked for. The main file then carries only `include`, and each
+# pool is reviewable on its own rather than as a diff against one growing file.
+- name: Write the pools one file each
+  when: ghspot_pools_in_directory | bool
+  block:
+    - name: Create the pool directory
+      ansible.builtin.file:
+        path: "{{ ghspot_pools_directory }}"
+        state: directory
+        owner: root
+        group: ghspot
+        mode: "0750"
+
+    - name: Write each pool
+      ansible.builtin.template:
+        src: pool.toml.j2
+        dest: "{{ ghspot_pools_directory }}/{{ item.name }}.toml"
+        owner: root
+        group: ghspot
+        mode: "0640"
+      loop: "{{ ghspot_pools }}"
+      loop_control:
+        loop_var: pool
+        label: "{{ pool.name }}"
+      vars:
+        item: "{{ pool }}"
+      notify: Restart ghspot
+
+    # A pool removed from the inventory must lose its file, or the daemon keeps serving it:
+    # the include is a glob, and nothing else would ever delete it.
+    - name: Find pool files that no longer belong to a pool
+      ansible.builtin.find:
+        paths: "{{ ghspot_pools_directory }}"
+        patterns: "*.toml"
+      register: ghspot_pool_files
+
+    - name: Remove them
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ ghspot_pool_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      when: (item.path | basename | splitext | first) not in (ghspot_pools | map(attribute='name') | list)
+      notify: Restart ghspot
+
 # Written with no_log, because the whole point of this file is that it holds a credential.
 - name: Write the credential
   ansible.builtin.template:

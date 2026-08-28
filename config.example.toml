@@ -3,6 +3,20 @@
 # Copy to ./config.toml, ~/.config/ghspot/config.toml or /etc/ghspot/config.toml,
 # then check it with: ghspot config validate
 
+# Pools may live in their own files, the way php-fpm keeps them in php-fpm.d. Uncomment,
+# drop one [[pool]] per file into that directory, and they are added to whatever is defined
+# below.
+#
+#   include = "pools.d/*.toml"
+#
+# The glob is expanded and sorted, so the fleet does not depend on the order a directory
+# happens to return. Files are *merged*: every pool found is a pool that runs, and two pools
+# of one name is a fatal error naming both files rather than one silently winning. An
+# included file defines pools and nothing else — [github], [daemon] and the rest stay here.
+#
+# This has to sit above the first [section]: in TOML a bare key belongs to whichever table
+# precedes it, so written lower down it would quietly become part of that table.
+
 [github]
 # Two ways to authenticate. Credentials are never read from this file itself — it points
 # at files, or you set the environment variables (the environment always wins).
