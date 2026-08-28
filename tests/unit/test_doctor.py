@@ -139,3 +139,70 @@ def test_doctor_exits_zero_only_when_everything_passes(
 
     assert result.exit_code == 0
     assert "ready" in result.output
+
+
+# ---------------------------------------------------------------- Jetson
+
+
+TEGRA_LINE = (
+    "# R32 (release), REVISION: 7.1, GCID: 30718123, BOARD: t210ref, "
+    "EABI: aarch64, DATE: Sat Feb 19 17:05:08 UTC 2022\n"
+)
+
+
+def _as_tegra(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    release = tmp_path / "nv_tegra_release"
+    release.write_text(TEGRA_LINE)
+    monkeypatch.setattr(doctor_module, "TEGRA_RELEASE", release)
+
+
+def test_a_jetson_is_recognised_by_its_release_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _as_tegra(monkeypatch, tmp_path)
+
+    assert doctor_module._tegra_release() == "L4T R32.7.1"
+
+
+def test_a_desktop_is_not_a_jetson(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(doctor_module, "TEGRA_RELEASE", tmp_path / "absent")
+
+    assert doctor_module._tegra_release() is None
+
+
+def test_asking_a_jetson_for_gpus_is_refused_with_the_alternative(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The Engine has no device-request API on Tegra, so `gpus` can only ever fail there."""
+    _as_tegra(monkeypatch, tmp_path)
+
+    check = doctor_module._gpu_check("gpu", "all")
+
+    assert not check.ok
+    assert "no device-request API" in check.detail
+    assert 'runtime = "nvidia"' in check.remedy
+
+
+async def test_an_unregistered_runtime_names_what_the_engine_does_have() -> None:
+    class Engine:
+        async def runtimes(self) -> frozenset[str]:
+            return frozenset({"runc"})
+
+    check = await doctor_module._runtime_check(Engine(), "gpu", "nvidia")  # type: ignore[arg-type]
+
+    assert not check.ok
+    assert "nvidia" in check.detail
+    assert "runc" in check.remedy
+
+
+async def test_a_registered_runtime_passes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _as_tegra(monkeypatch, tmp_path)
+
+    class Engine:
+        async def runtimes(self) -> frozenset[str]:
+            return frozenset({"runc", "nvidia"})
+
+    check = await doctor_module._runtime_check(Engine(), "gpu", "nvidia")  # type: ignore[arg-type]
+
+    assert check.ok
+    assert "L4T R32.7.1" in check.detail

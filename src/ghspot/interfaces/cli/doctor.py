@@ -93,8 +93,33 @@ async def _docker(settings: Settings) -> list[Check]:
             checks.append(_socket_check(pool.spec.name))
         if pool.template.gpus is not None:
             checks.append(_gpu_check(pool.spec.name, pool.template.gpus))
+        if pool.template.runtime is not None:
+            checks.append(await _runtime_check(backend, pool.spec.name, pool.template.runtime))
 
     return checks
+
+
+TEGRA_RELEASE = Path("/etc/nv_tegra_release")
+"""Present only on a Jetson. JetPack writes it; a desktop with an NVIDIA card does not."""
+
+
+def _tegra_release() -> str | None:
+    """The L4T release this Jetson runs, or ``None`` when this is not a Jetson.
+
+    The file's first line reads ``# R32 (release), REVISION: 7.1, GCID: ...``.
+    """
+    try:
+        head = TEGRA_RELEASE.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except (OSError, IndexError):
+        return None
+    parts = head.split()
+    release = next((part for part in parts if part.startswith("R") and part[1:].isdigit()), "")
+    revision = ""
+    if "REVISION:" in parts:
+        index = parts.index("REVISION:")
+        if index + 1 < len(parts):
+            revision = parts[index + 1].rstrip(",")
+    return f"L4T {release}.{revision}".replace(" .", " ") if release else "L4T"
 
 
 def _gpu_check(pool: str, gpus: object) -> Check:
@@ -104,6 +129,21 @@ def _gpu_check(pool: str, gpus: object) -> Check:
     runner in the pool fails to start — with an error about device requests that says
     nothing about a missing toolkit.
     """
+    tegra = _tegra_release()
+    if tegra is not None:
+        return Check(
+            name=f"gpu [{pool}]",
+            ok=False,
+            detail=(
+                f"this pool asks for {gpus}, but {tegra} has no device-request API — "
+                "the Engine refuses --gpus on a Jetson"
+            ),
+            remedy=(
+                "remove 'gpus' from this pool and set runtime = \"nvidia\" instead; "
+                "JetPack grants the GPU through its own container runtime"
+            ),
+        )
+
     toolkit = shutil.which("nvidia-ctk") or shutil.which("nvidia-container-runtime")
     driver = shutil.which("nvidia-smi")
 
@@ -119,6 +159,40 @@ def _gpu_check(pool: str, gpus: object) -> Check:
             "install it, then: sudo nvidia-ctk runtime configure --runtime=docker "
             "&& sudo systemctl restart docker  —  or remove 'gpus' from this pool"
         ),
+    )
+
+
+async def _runtime_check(backend: DockerRunnerBackend, pool: str, runtime: str) -> Check:
+    """Whether the Engine knows the runtime this pool asks for.
+
+    Asking for an unregistered runtime fails at every container creation with an error that
+    names the runtime and says nothing about how to register it.
+    """
+    try:
+        registered = await backend.runtimes()
+    except GhSpotError as error:
+        return Check(name=f"runtime [{pool}]", ok=False, detail=str(error))
+
+    tegra = _tegra_release()
+    if runtime in registered:
+        detail = f"{runtime} registered with the Engine"
+        return Check(
+            name=f"runtime [{pool}]", ok=True, detail=f"{detail} ({tegra})" if tegra else detail
+        )
+
+    known = ", ".join(sorted(registered)) or "none"
+    remedy = f"the Engine knows: {known}"
+    if runtime == "nvidia":
+        remedy = (
+            "install nvidia-container-runtime, then register it in /etc/docker/daemon.json "
+            'under "runtimes" and: sudo systemctl restart docker'
+            + (f"  —  the Engine currently knows: {known}" if registered else "")
+        )
+    return Check(
+        name=f"runtime [{pool}]",
+        ok=False,
+        detail=f"this pool asks for the {runtime!r} runtime, which the Engine does not have",
+        remedy=remedy,
     )
 
 
