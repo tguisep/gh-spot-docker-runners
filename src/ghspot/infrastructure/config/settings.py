@@ -392,6 +392,27 @@ def _housekeeping(table: dict[str, Any]) -> HousekeepingSettings:
     )
 
 
+def _priority(value: Any, where: str, name: str) -> int:
+    """A pool's share of contested capacity. A weight, so the floor is 1, not 0.
+
+    Zero is refused rather than quietly treated as one: a weight of nothing has no meaning
+    in a proportional split, and somebody writing it means "never", which is spelled by
+    giving the other pools a much larger number.
+    """
+    if _unset(value):
+        return 1
+    try:
+        weight = int(str(value))
+    except (TypeError, ValueError) as error:
+        raise ConfigError(f"{where} ({name}): 'priority' must be a whole number") from error
+    if weight < 1:
+        raise ConfigError(
+            f"{where} ({name}): 'priority' is a share of contested capacity, so it starts "
+            "at 1. A pool at 10 gets twice the slots of one at 5, not all of them."
+        )
+    return weight
+
+
 def _unset(value: Any) -> bool:
     """Whether a key was left out, as opposed to given a value.
 
@@ -482,7 +503,7 @@ def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
             ),
             max_launch_per_tick=int(table.get("max_launch_per_tick", 2)),
             **_process_manager(table, where, str(name)),
-            priority=int(table.get("priority", 0)),
+            priority=_priority(table.get("priority"), where, str(name)),
             requires_labels=_required_labels(table.get("requires_labels"), where, str(name)),
         )
     except GhSpotError as error:

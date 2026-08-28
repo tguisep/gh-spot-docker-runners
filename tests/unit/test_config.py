@@ -710,5 +710,17 @@ def test_a_pool_can_be_given_a_priority() -> None:
     assert settings.pools[0].spec.priority == 10  # type: ignore[attr-defined]
 
 
-def test_pools_share_a_priority_unless_they_say_otherwise() -> None:
-    assert parse(MINIMAL).pools[0].spec.priority == 0  # type: ignore[attr-defined]
+def test_pools_weigh_the_same_unless_they_say_otherwise() -> None:
+    assert parse(MINIMAL).pools[0].spec.priority == 1  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("written", ["priority = 0", "priority = -3"])
+def test_a_priority_below_one_is_refused(written: str) -> None:
+    """A weight of nothing has no meaning in a proportional split, and somebody writing it
+    means "never" — which is spelled by giving the other pools a much larger number."""
+    with pytest.raises(ConfigError, match=r"(?i)share of contested capacity"):
+        parse(
+            MINIMAL.replace(
+                'labels = ["self-hosted", "linux"]', f'labels = ["self-hosted", "linux"]\n{written}'
+            )
+        )

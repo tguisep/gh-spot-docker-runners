@@ -66,12 +66,18 @@ class PoolSpec:
     max_runners: int = 2
     idle_timeout: timedelta = timedelta(minutes=10)
     max_job_duration: timedelta = timedelta(hours=2)
-    priority: int = 0
-    """Who gets scarce host capacity first. Higher goes first; ties break on the name.
+    priority: int = 1
+    """This pool's **share** of scarce host capacity, relative to the others.
 
-    Only consulted when the host cannot satisfy every pool at once — with capacity to spare
-    it changes nothing. Ordinary pools can leave it alone; raise it on the one whose jobs
-    people are waiting on, or lower it on the one that can wait."""
+    A weight, not a rank: a pool at 10 gets twice as many of the contested slots as one at 5,
+    not all of them. Slots are interleaved rather than handed out in blocks, so the lighter
+    pool starts runners throughout instead of waiting for the heavier one to be satisfied —
+    on a fleet that is always busy, "wait your turn" and "never" would otherwise be the same
+    thing.
+
+    Only consulted when the host cannot satisfy every pool at once; with capacity to spare it
+    changes nothing. A pool that stops wanting runners drops out and its share is
+    redistributed, so this describes how contention is settled, not a fixed quota."""
 
     max_launch_per_tick: int = 2
     """Ceiling on how many runners may be started in a single tick, to avoid a thundering herd

@@ -80,7 +80,7 @@ def test_minimal() -> None:
     check(pool.template.gpus is None, "minimal: a pool asked for a GPU it never wanted")
     check(pool.spec.requires_labels is None, "minimal: unexpected requires_labels")
     check(pool.spec.pm.value == "dynamic", "minimal: a pool is not managed dynamically")
-    check(pool.spec.priority == 0, "minimal: unexpected priority")
+    check(pool.spec.priority == 1, "minimal: a pool weighs more than the default")
     check(not pool.template.mount_docker_socket, "minimal: socket mounted by default")
 
 

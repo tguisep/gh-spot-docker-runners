@@ -86,8 +86,10 @@ ghspot_capacity: {}
 # `pm` on a pool picks how its runners are kept, as php-fpm's: "dynamic" (a warm band between
 # min_idle and max_idle, the default), "static" (exactly max_runners, never reaped) or
 # "ondemand" (nothing warm). A key that does not apply to the mode is refused at load.
-# `priority: 10` on a pool decides who gets scarce host capacity first when ghspot_capacity
-# bites. Higher goes first; with capacity to spare it changes nothing.
+#
+# `priority: 10` on a pool is its share of contested capacity when ghspot_capacity bites —
+# a weight, not a rank. Against another pool at 5 it takes two thirds of the contested slots,
+# interleaved, not all of them. From 1, which is the default.
 ghspot_pools: []
 
 # Whether to start the service. Set false to configure a host without running it yet.

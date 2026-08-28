@@ -25,7 +25,7 @@ a busy host into a stuck one.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from ghspot.domain.ports.backend import HostLoad
@@ -105,34 +105,105 @@ def admit(
     if held is not None:
         return Admission(granted=granted, reasons=(held,), deferred=wanted_total)
 
-    containers = sum(request.committed for request in requests)
-    cpus = sum(request.committed * (request.cpus or 0.0) for request in requests)
-    memory = sum(request.committed * (request.memory_bytes or 0) for request in requests)
+    committed = _Committed(
+        containers=sum(request.committed for request in requests),
+        cpus=sum(request.committed * (request.cpus or 0.0) for request in requests),
+        memory=sum(request.committed * (request.memory_bytes or 0) for request in requests),
+    )
 
-    # Highest priority first, and by name within a priority so the same input always
-    # produces the same tick.
-    for request in sorted(requests, key=lambda item: (-item.priority, item.pool)):
-        for _ in range(max(0, request.wanted)):
-            blocked = _ceiling_reached(
-                limits,
-                containers=containers + 1,
-                cpus=cpus + (request.cpus or 0.0),
-                memory=memory + (request.memory_bytes or 0),
+    for pool in _shares(requests):
+        request = pool.request
+        blocked = _ceiling_reached(
+            limits,
+            containers=committed.containers + 1,
+            cpus=committed.cpus + (request.cpus or 0.0),
+            memory=committed.memory + (request.memory_bytes or 0),
+        )
+        if blocked is not None:
+            # This pool cannot take another runner, but a cheaper one still might: a pool
+            # reserving four CPUs is blocked by two remaining where a pool reserving one is
+            # not. So the pool drops out and the rest carry on.
+            reasons.append(
+                f"[{request.pool}] held back by {blocked} "
+                f"(weight {request.priority}, {pool.remaining} still wanted)"
             )
-            if blocked is not None:
-                reasons.append(
-                    f"[{request.pool}] held back by {blocked}"
-                    + (f" (priority {request.priority})" if request.priority else "")
-                )
-                break
+            pool.give_up()
+            continue
 
-            granted[request.pool] += 1
-            containers += 1
-            cpus += request.cpus or 0.0
-            memory += request.memory_bytes or 0
+        granted[request.pool] += 1
+        pool.take()
+        committed.add(request)
 
     deferred = wanted_total - sum(granted.values())
     return Admission(granted=granted, reasons=tuple(reasons), deferred=deferred)
+
+
+@dataclass
+class _Committed:
+    """What the host has promised so far, as slots are handed out."""
+
+    containers: int
+    cpus: float
+    memory: int
+
+    def add(self, request: LaunchRequest) -> None:
+        self.containers += 1
+        self.cpus += request.cpus or 0.0
+        self.memory += request.memory_bytes or 0
+
+
+@dataclass
+class _Share:
+    """One pool's claim on the next slot."""
+
+    request: LaunchRequest
+    remaining: int
+    current: int = 0
+    """Running credit. The pool with the most credit takes the next slot and pays for it."""
+
+    def take(self) -> None:
+        self.remaining -= 1
+
+    def give_up(self) -> None:
+        self.remaining = 0
+
+
+def _shares(requests: Sequence[LaunchRequest]) -> Iterator[_Share]:
+    """Hand out slots in proportion to weight, interleaved rather than in blocks.
+
+    Smooth weighted round robin, the algorithm nginx uses to spread requests across upstreams.
+    Each round every contender gains its weight in credit, the richest takes the slot and pays
+    the total back:
+
+        weights 10 and 5, five slots →  A A B A A     (2:1, and never A A A A B)
+
+    Interleaving is the point. Draining the heaviest pool first is what "priority" usually
+    means and it starves everyone else on a busy host: a weight-5 pool would wait for a
+    weight-10 pool to be completely satisfied, which on a fleet that is always busy is never.
+    Here it waits its turn, which arrives in proportion to what it was given.
+
+    A pool that stops wanting runners drops out and its share is redistributed, so weights
+    describe how contention is settled rather than a fixed quota.
+    """
+    shares = [
+        _Share(request=request, remaining=max(0, request.wanted))
+        for request in sorted(requests, key=lambda item: item.pool)
+    ]
+
+    while True:
+        contenders = [share for share in shares if share.remaining > 0]
+        if not contenders:
+            return
+
+        total = sum(max(1, share.request.priority) for share in contenders)
+        for share in contenders:
+            share.current += max(1, share.request.priority)
+
+        # Ties break on the pool name — the list is already sorted, and max() keeps the
+        # first — so the same input always produces the same tick.
+        winner = max(contenders, key=lambda share: share.current)
+        winner.current -= total
+        yield winner
 
 
 def _backpressure(load: HostLoad, limits: CapacityLimits) -> str | None:

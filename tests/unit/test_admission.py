@@ -7,12 +7,15 @@ committed ceilings then allocate by priority — and the rule that a refusal is 
 
 from __future__ import annotations
 
+from itertools import islice
+
 import pytest
 
 from ghspot.domain.policy.admission import (
     Admission,
     CapacityLimits,
     LaunchRequest,
+    _shares,
     admit,
 )
 from ghspot.domain.ports.backend import HostLoad
@@ -26,6 +29,15 @@ def want(pool: str, wanted: int, **overrides: object) -> LaunchRequest:
 
 def granted(result: Admission) -> dict[str, int]:
     return {pool: count for pool, count in result.granted.items() if count}
+
+
+def _take(shares: object, count: int) -> list:  # type: ignore[type-arg]
+    """The first `count` slots the allocator hands out, taking each so the pool moves on."""
+    taken = []
+    for share in islice(shares, count):  # type: ignore[call-overload]
+        share.take()
+        taken.append(share)
+    return taken
 
 
 # ---------------------------------------------------------------- nothing configured
@@ -91,47 +103,83 @@ def test_a_pool_that_reserves_nothing_is_still_bounded_by_the_count() -> None:
     assert granted(result) == {"a": 2}
 
 
-# ---------------------------------------------------------------- priority
+# ---------------------------------------------------------------- shares
 
 
-def test_the_higher_priority_pool_is_served_first() -> None:
+def test_a_heavier_pool_gets_more_of_the_slots_but_not_all_of_them() -> None:
+    """The whole point of a weight rather than a rank: 10 against 5 is two thirds, not
+    everything. A pool that never starts a runner on a busy host is a pool nobody trusts."""
     result = admit(
-        [want("batch", 3, priority=0), want("release", 3, priority=10)],
+        [want("batch", 6, priority=5), want("release", 6, priority=10)],
         HostLoad(),
-        CapacityLimits(max_containers=3),
+        CapacityLimits(max_containers=6),
     )
 
-    assert granted(result) == {"release": 3}
-    assert result.deferred == 3
+    assert granted(result) == {"release": 4, "batch": 2}
 
 
-def test_what_is_left_over_falls_to_the_next_pool_down() -> None:
+def test_slots_are_interleaved_rather_than_handed_out_in_blocks() -> None:
+    """Draining the heaviest pool first is what "priority" usually means, and it makes the
+    lighter pool wait for the heavier one to be satisfied — on a fleet that is always busy,
+    that is the same as never."""
+    order = [
+        share.request.pool
+        for share in _take(_shares([want("a", 4, priority=10), want("b", 4, priority=5)]), 6)
+    ]
+
+    assert order == ["a", "b", "a", "a", "b", "a"]
+
+
+def test_equal_weights_take_turns() -> None:
+    order = [
+        share.request.pool
+        for share in _take(_shares([want("a", 3), want("b", 3), want("c", 3)]), 6)
+    ]
+
+    assert order == ["a", "b", "c", "a", "b", "c"]
+
+
+def test_a_pool_that_stops_wanting_runners_gives_its_share_back() -> None:
+    """Weights settle contention; they are not a quota held open for an idle pool."""
     result = admit(
-        [want("batch", 3, priority=0), want("release", 2, priority=10)],
+        [want("busy", 5, priority=1), want("quiet", 1, priority=100)],
         HostLoad(),
-        CapacityLimits(max_containers=3),
+        CapacityLimits(max_containers=4),
     )
 
-    assert granted(result) == {"release": 2, "batch": 1}
+    assert granted(result) == {"quiet": 1, "busy": 3}
 
 
-def test_pools_of_equal_priority_are_ordered_by_name_so_a_tick_repeats() -> None:
-    """Not fairness — determinism. The same input must produce the same tick."""
+def test_a_pool_too_expensive_for_what_is_left_does_not_block_a_cheaper_one() -> None:
+    """Four CPUs do not fit in two remaining; one does. The fat pool drops out, the thin one
+    carries on — stopping everything at the first refusal would waste the rest of the host."""
     result = admit(
-        [want("zulu", 2), want("alpha", 2)], HostLoad(), CapacityLimits(max_containers=2)
+        [want("fat", 2, cpus=4.0, priority=100), want("thin", 2, cpus=1.0, priority=1)],
+        HostLoad(),
+        CapacityLimits(max_cpus=6.0),
     )
 
-    assert granted(result) == {"alpha": 2}
+    assert granted(result) == {"fat": 1, "thin": 2}
 
 
-def test_the_pool_that_was_held_back_is_named() -> None:
+def test_the_pool_that_was_held_back_is_named_with_what_it_still_wants() -> None:
     result = admit(
-        [want("batch", 2, priority=0), want("release", 2, priority=5)],
+        [want("batch", 4, priority=1), want("release", 4, priority=10)],
         HostLoad(),
         CapacityLimits(max_containers=2),
     )
 
-    assert any("[batch]" in reason for reason in result.reasons)
+    held = " ".join(result.reasons)
+    assert "[batch]" in held
+    assert "still wanted" in held
+
+
+def test_ties_are_broken_by_name_so_a_tick_repeats() -> None:
+    """Not fairness — determinism. The same input must produce the same tick."""
+    first = admit([want("zulu", 1), want("alpha", 1)], HostLoad(), CapacityLimits(max_containers=1))
+    again = admit([want("alpha", 1), want("zulu", 1)], HostLoad(), CapacityLimits(max_containers=1))
+
+    assert granted(first) == granted(again) == {"alpha": 1}
 
 
 # ---------------------------------------------------------------- backpressure

@@ -144,9 +144,14 @@ labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
 #
 # A key that does not apply to the chosen mode is refused rather than ignored.
 # pm = "dynamic"
-# Who gets scarce host capacity first, when [capacity] bites. Higher goes first; ties break
-# on the pool name. With capacity to spare it changes nothing, so most pools leave it alone —
-# raise it on the one whose jobs people are waiting for.
+
+# This pool's share of contested capacity, when [capacity] bites. A weight, not a rank: at 10
+# against another pool's 5 this one takes two thirds of the contested slots, not all of them,
+# and the slots are interleaved — the lighter pool keeps starting runners rather than waiting
+# for this one to be satisfied.
+#
+# Starts at 1, which is the default, so with capacity to spare it changes nothing. A pool
+# that stops wanting runners gives its share back.
 # priority = 10
 
 min_idle = 1          # runners kept warm so a job doesn't wait for a container to boot

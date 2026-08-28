@@ -555,17 +555,21 @@ async def test_a_global_ceiling_holds_back_a_pool_with_a_free_slot() -> None:
     assert any("max_containers=2" in note for note in report.notes)
 
 
-async def test_priority_decides_who_gets_the_last_slot() -> None:
+async def test_a_heavier_pool_takes_more_of_the_slots_and_a_lighter_one_still_runs() -> None:
+    """A weight, not a rank: the light pool starts something rather than waiting for the
+    heavy one to be satisfied, which on a busy fleet would be never."""
     harness = build(
-        make_spec(name="batch", min_idle=2, priority=0),
-        make_spec(name="release", min_idle=2, priority=10),
-        capacity=CapacityLimits(max_containers=2),
+        make_spec(name="batch", min_idle=3, priority=1),
+        make_spec(name="release", min_idle=3, priority=3),
+        capacity=CapacityLimits(max_containers=4),
     )
 
     await harness.service.tick()
 
-    started = {runner.pool for runner in harness.repository.saved.values()}
-    assert started == {"release"}
+    started: dict[str, int] = {}
+    for runner in harness.repository.saved.values():
+        started[runner.pool] = started.get(runner.pool, 0) + 1
+    assert started == {"release": 3, "batch": 1}
 
 
 async def test_a_loaded_host_starts_nothing_even_with_slots_free() -> None:

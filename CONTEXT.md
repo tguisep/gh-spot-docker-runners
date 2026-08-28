@@ -251,9 +251,23 @@ catches what the arithmetic cannot: everything else on the box, a job using far 
 pool reserved, a machine already struggling. At or above the mark nothing starts, even where a
 pool has a free slot.
 
-**Priority** decides who gets scarce capacity. There is no queue to persist: a pool refused
-this tick wants the same thing on the next one, and the loop re-derives everything anyway.
-The queue is the reconciliation loop.
+**Priority** is a **share**, not a rank, and this was the correction that mattered. The first
+version sorted pools by priority and drained the heaviest first — which is what "priority"
+usually means, and it starves everyone else: a lighter pool waits until the heavier one is
+satisfied, and on a fleet that is always busy that is the same as never.
+
+It is now smooth weighted round robin, the algorithm nginx uses to spread requests across
+upstreams. Each round every contender gains its weight in credit, the richest takes the slot
+and pays the total back, so weights 10 and 5 produce `A B A A B A` — two thirds and one third,
+interleaved, rather than `A A A A B B`.
+
+A pool that stops wanting runners drops out and its share is redistributed: weights settle
+contention, they do not reserve a quota. And a pool too expensive for what is left no longer
+stops the allocation — four CPUs will not fit in two remaining, but one will, so the fat pool
+drops out for the tick and the thin one carries on.
+
+There is no queue to persist: a pool refused this tick wants the same thing on the next one,
+and the loop re-derives everything anyway. The queue is the reconciliation loop.
 
 ### The shape this forced
 
@@ -277,6 +291,9 @@ would turn a busy host into a stuck one, and there is a test for it.
   covers everything on the box, and it is the number that says whether work is *queueing* for
   the CPU. Memory uses `MemAvailable`, because `MemTotal - MemFree` counts the page cache and
   makes any working machine look 95% full.
+- Weights start at 1 and zero is refused rather than quietly read as one. A weight of nothing
+  has no meaning in a proportional split, and somebody writing it means "never" — which is
+  spelled by giving the other pools a much larger number.
 - **`0 == False` in Python**, so the first version of the config parser read
   `max_containers = 0` as "not configured" — silently unlimited, the opposite of what anyone
   writing that means. The parser now tests identity. The test suite caught it, not review.

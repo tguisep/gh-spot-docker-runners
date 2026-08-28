@@ -62,7 +62,9 @@ labels = ["self-hosted", "linux", "x64"]
 # (exactly max_runners, never reaped) or "ondemand" (nothing warm). A key that does not apply
 # to the mode is refused rather than ignored.
 # pm = "dynamic"
-# Who gets scarce host capacity first when [capacity] bites. Higher goes first.
+
+# This pool's share of contested capacity when [capacity] bites. A weight, not a rank: 10
+# against 5 takes two thirds of the contested slots, interleaved, not all of them. From 1.
 # priority = 10
 
 min_idle = 0          # runners kept warm; 1 removes container boot from the first job
