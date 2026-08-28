@@ -297,8 +297,10 @@ reverse proxy with auth in front of it.
 |---|---|---|
 | `ubuntu-24.04` | `ubuntu:24.04` | `runs-on: [self-hosted, ubuntu-24.04]` |
 | `ubuntu-22.04` | `ubuntu:22.04` | `runs-on: [self-hosted, ubuntu-22.04]` |
+| `ubuntu-20.04` | `ubuntu:20.04` | `runs-on: [self-hosted, ubuntu-20.04]` |
 | `rhel-9` | `almalinux:9` | `runs-on: [self-hosted, rhel-9]` |
 | `rhel-10` | `almalinux:10` | `runs-on: [self-hosted, rhel-10]` |
+| `jetson-r32` | `ghspot/runner:ubuntu-20.04` | `runs-on: [self-hosted, jetson-r32]` |
 
 ```bash
 images/runner/build.sh                 # all of them
@@ -495,6 +497,57 @@ docker run --rm --gpus all ubuntu:24.04 nvidia-smi
 `ghspot doctor` checks for the toolkit whenever a pool asks for GPUs, because without it
 **every runner in that pool fails to start** — with an error about device requests that says
 nothing about a missing toolkit.
+
+### On a Jetson, the GPU comes from the runtime
+
+A Jetson is not a desktop with an NVIDIA card, and the difference changes the configuration.
+JetPack's container stack predates the Engine's device-request API, so `--gpus` — and
+therefore the `gpus` setting — cannot work there. The GPU is granted by running the container
+under JetPack's own runtime instead:
+
+```toml
+[[pool]]
+name = "jetson"
+repository = "you/your-project"
+labels = ["self-hosted", "linux", "arm64", "jetson-r32"]
+requires_labels = ["jetson-r32"]
+max_runners = 1
+
+[pool.container]
+image = "ghspot/runner:jetson-r32"
+runtime = "nvidia"          # not `gpus` — the two are alternatives, never both
+```
+
+`ghspot doctor` reads `/etc/nv_tegra_release` to tell a Jetson from a desktop. On a Jetson it
+refuses a pool that sets `gpus`, naming `runtime` as the fix, and it checks that the Engine
+actually has the runtime registered — an unregistered runtime otherwise fails every container
+creation with an error that names it and says nothing about how to register it:
+
+```bash
+docker info --format '{{.Runtimes}}'      # nvidia should be in there
+```
+
+If it is not, register it in `/etc/docker/daemon.json` and restart Docker:
+
+```json
+{ "runtimes": { "nvidia": { "path": "nvidia-container-runtime", "runtimeArgs": [] } } }
+```
+
+Two further things are worth knowing before the first job:
+
+- **There is no `nvidia-smi` on Tegra.** It is not part of JetPack. Use `tegrastats` to watch
+  the GPU, and do not use `nvidia-smi` as a smoke test — its absence says nothing.
+- **The daemon runs on the board's own 18.04 userspace, and that is fine.** The `.deb`
+  bundles its own interpreter, built against glibc 2.17; JetPack 4 has 2.27. Runners are
+  containers and bring their own userspace, so the board's Ubuntu release does not limit
+  them either.
+
+Check the GPU reaches a container before configuring a pool:
+
+```bash
+docker run --rm --runtime nvidia ghspot/runner:jetson-r32 \
+  sh -c 'ldconfig -p | grep -c libcuda'      # non-zero means the driver was mounted in
+```
 
 ### Stop the GPU taking CPU work
 
