@@ -25,7 +25,7 @@ configuration. Repair is not a separate mode; it is what the loop does.
 
 **Gained:**
 
-- Every drift case is handled by construction rather than by a script someone remembers.
+- Every drift case is handled by the loop itself, with no separate repair step.
 - `tick()` is idempotent and crash-safe: whenever the daemon dies, the next tick re-derives
   everything. At most one tick of work is lost.
 - Because nothing is carried between ticks, a tick that raises can simply be logged and

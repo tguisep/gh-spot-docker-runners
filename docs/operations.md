@@ -456,7 +456,7 @@ repository = "you/your-project"
 labels = ["self-hosted", "linux", "x64", "gpu-a100"]
 
 # Without this, a job asking only for [self-hosted, linux, x64] lands here and burns
-# the GPU on work that never wanted one. See below — this matters more than it looks.
+# the GPU on work that never wanted one. See "Stop the GPU taking CPU work" below.
 requires_labels = ["gpu-a100"]
 
 max_runners = 1
@@ -498,12 +498,10 @@ nothing about a missing toolkit.
 
 ### Stop the GPU taking CPU work
 
-This is the part that catches people out.
-
 Label matching is a **subset** rule: a runner serves a job when it carries every label the
 job asked for. Extra labels on the runner are ignored. So a pool labelled
-`self-hosted, linux, x64, gpu-a100` will happily accept a job asking for only
-`self-hosted, linux, x64` — and your GPU spends the afternoon running unit tests.
+`self-hosted, linux, x64, gpu-a100` will accept a job asking for only
+`self-hosted, linux, x64`, and the GPU then runs work that never needed one.
 
 `requires_labels` inverts the rule for the labels you name: the job must have asked for them.
 
@@ -593,21 +591,20 @@ alone, since a named volume is something somebody chose to create.
 
 Set any age to `"never"` to disable that sweep, or `enabled = false` for all of it.
 
-### It is not a guarantee, and the difference matters
+### What housekeeping does not guarantee
 
-Two things housekeeping deliberately will not do:
+Two things it deliberately will not do:
 
 - **A container the job left running is never touched.** Nothing distinguishes it from
   something you started on purpose, and guessing wrong means deleting somebody's database.
 - **Nothing is removed immediately.** Residue is bounded by the interval and the age floors,
   not eliminated.
 
-If you need a real guarantee that a job leaves nothing, the answer is not a bigger broom: it
-is giving each runner its own Docker daemon, so there is no shared state to leave anything
-in. That means Docker-in-Docker, and costs the shared layer cache — every job re-pulls what
-it needs. `RunnerBackend.create()` takes a `ContainerSpec`, so it is a new spec rather than a
-change to any calling code, but it is a real architectural change and not currently
-implemented.
+A real guarantee that a job leaves nothing needs each runner to have its own Docker daemon,
+so there is no shared state to leave anything in. That means Docker-in-Docker, and costs the
+shared layer cache: every job re-pulls what it needs. `RunnerBackend.create()` takes a
+`ContainerSpec`, so it is a new spec rather than a change to any calling code, but it is a
+real architectural change and not currently implemented.
 
 The narrow case is easy, though: a pool with `docker_socket = false` leaves nothing at all,
 because the job never reaches the host daemon in the first place.

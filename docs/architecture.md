@@ -39,9 +39,9 @@ Three consequences, and they shape the rest of the system:
 - A compromised job cannot register more runners, or read anything about your account.
 - Just-in-time runners are **inherently ephemeral** — one job, then the process exits and
   GitHub de-registers. There is no `config.sh remove`, no removal token, no cleanup step.
-- **The GitHub runner id is known before the container exists.** This is the important one:
-  it means every container can be tied back to its registration, whatever order things
-  happened in, which is what makes the drift table above recoverable.
+- **The GitHub runner id is known before the container exists.** Every container can be
+  tied back to its registration, whatever order things happened in, which is what makes the
+  drift table above recoverable.
 
 ### 2. Reality is observed, never remembered
 
@@ -81,13 +81,13 @@ infrastructure  GitHub client · Docker backend · SQLite · config · logging
                     driven adapters — implement the ports
 ```
 
-The rule that carries the weight: **`domain` and `application` depend on nothing concrete.**
+The rule everything rests on: **`domain` and `application` depend on nothing concrete.**
 `interfaces` may reach `infrastructure` because an entry point has to name a concrete
 adapter or nothing would ever be constructed. `tests/unit/test_architecture.py` parses every
 module and enforces this, so it cannot decay into a convention.
 
-What it buys, concretely: the entire reconciliation loop — including crash recovery and every
-drift case — is tested against in-memory fakes, with no Docker daemon and no network.
+So the entire reconciliation loop, including crash recovery and every drift case, is tested
+against in-memory fakes, with no Docker daemon and no network.
 
 ### The ports
 
@@ -132,7 +132,7 @@ has a container with no registration behind it.
 knows about a runner that does not exist. It is deliberately its own state, and the record
 is persisted before the container is attempted, so a crash there leaves evidence.
 
-Two crash shapes are handled differently, because they are genuinely different:
+Two crash shapes are handled differently, because they leave different evidence:
 
 | Shape | Record after the crash | How it is reaped |
 |---|---|---|
