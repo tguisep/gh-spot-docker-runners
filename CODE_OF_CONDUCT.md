@@ -23,7 +23,7 @@ Issues, pull requests, commits, and anywhere else this project is being discusse
 
 ## Reporting
 
-Email <thomas82710@gmail.com>. Reports are read by the maintainer and not shared further.
+Email <contact@thomasgsp.fr>. Reports are read by the maintainer and not shared further.
 
 Whatever you report, expect to be believed and asked what outcome you want, rather than
 argued with. Where a report concerns the maintainer, say so and it will be handled by
