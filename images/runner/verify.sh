@@ -18,7 +18,7 @@ IMAGE="${REGISTRY:-ghspot/runner}:${VARIANT}"
 REQUIRED="
 gcc g++ make cmake autoconf automake libtoolize m4 flex bison swig patchelf pkg-config
 curl wget git ssh rsync aria2c
-python3 pip3 pipx node npm
+python3 pip3 pipx uv uvx mise node npm
 jq gh shellcheck file tree parallel time sqlite3 hg
 tar unzip zip bzip2 xz gzip brotli lz4 pigz 7z
 gpg rpm fakeroot sudo getfacl
@@ -71,10 +71,21 @@ echo "    ok: every required tool present"
 
 # pipx has to be usable *by the runner user*, not merely present: upstream owns its
 # directories as root, and a job installing a tool at runtime is not root.
+# Being on PATH is not the same as being usable by the runner user, which is what a job is.
 docker run --rm --entrypoint sh "${IMAGE}" -c '
     pipx install "poetry==2.1.1" >/dev/null 2>&1 && command -v poetry >/dev/null
 ' || fail "the runner user cannot pipx install"
 echo "    ok: the runner user can pipx install"
+
+docker run --rm --entrypoint sh "${IMAGE}" -c '
+    uvx --quiet ruff@0.14.4 --version >/dev/null 2>&1
+' || fail "the runner user cannot uvx"
+echo "    ok: the runner user can uvx"
+
+docker run --rm --entrypoint sh "${IMAGE}" -c '
+    mise use -g node@22 >/dev/null 2>&1
+' || fail "the runner user cannot use mise"
+echo "    ok: the runner user can use mise"
 
 ABSENT="$(docker run --rm --entrypoint sh "${IMAGE}" -c "
     for t in ${OPTIONAL}; do command -v \"\$t\" >/dev/null 2>&1 || printf '%s ' \"\$t\"; done

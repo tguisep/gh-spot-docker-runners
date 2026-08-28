@@ -163,6 +163,27 @@ RUN dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.rep
     && dnf clean all && rm -rf /var/cache/dnf \
     && gh --version
 
+# uv and mise, the tooling this project is itself built with, and what workflows written in
+# the last couple of years reach for instead of pip and pyenv.
+#
+# uv brings uvx, which runs a tool without installing it — `uvx ruff check` needs no
+# virtualenv and no pipx. mise manages language versions per project, so a workflow can pin
+# node or python in a .mise.toml rather than depending on what the image happens to carry.
+#
+# Installed system-wide rather than under the runner's home so that a job which changes user
+# still finds them.
+ENV UV_INSTALL_DIR=/usr/local/bin \
+    MISE_INSTALL_PATH=/usr/local/bin/mise \
+    MISE_DATA_DIR=/opt/mise \
+    MISE_CACHE_DIR=/opt/mise/cache
+
+ARG UV_VERSION=0.12.6
+ARG MISE_VERSION=v2026.8.14
+RUN curl -fsSL "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh \
+    && curl -fsSL https://mise.run | MISE_VERSION="${MISE_VERSION}" sh \
+    && install -d -o runner -g runner "${MISE_DATA_DIR}" "${MISE_CACHE_DIR}" \
+    && uv --version && uvx --version && mise --version
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
