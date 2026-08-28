@@ -154,6 +154,17 @@ Require the checks from workflows that always run. A workflow filtered out by `p
 not report at all — neither success nor failure — so requiring it would leave a
 documentation-only pull request waiting forever for a check that was correctly never started.
 
+## Dependencies
+
+Dependabot opens grouped pull requests weekly for Python packages, actions and base images.
+Minor and patch bumps arrive together; a major arrives alone, because a major is a decision
+rather than a chore.
+
+The **runner tarball is not covered** — its version and checksum are pinned in each
+Dockerfile and come from a GitHub release rather than a package manager.
+`images/runner/sync-toolset.sh` watches that side, and CI asks weekly. GitHub requires
+runners to be no more than 30 days behind.
+
 ## Releases
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please), driven by
