@@ -12,6 +12,15 @@ npm run dev       # or a dev server on :5173, proxying to a daemon on :8770
 
 `GHSPOT_API=http://other-host:8770 npm run dev` points the proxy elsewhere.
 
+The dev server needs a daemon on the other end: start one with `api_bind` set, or every
+panel will say the daemon is not answering. It proxies the API paths, so requests are
+same-origin in development exactly as they are in production.
+
+`npm run dev -- --host` binds it to every interface, for looking at it from a phone on the
+same network. That is a development server and has no authentication in front of it — it is
+not the way to expose the dashboard to anything you care about. For that, serve the built
+assets from the daemon and put a proxy with auth in front.
+
 ## Why it is at /ui and not /
 
 The dashboard's own routes are named after the same things the API's are — `/runners`,

@@ -26,7 +26,18 @@ export default defineConfig({
         // origin. Proxied rather than CORS-enabled, so development and production use the same
         // same-origin request paths and nothing behaves differently only in dev.
         proxy: Object.fromEntries(
-            ['/health', '/pools', '/runners', '/reconcile', '/stats'].map((path) => [
+            [
+                '/health',
+                '/pools',
+                '/runners',
+                '/reconcile',
+                '/stats',
+                // The nav links to the API's own docs page, which the daemon serves in
+                // production. Without these two it opens the dashboard again in dev, which
+                // looks like a broken link and is a missing proxy entry.
+                '/docs',
+                '/openapi.json',
+            ].map((path) => [
                 path,
                 {
                     target: process.env.GHSPOT_API ?? 'http://localhost:8770',
