@@ -1,0 +1,372 @@
+/*
+ * Hand-written, and no framework. The dashboard is nine components; a utility framework
+ * would be the largest dependency here and would ship megabytes into a .deb to save writing
+ * this file once.
+ *
+ * Colours are tokens defined for light first, then overridden for dark, so a viewer's
+ * setting is honoured without any JavaScript deciding anything.
+ */
+
+:root {
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --line: #e3e1dd;
+    --ink: #1d1c1a;
+    --dim: #6d6a65;
+    --accent: #2f6f4f;
+    --ok: #1f7a45;
+    --warn: #9a6b12;
+    --bad: #a32c22;
+    --bar: #dfe7e2;
+    --radius: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #161615;
+        --panel: #1e1e1d;
+        --line: #33322f;
+        --ink: #e9e7e3;
+        --dim: #9b9791;
+        --accent: #6fbf95;
+        --ok: #63c088;
+        --warn: #d3a44b;
+        --bad: #e2796d;
+        --bar: #2b3833;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font:
+        14px/1.5 ui-sans-serif,
+        system-ui,
+        -apple-system,
+        'Segoe UI',
+        sans-serif;
+}
+
+code,
+pre,
+.num {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+
+/* ---------------------------------------------------------------- chrome */
+
+.top {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.top h1 {
+    margin: 0;
+    font-size: 16px;
+    letter-spacing: 0.04em;
+}
+
+.top nav {
+    display: flex;
+    gap: 4px;
+    margin-right: auto;
+}
+
+.top nav a {
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    color: var(--dim);
+    text-decoration: none;
+}
+
+.top nav a:hover {
+    color: var(--ink);
+    background: var(--bg);
+}
+
+.top nav a.active {
+    color: var(--ink);
+    background: var(--bar);
+}
+
+main {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+    max-width: 1400px;
+}
+
+footer {
+    padding: 0 20px 32px;
+    max-width: 70ch;
+    font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- panels */
+
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.panel-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+}
+
+.panel-head h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-right: auto;
+}
+
+.panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ---------------------------------------------------------------- controls */
+
+button,
+select {
+    font: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 3px 10px;
+    cursor: pointer;
+}
+
+button:hover:not(:disabled),
+select:hover {
+    border-color: var(--accent);
+}
+
+button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+button.danger:hover:not(:disabled) {
+    border-color: var(--bad);
+    color: var(--bad);
+}
+
+.check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--dim);
+}
+
+/* ---------------------------------------------------------------- tables */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    text-align: left;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+}
+
+thead th {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dim);
+    white-space: nowrap;
+}
+
+tbody tr:last-child th,
+tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+tbody tr:hover {
+    background: var(--bg);
+}
+
+tr.total th,
+tr.total td {
+    border-top: 1px solid var(--line);
+    font-weight: 600;
+}
+
+.num {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.row-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.labels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.labels code {
+    font-size: 12px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--bar);
+    color: var(--dim);
+}
+
+.reason {
+    display: block;
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--bad);
+}
+
+/* ---------------------------------------------------------------- pieces */
+
+.facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 32px;
+    margin: 0;
+    padding: 14px;
+}
+
+.facts dt {
+    font-size: 12px;
+    color: var(--dim);
+}
+
+.facts dd {
+    margin: 2px 0 0;
+    font-size: 16px;
+}
+
+.badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 12px;
+    background: var(--bar);
+    color: var(--dim);
+}
+
+.state-idle {
+    color: var(--accent);
+}
+.state-busy {
+    color: var(--ok);
+    font-weight: 600;
+}
+.state-registered,
+.state-starting {
+    color: var(--warn);
+}
+.state-failed {
+    color: var(--bad);
+}
+
+.bar {
+    position: relative;
+    min-width: 110px;
+    height: 18px;
+    border-radius: 3px;
+    background: var(--bar);
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    background: var(--accent);
+    opacity: 0.55;
+}
+
+.bar-text {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    font-family: ui-monospace, monospace;
+}
+
+.notice {
+    margin: 0;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+}
+
+.notice:last-child {
+    border-bottom: 0;
+}
+
+.logs {
+    margin: 0;
+    padding: 14px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre;
+    max-height: 60vh;
+}
+
+.dim {
+    color: var(--dim);
+}
+.ok {
+    color: var(--ok);
+}
+.warn {
+    color: var(--warn);
+}
+.bad,
+.error {
+    color: var(--bad);
+}
+
+/* A router link that has to look like the buttons beside it in a row of actions. */
+a.button {
+    font: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 3px 10px;
+    text-decoration: none;
+    line-height: 1.5;
+}
+
+a.button:hover {
+    border-color: var(--accent);
+}
