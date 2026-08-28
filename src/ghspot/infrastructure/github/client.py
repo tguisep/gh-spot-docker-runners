@@ -206,6 +206,50 @@ class GitHubClient:
 
         return jobs
 
+    async def job_logs(
+        self, repository: RepositoryTarget, job_id: int, tail: int = 500
+    ) -> str | None:
+        """Download the forge's log for one job, or ``None`` when it has none yet.
+
+        Two requests, deliberately not one. GitHub answers 302 with a signed URL on its blob
+        store, and that URL is not GitHub: following the redirect with the Authorization
+        header still attached would hand a credential that can register runners to a
+        different host. So the redirect is read, and fetched with a clean client.
+
+        A job still running answers 404 — the blob is written when the job finishes. That is
+        not an error, it is the normal state of a job in progress, so it returns ``None``.
+        """
+        path = f"/repos/{repository.owner}/{repository.name}/actions/jobs/{job_id}/logs"
+        headers = {"Authorization": f"Bearer {await self._auth.token()}"}
+
+        try:
+            response = await self._client.request(
+                "GET", path, headers=headers, follow_redirects=False
+            )
+        except httpx.HTTPError as error:
+            raise ForgeError(f"GET {path} failed: {error}") from error
+
+        self._note_rate_limit(response)
+
+        if response.status_code == 404:
+            return None
+        if response.status_code >= 400:
+            raise self._translate(response, "GET", path)
+
+        location = response.headers.get("Location")
+        if location is None:
+            # Not a redirect: some deployments answer with the body directly.
+            return _last_lines(response.text, tail)
+
+        try:
+            async with httpx.AsyncClient(timeout=self._client.timeout) as plain:
+                downloaded = await plain.get(location, follow_redirects=True)
+                downloaded.raise_for_status()
+        except httpx.HTTPError as error:
+            raise ForgeError(f"downloading job {job_id} logs failed: {error}") from error
+
+        return _last_lines(downloaded.text, tail)
+
     async def rate_limit_reset_at(self) -> datetime | None:
         return self._rate_limit_reset
 
@@ -332,6 +376,18 @@ class GitHubClient:
 
 
 # -- parsing -----------------------------------------------------------------------
+
+
+def _last_lines(text: str, tail: int) -> str:
+    """The end of a log, which is the part anyone is looking at.
+
+    A completed job's log runs to megabytes; sending all of it to a terminal or a browser
+    helps nobody. The byte order mark GitHub prefixes is dropped with it.
+    """
+    lines = text.lstrip("\ufeff").splitlines()
+    if tail > 0 and len(lines) > tail:
+        lines = lines[-tail:]
+    return "\n".join(lines)
 
 
 def _decode(response: httpx.Response) -> Any:

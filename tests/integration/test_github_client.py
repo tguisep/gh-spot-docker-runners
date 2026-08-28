@@ -378,3 +378,54 @@ async def test_a_transient_server_error_is_retried_and_then_succeeds() -> None:
 def test_a_client_without_a_token_is_refused() -> None:
     with pytest.raises(ForgeAuthError, match="no GitHub token"):
         GitHubClient(token="")
+
+
+# ---------------------------------------------------------------- job logs
+
+
+JOB_LOGS_URL = f"{BASE}/repos/tguisep/gh-spot-docker-runners/actions/jobs/4242/logs"
+BLOB_URL = "https://productionresultssa.blob.core.windows.net/actions-results/4242.txt"
+
+
+@respx.mock
+async def test_a_job_still_running_has_no_log_rather_than_an_error(
+    client: GitHubClient,
+) -> None:
+    """GitHub answers 404 until the job finishes. That is its normal state, not a fault."""
+    respx.get(JOB_LOGS_URL).mock(return_value=httpx.Response(404))
+
+    assert await client.job_logs(REPO, 4242) is None
+
+
+@respx.mock
+async def test_the_credential_is_not_handed_to_the_blob_store(client: GitHubClient) -> None:
+    """The redirect target is not GitHub. Following it with the Authorization header still
+    attached would give a different host a token that can register runners."""
+    respx.get(JOB_LOGS_URL).mock(return_value=httpx.Response(302, headers={"Location": BLOB_URL}))
+    blob = respx.get(BLOB_URL).mock(return_value=httpx.Response(200, text="line one\n"))
+
+    await client.job_logs(REPO, 4242)
+
+    assert blob.called
+    assert "Authorization" not in blob.calls.last.request.headers
+
+
+@respx.mock
+async def test_only_the_end_of_a_long_log_is_returned(client: GitHubClient) -> None:
+    """A completed job's log runs to megabytes; the end is the part anyone is looking at."""
+    respx.get(JOB_LOGS_URL).mock(return_value=httpx.Response(302, headers={"Location": BLOB_URL}))
+    body = "\n".join(f"line {number}" for number in range(1000))
+    respx.get(BLOB_URL).mock(return_value=httpx.Response(200, text=body))
+
+    lines = (await client.job_logs(REPO, 4242, tail=10) or "").splitlines()
+
+    assert len(lines) == 10
+    assert lines[-1] == "line 999"
+
+
+@respx.mock
+async def test_the_byte_order_mark_github_sends_is_dropped(client: GitHubClient) -> None:
+    respx.get(JOB_LOGS_URL).mock(return_value=httpx.Response(302, headers={"Location": BLOB_URL}))
+    respx.get(BLOB_URL).mock(return_value=httpx.Response(200, text="﻿2026-08-28 hello"))
+
+    assert (await client.job_logs(REPO, 4242) or "").startswith("2026-08-28")

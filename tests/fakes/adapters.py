@@ -112,6 +112,9 @@ class FakeForge:
 
     deleted: list[int] = field(default_factory=list)
     minted: list[str] = field(default_factory=list)
+    job_output: dict[int, str] = field(default_factory=dict)
+    """What `job_logs()` returns, keyed by job id. Empty means no job has finished."""
+
     _next_id: itertools.count[int] = field(default_factory=lambda: itertools.count(100))
 
     def _guard(self, method: str, repository: RepositoryTarget | None = None) -> None:
@@ -149,6 +152,14 @@ class FakeForge:
     async def list_queued_jobs(self, repository: RepositoryTarget) -> Sequence[QueuedJob]:
         self._guard("list_queued_jobs", repository)
         return list(self.queued.get(repository, []))
+
+    async def job_logs(
+        self, repository: RepositoryTarget, job_id: int, tail: int = 500
+    ) -> str | None:
+        """Whatever a test put in ``job_output``. Absent means the job has not finished, the
+        state a running job is actually in."""
+        self._guard("job_logs")
+        return self.job_output.get(job_id)
 
     async def rate_limit_reset_at(self) -> datetime | None:
         return None
