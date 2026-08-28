@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 
@@ -195,8 +196,11 @@ def tick_summary(report: TickReport) -> Text:
 
 
 def fail(message: str) -> None:
-    error_console.print(f"[red]error[/red] {message}")
+    # The message is escaped because configuration errors are full of brackets — `[daemon]`,
+    # `[[pool]]`, `[capacity]` — and Rich reads those as style tags. Unescaped, the one part
+    # of the message naming what is wrong is the part that disappears.
+    error_console.print(f"[red]error[/red] {escape(message)}")
 
 
 def hint(message: str) -> None:
-    error_console.print(f"[dim]hint:[/dim] {message}")
+    error_console.print(f"[dim]hint:[/dim] {escape(message)}")
