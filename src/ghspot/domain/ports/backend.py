@@ -44,6 +44,27 @@ class ContainerSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class HostLoad:
+    """The machine, right now. Any field may be ``None`` where it could not be read.
+
+    Unknown never blocks: a probe that cannot see the host must not be able to stop the
+    fleet. It degrades to the ceilings, which need no measurement.
+    """
+
+    cpu_percent: float | None = None
+    memory_used_bytes: int | None = None
+    memory_total_bytes: int | None = None
+    containers_running: int | None = None
+    cores: int | None = None
+
+    @property
+    def memory_percent(self) -> float | None:
+        if self.memory_used_bytes is None or not self.memory_total_bytes:
+            return None
+        return 100.0 * self.memory_used_bytes / self.memory_total_bytes
+
+
+@dataclass(frozen=True, slots=True)
 class ContainerStatus:
     """A container as the backend currently reports it."""
 
@@ -144,6 +165,14 @@ class RunnerBackend(Protocol):
         """Every container carrying the given labels, running or not.
 
         This is how the daemon rediscovers its own fleet after a restart.
+        """
+        ...
+
+    async def host_load(self) -> HostLoad:
+        """What the machine looks like right now.
+
+        Any field may be ``None`` where it could not be read: an unreadable host degrades the
+        decision to the configured ceilings rather than stopping the fleet.
         """
         ...
 

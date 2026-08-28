@@ -66,6 +66,13 @@ class PoolSpec:
     max_runners: int = 2
     idle_timeout: timedelta = timedelta(minutes=10)
     max_job_duration: timedelta = timedelta(hours=2)
+    priority: int = 0
+    """Who gets scarce host capacity first. Higher goes first; ties break on the name.
+
+    Only consulted when the host cannot satisfy every pool at once — with capacity to spare
+    it changes nothing. Ordinary pools can leave it alone; raise it on the one whose jobs
+    people are waiting on, or lower it on the one that can wait."""
+
     max_launch_per_tick: int = 2
     """Ceiling on how many runners may be started in a single tick, to avoid a thundering herd
     when a large matrix lands all at once."""
