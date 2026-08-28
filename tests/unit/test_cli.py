@@ -140,3 +140,61 @@ def test_the_daemon_reports_a_missing_credential_without_a_traceback(
     assert "Traceback" not in result.output
     assert "token" in result.output
     assert "doctor" in result.output
+
+
+# ---------------------------------------------------------------- stats
+
+
+def test_stats_reports_an_empty_window_rather_than_nothing(config: Path) -> None:
+    """A quiet fleet and a broken command must not look the same."""
+    result = runner.invoke(app, ["stats", "-c", str(config)])
+
+    assert result.exit_code == 0
+    assert "nothing recorded" in result.output
+
+
+def test_stats_refuses_a_window_that_is_not_a_duration(config: Path) -> None:
+    result = runner.invoke(app, ["stats", "--since", "banana", "-c", str(config)])
+
+    assert result.exit_code == 2
+    assert "not a duration" in result.output
+
+
+def test_stats_reads_the_log_the_daemon_wrote(config: Path, tmp_path: Path) -> None:
+    """End to end through the real store: the numbers reach the table."""
+    import asyncio
+
+    from ghspot.domain.model import events as domain_events
+    from ghspot.domain.model.target import RepositoryTarget
+    from ghspot.infrastructure.persistence.sqlite import SqliteEventLog
+
+    from .conftest import at
+
+    log = SqliteEventLog(tmp_path / "state.db")
+    asyncio.run(
+        log.append(
+            [
+                domain_events.RunnerRegistered(
+                    occurred_at=at(minutes=0),
+                    runner_id="r1",
+                    runner_name="ghspot-default-r1",
+                    github_runner_id=1,
+                    repository=RepositoryTarget("tguisep", "gh-spot-docker-runners"),
+                    pool="default",
+                ),
+                domain_events.RunnerTookJob(occurred_at=at(minutes=1), runner_id="r1", job_id=7),
+                domain_events.RunnerRetired(
+                    occurred_at=at(minutes=11), runner_id="r1", reason="job finished"
+                ),
+            ]
+        )
+    )
+
+    result = runner.invoke(app, ["stats", "-c", str(config)])
+
+    assert result.exit_code == 0
+    assert "3 event(s) read" in result.output
+    # The repository name is asserted through the numbers instead: Rich folds a long name
+    # across lines at the test console's width, so the string is not contiguous.
+    assert "10m00s" in result.output  # busy: took the job at +1m, retired at +11m
+    assert "1m00s" in result.output  # wait: registered at +0, took the job at +1m

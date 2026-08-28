@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from ghspot.application.dto import PoolView, RunnerView, TickReport
+from ghspot.application.dto import PoolView, RunnerView, StatsView, TickReport, UsageStats
 from ghspot.domain.model.runner import RunnerState
 
 console = Console()
@@ -90,6 +90,86 @@ def pools_table(pools: Sequence[PoolView]) -> Table:
             str(pool.queued_jobs) if pool.queued_jobs else "—",
         )
     return table
+
+
+def _percent(fraction: float) -> str:
+    return f"{fraction * 100:.0f}%"
+
+
+def _usage_table(rows: Sequence[UsageStats], total: UsageStats, heading: str) -> Table:
+    table = Table(header_style="bold", expand=False)
+    # Folded rather than ellipsized: `owner/repo` truncated to `own…` names nothing, and a
+    # narrow terminal is exactly where the reader most needs to know which row is which.
+    table.add_column(heading, style="bold", overflow="fold", min_width=12)
+    table.add_column("runners", justify="right")
+    table.add_column("jobs", justify="right")
+    table.add_column("fail", justify="right")
+    table.add_column("fail%", justify="right")
+    table.add_column("busy", justify="right")
+    table.add_column("avg job", justify="right")
+    table.add_column("avg wait", justify="right")
+    table.add_column("used", justify="right")
+    table.add_column("live", justify="right")
+
+    def add(stats: UsageStats, name: str, style: str = "") -> None:
+        failed = Text(str(stats.failed), style="red" if stats.failed else "dim")
+        table.add_row(
+            Text(name, style=style),
+            str(stats.runners),
+            str(stats.jobs),
+            failed,
+            _percent(stats.failure_rate) if stats.runners else "-",
+            duration(stats.busy_seconds),
+            duration(stats.mean_busy_seconds) if stats.jobs else "-",
+            duration(stats.mean_wait_seconds) if stats.waits_counted else "-",
+            _percent(stats.utilisation) if stats.alive_seconds else "-",
+            str(stats.live) if stats.live else "-",
+            style=style,
+        )
+
+    for stats in rows:
+        add(stats, stats.key or "(none)")
+    if len(rows) > 1:
+        add(total, "all", style="bold")
+    return table
+
+
+def stats_tables(view: StatsView) -> list[Table | Text]:
+    """The usage report: one table per axis, plus failures when there are any."""
+    window = (
+        f"since {view.since:%Y-%m-%d %H:%M} UTC"
+        if view.since is not None
+        else "the whole recorded history"
+    )
+    blocks: list[Table | Text] = [
+        Text.assemble(
+            ("usage ", "bold"),
+            (f"— {window}, {view.events_read} event(s) read", "dim"),
+        )
+    ]
+
+    if not view.by_repository:
+        blocks.append(
+            Text(
+                "nothing recorded in this window",
+                style="dim",
+            )
+        )
+        return blocks
+
+    blocks.append(_usage_table(view.by_repository, view.total, "repository"))
+    if len(view.by_pool) > 1 or (view.by_pool and view.by_pool[0].key):
+        blocks.append(_usage_table(view.by_pool, view.total, "pool"))
+
+    if view.failures:
+        failures = Table(title="failures", header_style="bold", expand=False)
+        failures.add_column("reason")
+        failures.add_column("count", justify="right")
+        for reason, count in view.failures:
+            failures.add_row(Text(reason, style="red"), str(count))
+        blocks.append(failures)
+
+    return blocks
 
 
 def tick_summary(report: TickReport) -> Text:
