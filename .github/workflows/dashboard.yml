@@ -1,0 +1,58 @@
+name: Dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/dashboard.yml"
+      - ".github/workflows/select-runner.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/dashboard.yml"
+      - ".github/workflows/select-runner.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  runner:
+    uses: ./.github/workflows/select-runner.yml
+
+  build:
+    needs: runner
+    runs-on: ${{ fromJSON(needs.runner.outputs.labels) }}
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # `ci`, not `install`: the lockfile decides, and a workflow that quietly resolves a
+      # different tree from a developer's is a bug report nobody can reproduce.
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: format
+        run: npm run format:check
+
+      - name: test
+        run: npm test
+
+      # Last, because the three checks above name their failure and this one only says the
+      # build broke.
+      - name: build
+        run: npm run build
