@@ -156,7 +156,7 @@ ghspot runner list [--all]     runners, from the local projection
 ghspot runner logs <ref>       container output
 ghspot runner stop <ref>       retire on both sides
 ghspot stats [--since 7d]      runners, jobs, failures and time spent
-ghspot config validate         load the config and report what it means
+ghspot config validate         load the config and report what it means, from every file
 ```
 
 A REST API is served alongside the daemon when `api_bind` is set — see
