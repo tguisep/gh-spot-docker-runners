@@ -89,6 +89,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
 "src/ghspot/interfaces/cli/**" = ["T20"]
+"deploy/ansible/test/**" = ["T20"]   # a test script: its report is its output
 
 [tool.ruff.lint.isort]
 known-first-party = ["ghspot"]

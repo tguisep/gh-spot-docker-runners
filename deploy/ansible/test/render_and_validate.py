@@ -41,11 +41,20 @@ def render(template: str, variables: Path, destination: Path) -> None:
     """Render one template through Ansible, as the role itself would."""
     result = subprocess.run(
         [
-            "ansible", "localhost", "-c", "local", "-m", "ansible.builtin.template",
-            "-a", f"src={TEMPLATES / template} dest={destination}",
-            "-e", f"@{variables}",
+            "ansible",
+            "localhost",
+            "-c",
+            "local",
+            "-m",
+            "ansible.builtin.template",
+            "-a",
+            f"src={TEMPLATES / template} dest={destination}",
+            "-e",
+            f"@{variables}",
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if not destination.exists():
         sys.exit(f"rendering {template} with {variables.name} failed:\n{result.stdout}")
@@ -150,7 +159,7 @@ def test_the_credential_file_takes_both_forms() -> None:
         app_vars.write_text(
             "ghspot_github_token: ''\n"
             "ghspot_github_app_id: '123456'\n"
-            "ghspot_github_app_private_key: \"-----BEGIN PRIVATE KEY-----\\nSECOND\\n\"\n"
+            'ghspot_github_app_private_key: "-----BEGIN PRIVATE KEY-----\\nSECOND\\n"\n'
         )
         rendered_app = Path(directory) / "env-app"
         render("env.j2", app_vars, rendered_app)
