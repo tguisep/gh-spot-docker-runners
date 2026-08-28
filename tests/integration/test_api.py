@@ -269,3 +269,63 @@ async def test_a_runner_response_rounds_its_durations(client: TestClient, harnes
 
     assert body["age_seconds"] == 90.5
     assert body["state"] == RunnerState.STARTING.value
+
+
+# ---------------------------------------------------------------- stats
+
+
+def test_stats_reports_what_the_fleet_did(client: TestClient, harness: Harness) -> None:
+    """The endpoint reads the same log the CLI does, and sends derived values with it."""
+    from ghspot.domain.model import events as domain_events
+
+    written = [
+        domain_events.RunnerRegistered(
+            occurred_at=T0,
+            runner_id="r1",
+            runner_name="ghspot-default-r1",
+            github_runner_id=1,
+            repository=REPO,
+            pool="default",
+        ),
+        domain_events.RunnerTookJob(
+            occurred_at=T0 + timedelta(minutes=1), runner_id="r1", job_id=7
+        ),
+        domain_events.RunnerRetired(
+            occurred_at=T0 + timedelta(minutes=11), runner_id="r1", reason="job finished"
+        ),
+    ]
+    harness.events.events.extend(written)
+
+    body = client.get("/stats").json()
+
+    assert body["events_read"] == 3
+    assert body["total"]["runners"] == 1
+    assert body["total"]["jobs"] == 1
+    assert body["total"]["busy_seconds"] == 600.0
+    assert body["total"]["mean_wait_seconds"] == 60.0
+    assert [row["key"] for row in body["by_repository"]] == [str(REPO)]
+    assert [row["key"] for row in body["by_pool"]] == ["default"]
+    assert body["failures"] == []
+
+
+def test_stats_honours_a_window(client: TestClient, harness: Harness) -> None:
+    """An event older than the window is outside the report, not merely unsorted."""
+    from ghspot.domain.model import events as domain_events
+
+    harness.events.events.append(
+        domain_events.RunnerRegistered(
+            occurred_at=T0 - timedelta(days=30),
+            runner_id="old",
+            runner_name="ghspot-default-old",
+            github_runner_id=1,
+            repository=REPO,
+            pool="default",
+        )
+    )
+
+    assert client.get("/stats").json()["events_read"] == 1
+    assert client.get("/stats", params={"since_seconds": 3600}).json()["events_read"] == 0
+
+
+def test_a_negative_window_is_refused(client: TestClient) -> None:
+    assert client.get("/stats", params={"since_seconds": -1}).status_code == 422

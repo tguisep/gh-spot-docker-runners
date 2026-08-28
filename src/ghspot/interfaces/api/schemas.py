@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from ghspot.application.dto import PoolView, RunnerView, TickReport
+from ghspot.application.dto import PoolView, RunnerView, StatsView, TickReport, UsageStats
 
 
 class RunnerResponse(BaseModel):
@@ -102,6 +102,70 @@ class TickResponse(BaseModel):
             queued_jobs=report.queued_jobs,
             errors=report.errors,
             notes=report.notes,
+        )
+
+
+class UsageResponse(BaseModel):
+    """One group's usage. Derived values are sent rather than left to the client, so a
+    dashboard and `ghspot stats` cannot disagree about what a failure rate means."""
+
+    key: str
+    runners: int
+    jobs: int
+    failed: int
+    completed: int
+    idle_runners: int
+    failure_rate: float
+    busy_seconds: float
+    alive_seconds: float
+    mean_busy_seconds: float
+    mean_wait_seconds: float
+    utilisation: float
+    live: int
+
+    @classmethod
+    def of(cls, stats: UsageStats) -> UsageResponse:
+        return cls(
+            key=stats.key,
+            runners=stats.runners,
+            jobs=stats.jobs,
+            failed=stats.failed,
+            completed=stats.completed,
+            idle_runners=stats.idle_runners,
+            failure_rate=round(stats.failure_rate, 4),
+            busy_seconds=round(stats.busy_seconds, 3),
+            alive_seconds=round(stats.alive_seconds, 3),
+            mean_busy_seconds=round(stats.mean_busy_seconds, 3),
+            mean_wait_seconds=round(stats.mean_wait_seconds, 3),
+            utilisation=round(stats.utilisation, 4),
+            live=stats.live,
+        )
+
+
+class FailureCount(BaseModel):
+    reason: str
+    count: int
+
+
+class StatsResponse(BaseModel):
+    since: datetime | None
+    until: datetime
+    events_read: int
+    total: UsageResponse
+    by_repository: list[UsageResponse]
+    by_pool: list[UsageResponse]
+    failures: list[FailureCount]
+
+    @classmethod
+    def of(cls, view: StatsView) -> StatsResponse:
+        return cls(
+            since=view.since,
+            until=view.until,
+            events_read=view.events_read,
+            total=UsageResponse.of(view.total),
+            by_repository=[UsageResponse.of(row) for row in view.by_repository],
+            by_pool=[UsageResponse.of(row) for row in view.by_pool],
+            failures=[FailureCount(reason=reason, count=count) for reason, count in view.failures],
         )
 
 
