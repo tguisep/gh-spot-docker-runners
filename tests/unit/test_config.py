@@ -649,3 +649,66 @@ def test_an_include_written_below_a_table_header_is_refused(tmp_path: Path) -> N
 
     with pytest.raises(ConfigError, match="Move it above the first"):
         load(config)
+
+
+# ---------------------------------------------------------------- capacity
+
+
+def test_a_host_with_no_capacity_section_is_unlimited() -> None:
+    """Configuration written before this section existed must behave as it always did."""
+    capacity = parse(MINIMAL).capacity  # type: ignore[attr-defined]
+
+    assert capacity.max_containers is None
+    assert capacity.max_cpus is None
+    assert capacity.max_memory_bytes is None
+    assert capacity.has_backpressure is False
+
+
+def test_every_ceiling_is_read() -> None:
+    settings = parse(
+        MINIMAL
+        + """
+[capacity]
+max_containers = 8
+max_cpus = 12.5
+max_memory = "24g"
+cpu_high_water = 85
+memory_high_water = 90
+"""
+    )
+
+    capacity = settings.capacity  # type: ignore[attr-defined]
+    assert capacity.max_containers == 8
+    assert capacity.max_cpus == 12.5
+    assert capacity.max_memory_bytes == 24 * 1024**3
+    assert capacity.cpu_high_water == 85
+    assert capacity.memory_high_water == 90
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "max_containers = 0",
+        "max_cpus = 0",
+        "cpu_high_water = 0",
+        "cpu_high_water = 140",
+        'max_memory = "lots"',
+    ],
+)
+def test_a_nonsense_limit_is_refused_at_load_time(written: str) -> None:
+    with pytest.raises(ConfigError, match=r"(?i)capacity"):
+        parse(MINIMAL + f"\n[capacity]\n{written}\n")
+
+
+def test_a_pool_can_be_given_a_priority() -> None:
+    settings = parse(
+        MINIMAL.replace(
+            'labels = ["self-hosted", "linux"]', 'labels = ["self-hosted", "linux"]\npriority = 10'
+        )
+    )
+
+    assert settings.pools[0].spec.priority == 10  # type: ignore[attr-defined]
+
+
+def test_pools_share_a_priority_unless_they_say_otherwise() -> None:
+    assert parse(MINIMAL).pools[0].spec.priority == 0  # type: ignore[attr-defined]
