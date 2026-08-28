@@ -56,6 +56,17 @@ class RecordingPublisher:
     async def publish(self, events: Sequence[DomainEvent]) -> None:
         self.events.extend(events)
 
+    async def append(self, events: Sequence[DomainEvent]) -> None:
+        self.events.extend(events)
+
+    async def recent(self, limit: int = 100) -> Sequence[DomainEvent]:
+        return self.events[-limit:]
+
+    async def since(self, moment: datetime | None = None) -> Sequence[DomainEvent]:
+        if moment is None:
+            return list(self.events)
+        return [event for event in self.events if event.occurred_at >= moment]
+
     def of_type(self, kind: type[DomainEvent]) -> list[DomainEvent]:
         return [event for event in self.events if isinstance(event, kind)]
 
