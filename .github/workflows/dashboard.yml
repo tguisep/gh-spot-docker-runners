@@ -43,6 +43,15 @@ jobs:
       # different tree from a developer's is a bug report nobody can reproduce.
       - run: npm ci
 
+      # Only what reaches a browser blocks the build. A dev-only advisory — a bundler, a
+      # test runner — is a dependabot pull request, not a reason to fail unrelated work; a
+      # vulnerable dependency shipped to whoever opens the dashboard is neither.
+      - name: audit what ships
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: audit everything else
+        run: npm audit --audit-level=high || echo "::warning::dev dependencies have advisories; dependabot will raise them"
+
       - name: typecheck
         run: npm run typecheck
 
