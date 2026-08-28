@@ -39,6 +39,14 @@ ghspot_pools:
       image: ghspot/runner:ubuntu-24.04
       gpus: all
       docker_socket: true
+  - name: jetson
+    repository: tguisep/my-project
+    labels: [self-hosted, linux, arm64, jetson-r32]
+    requires_labels: [jetson-r32]
+    max_runners: 1
+    container:
+      image: ghspot/runner:jetson-r32
+      runtime: nvidia
   - name: rhel
     repository: tguisep/other-project
     labels: [self-hosted, linux, x64, rhel-9]

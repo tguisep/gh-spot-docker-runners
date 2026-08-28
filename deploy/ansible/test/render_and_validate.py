@@ -78,6 +78,7 @@ def test_minimal() -> None:
     check(pool.template.image == "ghspot/runner:ubuntu-24.04", "minimal: image lost")
     check(pool.template.gpus is None, "minimal: a pool asked for a GPU it never wanted")
     check(pool.spec.requires_labels is None, "minimal: unexpected requires_labels")
+    check(pool.template.runtime is None, "minimal: unexpected runtime")
     check(not pool.template.mount_docker_socket, "minimal: socket mounted by default")
 
 
@@ -98,7 +99,7 @@ def test_everything_round_trips() -> None:
     check(keep.keep_build_cache == "5g", "full: keep_build_cache lost")
 
     pools = {pool.spec.name: pool for pool in settings.pools}
-    check(set(pools) == {"ubuntu", "gpu", "rhel"}, f"full: pools are {sorted(pools)}")
+    check(set(pools) == {"ubuntu", "gpu", "jetson", "rhel"}, f"full: pools are {sorted(pools)}")
 
     ubuntu = pools["ubuntu"]
     check(ubuntu.spec.min_idle == 2, "full: min_idle lost")
@@ -122,6 +123,10 @@ def test_everything_round_trips() -> None:
     check(gpu.template.gpus == "all", f"full: gpus is {gpu.template.gpus!r}, expected 'all'")
     required = gpu.spec.requires_labels
     check(required is not None and required.as_list() == ["gpu-a100"], "full: requires_labels lost")
+
+    jetson = pools["jetson"]
+    check(jetson.template.runtime == "nvidia", f"full: runtime is {jetson.template.runtime!r}")
+    check(jetson.template.gpus is None, "full: a Jetson pool asked for a device request")
 
     rhel = pools["rhel"]
     check(rhel.template.gpus == ("0", "1"), f"full: gpu ids are {rhel.template.gpus!r}")
