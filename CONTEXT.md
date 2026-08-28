@@ -127,3 +127,46 @@ branch while its child still pointed at it, and GitHub **auto-closed** #2, #4, #
 rather than merging them. No work was lost — `feat/rest-api` held the complete tree — and it
 was landed on `main` as #10 after confirming byte-identity with the verified state. When
 merging a stack, either merge without `--delete-branch` or retarget each child first.
+
+## 2026-08-28 — Jetson support: a runtime rather than a device request
+
+A Jetson reaches its GPU differently from a desktop with an NVIDIA card, and the difference
+is not a detail. JetPack's container stack predates the Engine's device-request API, so
+`--gpus` — and the `gpus` setting built on it — cannot work on a Tegra board at all. The GPU
+is granted by running the container under JetPack's own runtime.
+
+So pools gained a `runtime` key, plumbed through `RunnerTemplate` and `ContainerSpec` to the
+Engine. `gpus` and `runtime` are alternatives, and on a Jetson only the second one works.
+
+The image is the `ubuntu-22.04` variant plus two lines, not a base of its own. Three choices
+in it are worth keeping:
+
+- **Not `nvcr.io/nvidia/l4t-base:r32.7.1`**, the obvious base. It is Ubuntu 18.04, and the
+  runner has shipped .NET 8 since v2.317, which needs glibc 2.28; 18.04 has 2.27. The board's
+  own 18.04 userspace never constrained the image — a container brings its own. It was
+  briefly mistaken for a blocker on the whole feature, which it is not.
+- **Not 20.04 either**, which was the first choice on the reasoning that a container nearer
+  the board's own 18.04 has less to go wrong. CI disproved it: focal ships Python 3.8, and
+  `verify.sh` holds every variant to a toolset contract that includes `pipx install poetry`,
+  which needs 3.9. The image built and failed its own contract. The distance argument was a
+  hedge rather than a requirement — the injected driver is the old side of the pairing
+  whatever the base, and old libraries under a newer glibc is the direction that works.
+- **Both `ld.so.conf.d` and `LD_LIBRARY_PATH`**, which looks redundant and is not.
+  `/etc/ld.so.cache` is generated at build time, when the tegra directories are still empty.
+  `ld.so` reads the cache and then only its trusted defaults, so a path listed in
+  `ld.so.conf` whose contents were mounted in afterwards is never searched. Without the
+  environment variable the driver is present in the container and unreachable.
+
+### Notes for later
+
+- `doctor` now tells a Jetson from a desktop by `/etc/nv_tegra_release`, because the previous
+  driver probe was `which nvidia-smi` — and there is no `nvidia-smi` on Tegra. On a Jetson it
+  refuses a pool that sets `gpus` and names `runtime` as the fix.
+- The control plane is fine on the board's 18.04: the `.deb` bundles an interpreter built
+  against glibc 2.17, verified by reading the aarch64 build's ELF version requirements rather
+  than by assuming.
+- `build.sh` refuses to build an arm64 variant on x86-64, and skips it with a note when
+  building every variant, so a developer machine still builds the rest.
+- Untested on real hardware at time of writing: no Jetson was available. The board-side
+  checks are the `docker info` runtime listing and the `ldconfig -p | grep libcuda` smoke
+  test in [`docs/operations.md`](docs/operations.md).

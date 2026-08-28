@@ -61,6 +61,9 @@ gpus = [{{ pool.container.gpus | map('string') | map('tojson') | join(', ') }}]
 gpus = {{ pool.container.gpus }}
 {% endif %}
 {% endif %}
+{% if pool.container.runtime is defined and pool.container.runtime %}
+runtime = "{{ pool.container.runtime }}"
+{% endif %}
 {% if pool.container.network is defined %}
 network = "{{ pool.container.network }}"
 {% endif %}

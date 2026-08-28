@@ -53,3 +53,8 @@ memory = "4g"
 # this host: fine for repositories you control, unacceptable for one accepting pull requests
 # from forks. See /usr/share/doc/ghspot/README.md.gz and SECURITY.md.
 docker_socket = true
+
+# Which container runtime starts these containers. Needed only where the Engine's default
+# cannot reach the GPU — on a Jetson, where JetPack predates the device-request API behind
+# `gpus`. Use one or the other, never both.
+# runtime = "nvidia"

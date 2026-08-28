@@ -36,6 +36,19 @@ echo "==> ${IMAGE}"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# An arm64 image cannot be introspected on an x86-64 host without emulation, and every check
+# below runs the image. Say so once rather than failing eight times with "exec format error".
+IMAGE_ARCH="$(docker image inspect --format '{{.Architecture}}' "${IMAGE}" 2>/dev/null || true)"
+HOST_ARCH="$(docker version --format '{{.Server.Arch}}' 2>/dev/null || true)"
+if [ -n "${IMAGE_ARCH}" ] && [ -n "${HOST_ARCH}" ] && [ "${IMAGE_ARCH}" != "${HOST_ARCH}" ]; then
+    if ! docker run --rm --entrypoint true "${IMAGE}" 2>/dev/null; then
+        echo "    skipped: ${IMAGE_ARCH} image on a ${HOST_ARCH} host, and no emulation is set up" >&2
+        echo "    install it with: docker run --privileged --rm tonistiigi/binfmt --install ${IMAGE_ARCH}" >&2
+        exit 0
+    fi
+    echo "    note: ${IMAGE_ARCH} image running under emulation; this will be slow"
+fi
+
 # --- the contract ----------------------------------------------------------------------
 
 docker run --rm "${IMAGE}" >/dev/null 2>&1 && fail "started without RUNNER_JIT_CONFIG"
@@ -99,5 +112,25 @@ docker run --rm --entrypoint sh "${IMAGE}" -c '
         "$(python3 -V | cut -d" " -f2)" "$(node -v)" "$(gcc -dumpversion)" \
         "$(git --version | cut -d" " -f3)"
 '
+
+# --- Tegra -------------------------------------------------------------------------------
+
+# The Jetson variant's whole reason to exist is finding the driver the runtime mounts in at
+# start. Both mechanisms are checked: ld.so.cache is generated at build time, when the tegra
+# directories are still empty, so LD_LIBRARY_PATH is what actually makes libcuda.so.1
+# resolvable. Without it the image looks fine and every CUDA job fails.
+case "${VARIANT}" in
+    jetson-*)
+        docker run --rm --entrypoint sh "${IMAGE}" -c \
+            'test -f /etc/ld.so.conf.d/nvidia-tegra.conf' \
+            || fail "no tegra entry in ld.so.conf.d"
+        echo "    ok: tegra paths in ld.so.conf.d"
+
+        docker run --rm --entrypoint sh "${IMAGE}" -c \
+            'case ":$LD_LIBRARY_PATH:" in *:/usr/lib/aarch64-linux-gnu/tegra:*) ;; *) exit 1 ;; esac' \
+            || fail "LD_LIBRARY_PATH does not carry the tegra directory"
+        echo "    ok: LD_LIBRARY_PATH carries the tegra directory"
+        ;;
+esac
 
 echo "==> verified"

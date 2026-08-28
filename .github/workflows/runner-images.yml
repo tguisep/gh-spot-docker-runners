@@ -35,6 +35,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # jetson-r32 is absent on purpose: it is arm64, and building 2.7 GB under qemu
+        # costs more than it finds. Its guards are checked by the job below instead, and
+        # the board is where it actually gets proven.
         variant: [ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,3 +62,35 @@ jobs:
         run: |
           docker image rm -f "ghspot/runner-ci:${{ matrix.variant }}" 2>/dev/null || true
           docker image prune -f >/dev/null 2>&1 || true
+
+  # The Jetson variant cannot be built here, so what is checked is the thing that would
+  # otherwise go wrong quietly: build.sh producing an amd64 image under an arm64 name, which
+  # the board reports as "exec format error" long after the build reported success.
+  #
+  # Seconds, not minutes — nothing is built.
+  guards:
+    name: arch guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: an arm64 variant is refused by name on x86-64
+        run: |
+          if images/runner/build.sh jetson-r32 >output.txt 2>&1; then
+            echo "build.sh built an arm64 variant on $(uname -m)"; cat output.txt; exit 1
+          fi
+          grep -q "is an aarch64 image and this machine is" output.txt \
+            || { echo "refused, but not for the stated reason:"; cat output.txt; exit 1; }
+
+      # A stub docker keeps this to seconds: what is under test is build.sh's control flow,
+      # not the Engine. Without the skip, one arm64 variant aborts the whole pass and a
+      # developer machine stops being able to build the other five.
+      - name: and skipped, not fatal, when building every variant
+        run: |
+          mkdir -p stub
+          printf '#!/bin/sh\ncase "$1" in image) exit 1 ;; *) exit 0 ;; esac\n' > stub/docker
+          chmod +x stub/docker
+          PATH="$PWD/stub:$PATH" images/runner/build.sh >output.txt 2>&1 \
+            || { echo "building every variant failed:"; cat output.txt; exit 1; }
+          grep -q "skipping jetson-r32" output.txt \
+            || { echo "jetson-r32 was not skipped:"; cat output.txt; exit 1; }

@@ -37,6 +37,7 @@ class RunnerTemplate:
     cpus: float | None = None
     memory: str | None = None
     gpus: str | int | tuple[str, ...] | None = None
+    runtime: str | None = None
     mount_docker_socket: bool = False
     volumes: Mapping[str, str] = field(default_factory=dict)
     network: str | None = None
@@ -117,6 +118,7 @@ class ProvisionRunner:
             cpus=template.cpus,
             memory=template.memory,
             gpus=template.gpus,
+            runtime=template.runtime,
             mount_docker_socket=template.mount_docker_socket,
             volumes=template.volumes,
             network=template.network,

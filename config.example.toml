@@ -99,7 +99,7 @@ max_launch_per_tick = 2   # spreads a large matrix across ticks
 # The image tag and the OS label above are the same string, deliberately: build with
 # images/runner/build.sh and the two cannot drift apart.
 #
-# Available: ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10
+# Available: ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10, jetson-r32
 image = "ghspot/runner:ubuntu-24.04"
 cpus = 2.0
 memory = "4g"
@@ -119,6 +119,14 @@ docker_socket = true
 # holds it against every other runner on the machine. Give a GPU pool its own label, so only
 # jobs that need one land there.
 # gpus = "all"
+
+# Which container runtime starts these containers. Only needed where the Engine's default
+# cannot reach the GPU, which today means a Jetson: JetPack's container stack predates the
+# device-request API behind `gpus`, so a Jetson grants the GPU by runtime instead.
+#
+# On a Jetson use `runtime` and leave `gpus` unset — setting both makes the Engine refuse the
+# device request, and `ghspot doctor` says so before any runner tries.
+# runtime = "nvidia"
 
 # Persist caches between runs. Host path = container path.
 # [pool.container.volumes]

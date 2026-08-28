@@ -369,6 +369,47 @@ def test_pools_ask_for_no_gpu_unless_they_say_so() -> None:
     assert parse(MINIMAL).pools[0].template.gpus is None  # type: ignore[attr-defined]
 
 
+# ---------------------------------------------------------------- runtime
+
+
+def test_a_pool_can_name_a_container_runtime() -> None:
+    """JetPack grants the GPU through its own runtime rather than a device request."""
+    settings = parse(
+        MINIMAL.replace(
+            'image = "ghspot/runner:ubuntu-24.04"',
+            'image = "ghspot/runner:jetson-r32"\nruntime = "nvidia"',
+        )
+    )
+
+    assert settings.pools[0].template.runtime == "nvidia"  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("written", ['runtime = ""', "runtime = false"])
+def test_an_empty_runtime_means_the_engine_default(written: str) -> None:
+    settings = parse(
+        MINIMAL.replace(
+            'image = "ghspot/runner:ubuntu-24.04"',
+            f'image = "ghspot/runner:ubuntu-24.04"\n{written}',
+        )
+    )
+
+    assert settings.pools[0].template.runtime is None  # type: ignore[attr-defined]
+
+
+def test_pools_use_the_engine_default_runtime_unless_they_say_so() -> None:
+    assert parse(MINIMAL).pools[0].template.runtime is None  # type: ignore[attr-defined]
+
+
+def test_a_runtime_that_is_not_a_name_is_refused() -> None:
+    with pytest.raises(ConfigError, match=r"(?i)runtime"):
+        parse(
+            MINIMAL.replace(
+                'image = "ghspot/runner:ubuntu-24.04"',
+                'image = "ghspot/runner:ubuntu-24.04"\nruntime = 7',
+            )
+        )
+
+
 @pytest.mark.parametrize("written", ['gpus = "lots"', "gpus = []", "gpus = -1"])
 def test_a_nonsense_gpu_selection_is_refused(written: str) -> None:
     with pytest.raises(ConfigError, match=r"(?i)gpu"):

@@ -14,6 +14,7 @@ not have to care which one it landed on beyond the package manager it can call.
 | `ubuntu-22.04` | `ubuntu:22.04` | `runs-on: [self-hosted, ubuntu-22.04]` |
 | `rhel-9` | `almalinux:9` | `runs-on: [self-hosted, rhel-9]` |
 | `rhel-10` | `almalinux:10` | `runs-on: [self-hosted, rhel-10]` |
+| `jetson-r32` | `ghspot/runner:ubuntu-22.04` | `runs-on: [self-hosted, jetson-r32]` |
 
 The variant name is the image tag *and* the label, so the two cannot drift apart. Serve more
 than one by giving each its own pool — a job asking for `rhel-9` will only ever land on a
@@ -129,6 +130,54 @@ Check what a machine reports with:
 
 If the physical CPU genuinely predates v3 — roughly pre-2015 Intel, pre-2017 AMD — use
 `rhel-9`, which has no such requirement.
+
+### jetson-r32 is arm64, and is built on the Ubuntu variant
+
+The Jetson variant is the `ubuntu-22.04` image plus the two things a Tegra board needs to
+find its GPU. Everything else — the toolset, the runner payload, the unprivileged user — is
+already right there, so this is a thin layer rather than a base of its own. `build.sh` builds
+`ubuntu-22.04` first if it is missing.
+
+**Why not `nvcr.io/nvidia/l4t-base:r32.7.1`,** which is the obvious base. It is Ubuntu 18.04,
+and the GitHub Actions runner has shipped .NET 8 since v2.317, which needs glibc 2.28.
+Ubuntu 18.04 has 2.27. The board's own 18.04 userspace does not constrain the image — a
+container brings its own — so it builds on a release
+[GitHub still supports](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#linux)
+for a runner.
+
+**Why not 20.04**, which is nearer the board's own release and looks like the safer hedge.
+Focal ships Python 3.8, and the toolset contract every variant is held to includes
+`pipx install poetry`, which needs 3.9 — `verify.sh` fails on it. A base that cannot pass the
+contract is not a base. This was tried first and rejected on that evidence.
+
+The distance from the board matters less than it appears: JetPack mounts the host's Tegra
+driver in at start, and those libraries are the old side of the pairing either way. Old
+libraries under a newer glibc is the direction that works.
+
+**What the layer adds.** JetPack puts no driver in the image; `nvidia-container-runtime`
+bind-mounts it in at container start, into `/usr/lib/aarch64-linux-gnu/tegra`. The image has
+to be able to find it, which takes both of these:
+
+| | Why |
+|---|---|
+| `/etc/ld.so.conf.d/nvidia-tegra.conf` | For anything that runs `ldconfig` itself |
+| `LD_LIBRARY_PATH` | Because `/etc/ld.so.cache` is generated at build time, when those directories are still empty. `ld.so` consults the cache and then only its trusted defaults, so a path listed in `ld.so.conf` whose contents arrived afterwards is never searched — `libcuda.so.1` would be mounted in and still not found |
+
+`verify.sh jetson-r32` checks for both.
+
+It is an arm64 image, so `build.sh` refuses to build it on x86-64 rather than producing
+something the board reports as `exec format error` much later. Build it on the Jetson, or
+cross-build:
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+docker buildx build --platform linux/arm64 \
+  --file images/runner/jetson.Dockerfile \
+  --build-arg BASE_IMAGE=ghspot/runner:ubuntu-22.04 \
+  --tag ghspot/runner:jetson-r32 images/runner/
+```
+
+Building every variant on an x86-64 machine skips this one with a note rather than failing.
 
 ### Size
 

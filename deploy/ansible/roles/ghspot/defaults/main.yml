@@ -67,6 +67,18 @@ ghspot_housekeeping:
 #       cpus: 2.0
 #       memory: 4g
 #       docker_socket: true
+#
+# A Jetson pool looks the same but reaches its GPU by runtime rather than by a device
+# request, because JetPack's container stack predates the `gpus` API:
+#
+#   - name: jetson
+#     repository: you/your-project
+#     labels: [self-hosted, linux, arm64, jetson-r32]
+#     requires_labels: [jetson-r32]
+#     max_runners: 1
+#     container:
+#       image: ghspot/runner:jetson-r32
+#       runtime: nvidia
 ghspot_pools: []
 
 # Whether to start the service. Set false to configure a host without running it yet.

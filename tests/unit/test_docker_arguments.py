@@ -159,3 +159,15 @@ def test_an_empty_id_list_asks_for_nothing() -> None:
 def test_a_nonsense_selection_is_refused() -> None:
     with pytest.raises(BackendError, match="not a GPU selection"):
         _run_arguments(spec(gpus="lots"))
+
+
+# ---------------------------------------------------------------- runtime
+
+
+def test_a_named_runtime_is_passed_to_the_engine() -> None:
+    """How a Jetson gets a GPU: JetPack's stack predates the device-request API."""
+    assert _run_arguments(spec(runtime="nvidia"))["runtime"] == "nvidia"
+
+
+def test_no_runtime_leaves_the_engine_default_alone() -> None:
+    assert "runtime" not in _run_arguments(spec())
