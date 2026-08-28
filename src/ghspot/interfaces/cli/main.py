@@ -31,6 +31,7 @@ from ghspot.infrastructure.config.settings import load as load_settings
 from ghspot.infrastructure.docker.backend import DockerRunnerBackend
 from ghspot.infrastructure.logging.setup import configure as configure_logging
 from ghspot.infrastructure.system import SystemClock
+from ghspot.interfaces.api import dashboard
 from ghspot.interfaces.cli import doctor as doctor_module
 from ghspot.interfaces.cli import operations
 from ghspot.interfaces.cli.render import (
@@ -334,8 +335,25 @@ def config_validate(config: ConfigOption = None) -> None:
     console.print(f"  poll interval  {settings.daemon.poll_interval.total_seconds():.0f}s")
     console.print(f"  state database {settings.daemon.state_db}")
     console.print(f"  repositories   {', '.join(str(r) for r in settings.repositories)}")
+    console.print(f"  api            {_api_summary(settings)}")
     console.print()
     console.print(pools_table([_declared(pool.spec) for pool in settings.pools]))
+
+
+def _api_summary(settings: Settings) -> str:
+    """What `api_bind` actually got you, since setting it is otherwise unconfirmable.
+
+    Whether the dashboard is there is the half an operator cannot check from the config file
+    at all: it ships in the package, and a package built without a node toolchain has none.
+    """
+    bind = settings.daemon.api_bind
+    if not bind:
+        return "[dim]not served (set api_bind to serve the API and the dashboard)[/dim]"
+
+    root = dashboard.find_root()
+    if root is None:
+        return f"http://{bind} — [yellow]no dashboard installed, so /ui will 404[/yellow]"
+    return f"http://{bind}  ·  dashboard http://{bind}/ui  [dim]({root})[/dim]"
 
 
 def _declared(spec: PoolSpec) -> PoolView:
