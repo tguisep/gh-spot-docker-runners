@@ -24,6 +24,25 @@ async def runner_logs(settings: Settings, reference: str, tail: int) -> str:
         await application.aclose()
 
 
+async def job_logs(settings: Settings, reference: str, tail: int) -> tuple[int | None, str | None]:
+    """The forge's log for the job this runner is running.
+
+    Returns the job id and the log, where ``None`` for the log means the forge has none yet
+    — the normal state of a job still running, and different from an empty log.
+    """
+    application = build(settings)
+    try:
+        runner = await ResolveRunner(application.runners)(reference)
+        if runner.current_job_id is None:
+            return None, None
+        found = await application.forge.job_logs(
+            runner.repository, runner.current_job_id, tail=tail
+        )
+        return runner.current_job_id, found
+    finally:
+        await application.aclose()
+
+
 async def stop_runner(settings: Settings, reference: str, *, force: bool) -> None:
     """Retire a runner on both sides.
 

@@ -298,12 +298,37 @@ def runner_list(
 def runner_logs(
     runner_id: Annotated[str, typer.Argument(help="Runner id, or its container id.")],
     tail: Annotated[int, typer.Option("--tail", "-n", help="Lines to show.")] = 200,
+    job: Annotated[
+        bool,
+        typer.Option("--job", "-j", help="GitHub's log for the job, instead of the container's."),
+    ] = False,
     config: ConfigOption = None,
 ) -> None:
-    """Show a runner's container output."""
+    """Show a runner's output.
+
+    By default the container's, which is the job as it happens: the runner prints its work to
+    stdout. ``--job`` asks GitHub for its own log instead — written when the job **finishes**,
+    so a running job has none, and it outlives the container, which a just-in-time runner
+    takes with it seconds after the job ends.
+    """
     settings = _settings(config)
-    output = _run(operations.runner_logs(settings, runner_id, tail))
-    console.print(output or "[dim]no output[/dim]")
+
+    if not job:
+        output = _run(operations.runner_logs(settings, runner_id, tail))
+        console.print(output or "[dim]no output[/dim]")
+        return
+
+    job_id, from_forge = _run(operations.job_logs(settings, runner_id, tail))
+    if job_id is None:
+        console.print("[dim]this runner is not running a job[/dim]")
+        return
+    if from_forge is None:
+        console.print(
+            f"[dim]job {job_id} has not finished, so GitHub has no log for it yet. "
+            f"The container's output is the live view: ghspot runner logs {runner_id}[/dim]"
+        )
+        return
+    console.print(from_forge or "[dim]no output[/dim]")
 
 
 @runner_app.command("stop")
