@@ -28,7 +28,7 @@ jobs:
     needs: runner
     runs-on: ${{ fromJSON(needs.runner.outputs.labels) }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # On a pull request, against the revision we pinned: it checks the transcription is
       # faithful. On a schedule, against upstream main: it checks upstream has not moved.
