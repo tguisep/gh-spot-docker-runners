@@ -127,3 +127,42 @@ branch while its child still pointed at it, and GitHub **auto-closed** #2, #4, #
 rather than merging them. No work was lost — `feat/rest-api` held the complete tree — and it
 was landed on `main` as #10 after confirming byte-identity with the verified state. When
 merging a stack, either merge without `--delete-branch` or retarget each child first.
+
+## 2026-08-28 — `ghspot stats`, counted from the log
+
+A report of what the fleet did: runners started, jobs served, failures, and time spent,
+grouped by repository and by pool, over a window.
+
+The one decision that shaped the rest is where the numbers come from. The obvious source is
+the `runners` table, and it is the wrong one: rows are deleted as runners retire, and
+`prune()` keeps only a few hundred terminal records. A report built on it would look right
+and quietly stop covering the period being asked about. The event log is append-only and
+nothing deletes from it, so that is the source.
+
+One runner's story is at most six events, and the useful quantities are the gaps:
+
+    registered ──wait──▶ took job ──busy──▶ retired
+    └────────────────── alive ──────────────────┘
+
+`wait` is what `min_idle` buys down; `busy / alive` is whether warm capacity is being used.
+A runner with no `took job` at all is capacity that cost time and returned nothing, and it
+is reported rather than averaged away.
+
+### Notes for later
+
+- `RunnerRegistered` gained a `pool` field so the report can group by pool — events carried
+  the repository already but not the pool. It is **defaulted**, because a required field
+  would make every previously written event fail to load and silently empty `ghspot history`.
+- Live runners come from the projection, not the log: a runner working right now has no end
+  event, so the log cannot see it. The two sources sit in one table, which is why `live` is
+  the only column that is not derived from events.
+- A window that excludes a runner's registration still catches its later events. Those group
+  under `(unknown)` rather than being dropped, so the rows always sum to the total. Hiding
+  them would make the report disagree with itself.
+- Gaps are clamped at zero. Timestamps come from the daemon's clock, and a clock stepped
+  backwards mid-run would otherwise subtract from an operator's totals.
+- `_duration` in the config parser became `parse_duration`: `--since 7d` takes the same
+  grammar as `poll_interval`, and two implementations of "10m" would eventually disagree.
+- Failure reasons are collapsed to their first line and trimmed to 80 characters. Reasons
+  carry ids and messages, and without that every failure looks unique and the tally says
+  nothing.
