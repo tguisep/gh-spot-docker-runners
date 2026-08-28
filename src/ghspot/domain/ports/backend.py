@@ -37,6 +37,14 @@ class ContainerSpec:
     still holds it against every other runner on the machine.
     """
 
+    runtime: str | None = None
+    """Which container runtime starts this container, when it must not be the default.
+
+    ``"nvidia"`` on Tegra: JetPack's container stack predates the Engine's device-request
+    API, so a Jetson grants the GPU by running the container under its own runtime instead
+    of by asking for devices. ``None`` uses whatever the Engine's default is.
+    """
+
     mount_docker_socket: bool = False
     volumes: Mapping[str, str] = field(default_factory=dict)
     network: str | None = None

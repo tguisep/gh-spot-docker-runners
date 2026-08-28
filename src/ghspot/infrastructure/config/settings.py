@@ -328,6 +328,7 @@ def _template(container: dict[str, Any], where: str, name: str) -> RunnerTemplat
     cpus = container.get("cpus")
     return RunnerTemplate(
         gpus=_gpus(container.get("gpus"), where, name),
+        runtime=_runtime(container.get("runtime"), where, name),
         image=str(container["image"]),
         cpus=float(cpus) if cpus is not None else None,
         memory=str(container["memory"]) if container.get("memory") else None,
@@ -351,6 +352,22 @@ def _required_labels(value: Any, where: str, name: str) -> LabelSet | None:
         return LabelSet.from_iterable(str(label) for label in value)
     except GhSpotError as error:
         raise ConfigError(f"{where} ({name}): {error}") from error
+
+
+def _runtime(value: Any, where: str, name: str) -> str | None:
+    """Read a pool's container runtime.
+
+    Only needed where the Engine's default cannot reach the GPU. On JetPack the answer is
+    ``"nvidia"``; everywhere else leaving it unset is right.
+    """
+    if value in (None, False, ""):
+        return None
+    if not isinstance(value, str):
+        raise ConfigError(f"{where} ({name}): 'runtime' must be a runtime name, e.g. \"nvidia\"")
+    text = value.strip()
+    if not text:
+        return None
+    return text
 
 
 def _gpus(value: Any, where: str, name: str) -> str | int | tuple[str, ...] | None:

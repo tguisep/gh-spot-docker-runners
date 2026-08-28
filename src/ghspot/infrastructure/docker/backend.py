@@ -207,6 +207,23 @@ class DockerRunnerBackend:
 
         return await asyncio.to_thread(run)
 
+    async def runtimes(self) -> frozenset[str]:
+        """Which container runtimes the Engine has registered — used by ``ghspot doctor``.
+
+        A pool asking for a runtime the Engine does not know fails at container creation,
+        every time, with an error naming the runtime and nothing about how to register it.
+        """
+
+        def run() -> frozenset[str]:
+            try:
+                info = self._client.info()
+            except (APIError, DockerException) as error:
+                raise BackendError(f"the Docker daemon is not reachable: {error}") from error
+            registered = info.get("Runtimes", {}) if isinstance(info, dict) else {}
+            return frozenset(str(name) for name in registered)
+
+        return await asyncio.to_thread(run)
+
     async def _act(self, container_id: str, action: Any, verb: str) -> None:
         """Apply an action to a container, treating an absent container as success.
 
@@ -257,6 +274,8 @@ def _run_arguments(spec: ContainerSpec) -> dict[str, Any]:
     request = _gpu_request(spec.gpus)
     if request is not None:
         arguments["device_requests"] = [request]
+    if spec.runtime is not None:
+        arguments["runtime"] = spec.runtime
     if spec.cpus is not None:
         arguments["nano_cpus"] = int(spec.cpus * 1_000_000_000)
     if spec.memory is not None:
