@@ -18,7 +18,7 @@ from ghspot.application.commands.retire import RetireRunner
 from ghspot.application.reconciliation import PoolConfiguration, ReconciliationService
 from ghspot.composition import Application
 from ghspot.domain.model.runner import RunnerState
-from ghspot.domain.ports.backend import PruneRequest
+from ghspot.domain.ports.backend import ContainerUsage, PruneRequest
 from ghspot.infrastructure.config.settings import DaemonSettings, GitHubSettings, Settings
 from ghspot.interfaces.api.app import create_app
 from tests.fakes.adapters import (
@@ -329,3 +329,48 @@ def test_stats_honours_a_window(client: TestClient, harness: Harness) -> None:
 
 def test_a_negative_window_is_refused(client: TestClient) -> None:
     assert client.get("/stats", params={"since_seconds": -1}).status_code == 422
+
+
+# ---------------------------------------------------------------- usage
+
+
+async def test_usage_is_not_sampled_unless_asked(client: TestClient, harness: Harness) -> None:
+    """A list read constantly must not put a `docker stats` call behind every request."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    assert runner.container_id is not None
+    harness.backend.samples[runner.container_id] = ContainerUsage(
+        container_id=runner.container_id, cpu_percent=99.0, memory_bytes=1
+    )
+
+    body = client.get("/runners").json()
+
+    assert body[0]["cpu_percent"] is None
+    assert body[0]["memory_bytes"] is None
+
+
+async def test_usage_is_attached_when_asked(client: TestClient, harness: Harness) -> None:
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    assert runner.container_id is not None
+    harness.backend.samples[runner.container_id] = ContainerUsage(
+        container_id=runner.container_id,
+        cpu_percent=137.5,
+        memory_bytes=300_000_000,
+        memory_limit_bytes=2_000_000_000,
+    )
+
+    body = client.get("/runners", params={"usage": "true"}).json()
+
+    assert body[0]["cpu_percent"] == 137.5
+    assert body[0]["memory_bytes"] == 300_000_000
+    assert body[0]["memory_percent"] == 15.0
+
+
+async def test_a_runner_with_no_sample_keeps_nulls(client: TestClient, harness: Harness) -> None:
+    """A container that went between the listing and the sample reads as unmeasured, not as
+    idle. The fake reports nothing for it, which is what the real backend does."""
+    await harness.provision(harness.spec, TEMPLATE)
+
+    body = client.get("/runners", params={"usage": "true"}).json()
+
+    assert body[0]["cpu_percent"] is None
+    assert body[0]["memory_percent"] is None
