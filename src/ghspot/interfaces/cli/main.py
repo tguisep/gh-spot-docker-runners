@@ -8,11 +8,15 @@ in the application layer where they can be tested without a terminal.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+import time
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Annotated, Any
 
 import typer
+from rich.console import Group
+from rich.live import Live
+from rich.text import Text
 
 from ghspot import __version__
 from ghspot.application.dto import PoolView
@@ -24,6 +28,7 @@ from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.pool import PoolSpec
 from ghspot.infrastructure.config.settings import ConfigError, Settings, parse_duration
 from ghspot.infrastructure.config.settings import load as load_settings
+from ghspot.infrastructure.docker.backend import DockerRunnerBackend
 from ghspot.infrastructure.logging.setup import configure as configure_logging
 from ghspot.infrastructure.system import SystemClock
 from ghspot.interfaces.cli import doctor as doctor_module
@@ -78,6 +83,36 @@ def _run[T](coroutine: Coroutine[Any, Any, T]) -> T:
 
 
 # ---------------------------------------------------------------- top level
+
+
+WatchOption = Annotated[
+    float | None,
+    typer.Option(
+        "--watch",
+        "-w",
+        help="Repaint every N seconds until interrupted. Try 2.",
+        show_default=False,
+        metavar="SECONDS",
+    ),
+]
+
+
+def _watch(build: Callable[[], Any], every: float) -> None:
+    """Repaint one renderable in place until interrupted.
+
+    This is `watch ghspot ...` without the drawbacks: `watch` re-runs the whole command, so
+    every refresh re-reads the configuration and reopens the database, and it strips colour
+    unless told not to. Here the process stays up and only the frame changes.
+    """
+    every = max(0.5, every)
+    try:
+        with Live(build(), console=console, auto_refresh=False, transient=False) as live:
+            while True:
+                time.sleep(every)
+                live.update(build(), refresh=True)
+    except KeyboardInterrupt:
+        # Ctrl-C is how this command is meant to end, not a failure.
+        raise typer.Exit(code=0) from None
 
 
 @app.command()
@@ -166,20 +201,33 @@ def stats(
 
 
 @pool_app.command("list")
-def pool_list(config: ConfigOption = None) -> None:
+def pool_list(watch: WatchOption = None, config: ConfigOption = None) -> None:
     """List the configured pools and what they currently hold."""
     settings = _settings(config)
-    query = GetPoolStatus(read_only_store(settings), SystemClock())
-    views = _run(query([pool.spec for pool in settings.pools]))
-    console.print(pools_table(views))
+    specs = [pool.spec for pool in settings.pools]
+
+    def frame() -> Any:
+        query = GetPoolStatus(read_only_store(settings), SystemClock())
+        return pools_table(_run(query(specs)))
+
+    if watch is not None:
+        _watch(frame, watch)
+        return
+    console.print(frame())
 
 
 @pool_app.command("status")
 def pool_status(
     name: Annotated[str | None, typer.Argument(help="Pool name.")] = None,
+    watch: WatchOption = None,
     config: ConfigOption = None,
 ) -> None:
-    """Show one pool, or all of them, with their runners."""
+    """Show one pool, or all of them, with their runners.
+
+    ``--watch 2`` repaints in place, which is what `watch ghspot pool status` is reaching
+    for — without re-reading the configuration and reopening the database every two seconds,
+    and without losing the colours.
+    """
     settings = _settings(config)
     specs = [pool.spec for pool in settings.pools]
     if name is not None:
@@ -189,14 +237,20 @@ def pool_status(
             hint(f"configured pools: {', '.join(p.spec.name for p in settings.pools)}")
             raise typer.Exit(code=2)
 
-    query = GetPoolStatus(read_only_store(settings), SystemClock())
-    for view in _run(query(specs)):
-        console.print(pools_table([view]))
-        if view.runners:
-            console.print(runners_table(view.runners))
-        else:
-            console.print("[dim]no runners[/dim]")
-        console.print()
+    def frame() -> Any:
+        query = GetPoolStatus(read_only_store(settings), SystemClock())
+        blocks: list[Any] = []
+        for view in _run(query(specs)):
+            blocks.append(pools_table([view]))
+            blocks.append(
+                runners_table(view.runners) if view.runners else Text("no runners", style="dim")
+            )
+        return Group(*blocks)
+
+    if watch is not None:
+        _watch(frame, watch)
+        return
+    console.print(frame())
 
 
 # ---------------------------------------------------------------- runners
@@ -208,20 +262,35 @@ def runner_list(
     all_runners: Annotated[
         bool, typer.Option("--all", help="Include retired and failed runners.")
     ] = False,
+    usage: Annotated[
+        bool,
+        typer.Option("--usage", "-u", help="Sample CPU and memory for each container."),
+    ] = False,
+    watch: WatchOption = None,
     config: ConfigOption = None,
 ) -> None:
     """List runners from the local projection.
 
     Reads the state database only, so this still works when the token has expired or Docker
-    is down — which is exactly when you want to look.
+    is down — which is exactly when you want to look. ``--usage`` is the exception: it asks
+    Docker for a sample per container, so it needs a reachable daemon.
     """
     settings = _settings(config)
-    query = ListRunners(read_only_store(settings), SystemClock())
-    views = _run(query(pool, include_terminal=all_runners))
-    if not views:
-        console.print("[dim]no runners[/dim]")
+
+    def frame() -> Any:
+        # The Docker connection is only made when a sample was asked for, so the command
+        # keeps working with Docker down in every other case.
+        backend = DockerRunnerBackend() if usage else None
+        query = ListRunners(read_only_store(settings), SystemClock(), backend)
+        views = _run(query(pool, include_terminal=all_runners, with_usage=usage))
+        if not views:
+            return Text("no runners", style="dim")
+        return runners_table(views, usage=usage)
+
+    if watch is not None:
+        _watch(frame, watch)
         return
-    console.print(runners_table(views))
+    console.print(frame())
 
 
 @runner_app.command("logs")
