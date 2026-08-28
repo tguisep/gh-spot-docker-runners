@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -20,6 +21,7 @@ from starlette.requests import Request
 
 from ghspot import __version__
 from ghspot.application.queries.resolve import ResolveRunner
+from ghspot.application.queries.stats import GatherStats
 from ghspot.application.queries.views import GetPoolStatus, ListRunners, to_view
 from ghspot.composition import Application
 from ghspot.domain.errors import GhSpotError, RunnerBusyError, RunnerNotFoundError
@@ -30,6 +32,7 @@ from ghspot.interfaces.api.schemas import (
     LogsResponse,
     PoolResponse,
     RunnerResponse,
+    StatsResponse,
     TickResponse,
 )
 
@@ -155,6 +158,27 @@ def create_app(application: Application) -> FastAPI:
             )
         await app.retire(runner, reason="stopped via the API", force=force)
         return RunnerResponse.of(to_view(runner, app.clock.now()))
+
+    @api.get("/stats", response_model=StatsResponse, tags=["status"])
+    async def stats(
+        app: Wired,
+        since_seconds: Annotated[
+            float | None,
+            Query(
+                ge=0,
+                description="Window to report on, in seconds. Omit for the whole history.",
+            ),
+        ] = None,
+    ) -> StatsResponse:
+        """What the fleet did: runners, jobs, failures and time spent.
+
+        Read from the event log, so it covers runners that no longer exist.
+        """
+        start = None
+        if since_seconds is not None:
+            start = app.clock.now() - timedelta(seconds=since_seconds)
+        query = GatherStats(app.events, app.runners, app.clock)
+        return StatsResponse.of(await query(start))
 
     @api.post("/reconcile", response_model=TickResponse, tags=["status"])
     async def reconcile(app: Wired) -> TickResponse:

@@ -222,6 +222,29 @@ class SqliteEventLog(SqliteStore):
         result: list[DomainEvent] = await self._run(work)
         return result
 
+    async def since(self, moment: datetime | None = None) -> Sequence[DomainEvent]:
+        """Everything at or after ``moment``, oldest first. ``None`` reads the whole log."""
+
+        def work(connection: sqlite3.Connection) -> list[DomainEvent]:
+            if moment is None:
+                rows = connection.execute(
+                    "SELECT occurred_at, kind, payload FROM events ORDER BY id"
+                ).fetchall()
+            else:
+                # The bound is compared as text, so it has to be written the way the rows
+                # were: the clock only ever produces UTC, and a caller passing something
+                # else would otherwise select the wrong window rather than failing.
+                bound = moment.astimezone(UTC) if moment.tzinfo else moment.replace(tzinfo=UTC)
+                rows = connection.execute(
+                    "SELECT occurred_at, kind, payload FROM events "
+                    "WHERE occurred_at >= ? ORDER BY id",
+                    (bound.isoformat(),),
+                ).fetchall()
+            return [event for event in (_event_from_row(row) for row in rows) if event]
+
+        result: list[DomainEvent] = await self._run(work)
+        return result
+
     async def publish(self, events: Sequence[DomainEvent]) -> None:
         """Also satisfies :class:`~ghspot.domain.ports.system.EventPublisher`."""
         await self.append(events)

@@ -235,7 +235,9 @@ def _github(table: dict[str, Any]) -> GitHubSettings:
     return GitHubSettings(
         api_url=str(table.get("api_url", "https://api.github.com")).rstrip("/"),
         token_file=Path(str(token_file)).expanduser() if token_file else None,
-        request_timeout=_duration(table.get("request_timeout", "20s"), "github.request_timeout"),
+        request_timeout=parse_duration(
+            table.get("request_timeout", "20s"), "github.request_timeout"
+        ),
         app_id=str(app_id) if app_id else None,
         private_key_file=(Path(str(private_key_file)).expanduser() if private_key_file else None),
         installation_id=installation_id,
@@ -248,10 +250,10 @@ def _daemon(table: dict[str, Any]) -> DaemonSettings:
         raise ConfigError("daemon.log_format must be 'auto', 'console' or 'json'")
 
     return DaemonSettings(
-        poll_interval=_duration(table.get("poll_interval", "15s"), "daemon.poll_interval"),
+        poll_interval=parse_duration(table.get("poll_interval", "15s"), "daemon.poll_interval"),
         state_db=Path(str(table.get("state_db", "~/.local/state/ghspot/state.db"))).expanduser(),
         api_bind=str(table["api_bind"]) if table.get("api_bind") else None,
-        stop_timeout=_duration(table.get("stop_timeout", "30s"), "daemon.stop_timeout"),
+        stop_timeout=parse_duration(table.get("stop_timeout", "30s"), "daemon.stop_timeout"),
         log_level=str(table.get("log_level", "INFO")).upper(),
         log_format=log_format,
     )
@@ -262,11 +264,11 @@ def _housekeeping(table: dict[str, Any]) -> HousekeepingSettings:
         value = table.get(key, default)
         if value in (None, False, "never", ""):
             return None
-        return _duration(value, f"housekeeping.{key}")
+        return parse_duration(value, f"housekeeping.{key}")
 
     return HousekeepingSettings(
         enabled=bool(table.get("enabled", True)),
-        every=_duration(table.get("every", "1h"), "housekeeping.every"),
+        every=parse_duration(table.get("every", "1h"), "housekeeping.every"),
         containers_older_than=age("containers_older_than", "1h"),
         images_older_than=age("images_older_than", "24h"),
         volumes=bool(table.get("volumes", True)),
@@ -300,8 +302,8 @@ def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
             labels=LabelSet.from_iterable(str(label) for label in labels),
             min_idle=int(table.get("min_idle", 0)),
             max_runners=int(table.get("max_runners", 2)),
-            idle_timeout=_duration(table.get("idle_timeout", "10m"), f"{where}.idle_timeout"),
-            max_job_duration=_duration(
+            idle_timeout=parse_duration(table.get("idle_timeout", "10m"), f"{where}.idle_timeout"),
+            max_job_duration=parse_duration(
                 table.get("max_job_duration", "2h"), f"{where}.max_job_duration"
             ),
             max_launch_per_tick=int(table.get("max_launch_per_tick", 2)),
@@ -413,8 +415,12 @@ def _required(table: dict[str, Any], key: str, where: str) -> str:
     return str(value)
 
 
-def _duration(value: Any, where: str) -> timedelta:
-    """Parse ``15s``, ``10m``, ``2h``, or a bare number of seconds."""
+def parse_duration(value: Any, where: str) -> timedelta:
+    """Parse ``15s``, ``10m``, ``2h``, or a bare number of seconds.
+
+    Public because `ghspot stats --since` takes the same grammar the configuration does, and
+    two implementations of "10m" would eventually disagree.
+    """
     if isinstance(value, timedelta):
         return value
     if isinstance(value, int | float):

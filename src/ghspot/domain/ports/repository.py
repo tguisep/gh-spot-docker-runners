@@ -7,6 +7,7 @@ forge on every tick, so losing the store costs history, never correctness.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol
 
 from ghspot.domain.model.events import DomainEvent
@@ -47,3 +48,11 @@ class EventLog(Protocol):
     async def append(self, events: Sequence[DomainEvent]) -> None: ...
 
     async def recent(self, limit: int = 100) -> Sequence[DomainEvent]: ...
+
+    async def since(self, moment: datetime | None = None) -> Sequence[DomainEvent]:
+        """Everything recorded at or after ``moment``, oldest first.
+
+        Oldest first because the readers fold events into a per-runner story, and a story is
+        cheaper to assemble in the order it happened. ``None`` means the whole log.
+        """
+        ...

@@ -28,6 +28,9 @@ class RunnerRegistered(DomainEvent):
     runner_name: str
     github_runner_id: int
     repository: RepositoryTarget
+    pool: str = ""
+    """Defaulted so that events written before this field existed still load. They group
+    under an empty pool in `ghspot stats` rather than breaking `ghspot history` entirely."""
 
 
 @dataclass(frozen=True, slots=True)

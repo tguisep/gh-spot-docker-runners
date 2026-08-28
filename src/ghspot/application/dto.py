@@ -57,6 +57,88 @@ class PoolView:
 
 
 @dataclass(frozen=True, slots=True)
+class UsageStats:
+    """What a repository, or a pool, cost and delivered over a window.
+
+    Counted from the event log rather than from the runners table: the table is pruned and
+    its rows are deleted as runners retire, so anything derived from it would quietly stop
+    covering the period an operator is asking about.
+    """
+
+    key: str
+    """The repository or pool these numbers are for. Empty for the total row."""
+
+    runners: int = 0
+    """Registered with GitHub. Every runner starts here, so it is the denominator."""
+
+    jobs: int = 0
+    """Runners that were handed a job. A just-in-time runner takes at most one, so this is
+    also the number of jobs served."""
+
+    failed: int = 0
+    completed: int = 0
+
+    busy_seconds: float = 0.0
+    """Summed time between taking a job and the runner going away: the machine time actually
+    spent on CI."""
+
+    alive_seconds: float = 0.0
+    """Summed time between registration and the runner going away, whether it worked or not.
+    The gap against `busy_seconds` is what idle capacity costs."""
+
+    wait_seconds: float = 0.0
+    """Summed time between registration and being handed a job — what `min_idle` buys down."""
+
+    waits_counted: int = 0
+    """How many runners contributed to `wait_seconds`. Not every runner gets a job."""
+
+    live: int = 0
+    """Runners in this group right now, from the projection rather than the log."""
+
+    @property
+    def failure_rate(self) -> float:
+        return self.failed / self.runners if self.runners else 0.0
+
+    @property
+    def idle_runners(self) -> int:
+        """Registered, never given a job, and already gone. Capacity that earned nothing."""
+        return max(0, self.completed + self.failed - self.jobs)
+
+    @property
+    def mean_busy_seconds(self) -> float:
+        return self.busy_seconds / self.jobs if self.jobs else 0.0
+
+    @property
+    def mean_wait_seconds(self) -> float:
+        return self.wait_seconds / self.waits_counted if self.waits_counted else 0.0
+
+    @property
+    def utilisation(self) -> float:
+        """Busy time as a share of time alive. Low means runners are sitting idle."""
+        return self.busy_seconds / self.alive_seconds if self.alive_seconds else 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class StatsView:
+    """Everything `ghspot stats` renders."""
+
+    since: datetime | None
+    """Start of the window, or ``None`` when it covers the whole log."""
+
+    until: datetime
+    total: UsageStats
+    by_repository: list[UsageStats] = field(default_factory=list)
+    by_pool: list[UsageStats] = field(default_factory=list)
+    failures: list[tuple[str, int]] = field(default_factory=list)
+    """Failure reasons, commonest first. The point of the whole report when something is
+    wrong, and empty when nothing is."""
+
+    events_read: int = 0
+    """How many log records the numbers came from. Zero means the window is empty, which is
+    a different thing from a fleet that did nothing."""
+
+
+@dataclass(frozen=True, slots=True)
 class TickReport:
     """What one reconciliation pass did, for the logs and for `ghspot pool status`."""
 

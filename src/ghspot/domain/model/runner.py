@@ -146,6 +146,7 @@ class Runner:
                 runner_name=self.name,
                 github_runner_id=github_runner_id,
                 repository=self.repository,
+                pool=self.pool,
             )
         )
 

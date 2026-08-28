@@ -276,6 +276,55 @@ whichever column you have in front of you.
 `ghspot runner list` reads only the local database. It works when the token has expired or
 Docker is down, which is when you most want to look.
 
+### What the fleet has been doing
+
+```bash
+ghspot stats                  # everything the log holds
+ghspot stats --since 7d       # a window: 24h, 7d, 30m
+```
+
+```
+usage — since 2026-08-21 09:00 UTC, 812 event(s) read
+ repository                       runners  jobs  fail  fail%     busy  avg job  avg wait  used  live
+ tguisep/gh-spot-docker-runners        58    54     1     2%    6h12m    6m53s       22s   91%     2
+ tguisep/other-project                 11     9     0     0%      47m    5m13s     1m40s   78%     -
+ all                                   69    63     1     1%    6h59m    6m39s       33s   89%     2
+```
+
+| Column | What it is |
+|---|---|
+| `runners` | Registered with GitHub. Every runner starts here, so it is the denominator |
+| `jobs` | Runners that were handed a job. A just-in-time runner takes at most one, so this is also jobs served |
+| `fail`, `fail%` | Runners that never made it, and the share of the total |
+| `busy` | Time between taking a job and going away: machine time actually spent on CI |
+| `avg job` | `busy` divided by `jobs` |
+| `avg wait` | Registration to being handed a job — what `min_idle` buys down |
+| `used` | `busy` as a share of total time alive. Low means runners sat idle |
+| `live` | In flight right now, from the projection rather than the log |
+
+Two of these are worth acting on. A high **`avg wait`** means jobs are waiting on container
+boot, which is what `min_idle = 1` removes. A low **`used`** means the opposite — runners are
+being kept warm and not used, so `min_idle` is too high or `idle_timeout` too long.
+
+The numbers come from the event log, not the runners table, so they cover runners that are
+long gone. Two consequences worth knowing:
+
+- A runner still working has no end event, so it contributes to `live` and to nothing else.
+  Its time appears in the next report, not this one.
+- A window narrow enough to exclude a runner's registration still sees its later events.
+  Those group under `(unknown)` rather than being dropped, so the rows always add up to the
+  total.
+
+The same report is on the API when `api_bind` is set:
+
+```bash
+curl -s localhost:8770/stats | jq '.total'
+curl -s 'localhost:8770/stats?since_seconds=604800' | jq '.by_repository'
+```
+
+Nothing prunes the event log, so a busy fleet grows it slowly and the report stays honest
+about the whole period.
+
 ### The REST API
 
 Set `api_bind` under `[daemon]` and the API is served in-process with the loop:

@@ -16,18 +16,26 @@ import typer
 
 from ghspot import __version__
 from ghspot.application.dto import PoolView
+from ghspot.application.queries.stats import GatherStats
 from ghspot.application.queries.views import GetPoolStatus, ListRunners
-from ghspot.composition import build, read_only_store
+from ghspot.composition import build, read_only_events, read_only_store
 from ghspot.daemon import run_forever
 from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.pool import PoolSpec
-from ghspot.infrastructure.config.settings import ConfigError, Settings
+from ghspot.infrastructure.config.settings import ConfigError, Settings, parse_duration
 from ghspot.infrastructure.config.settings import load as load_settings
 from ghspot.infrastructure.logging.setup import configure as configure_logging
 from ghspot.infrastructure.system import SystemClock
 from ghspot.interfaces.cli import doctor as doctor_module
 from ghspot.interfaces.cli import operations
-from ghspot.interfaces.cli.render import console, fail, hint, pools_table, runners_table
+from ghspot.interfaces.cli.render import (
+    console,
+    fail,
+    hint,
+    pools_table,
+    runners_table,
+    stats_tables,
+)
 
 app = typer.Typer(
     name="ghspot",
@@ -118,6 +126,40 @@ def doctor(config: ConfigOption = None) -> None:
     settings = _settings(config)
     ok = bool(_run(doctor_module.diagnose(settings)))
     raise typer.Exit(code=0 if ok else 1)
+
+
+@app.command()
+def stats(
+    since: Annotated[
+        str | None,
+        typer.Option(
+            "--since",
+            "-s",
+            help="Window to report on, as a duration: 24h, 7d, 30m. Default: everything.",
+            show_default=False,
+        ),
+    ] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Report what the fleet did: runners, jobs, failures and time spent.
+
+    Counted from the event log, so it covers runners that are long gone. Like the other
+    query commands it reads only the state database, and works with Docker down.
+    """
+    settings = _settings(config)
+
+    start = None
+    if since is not None:
+        try:
+            window = parse_duration(since, "--since")
+        except ConfigError as error:
+            fail(str(error))
+            raise typer.Exit(code=2) from error
+        start = SystemClock().now() - window
+
+    query = GatherStats(read_only_events(settings), read_only_store(settings), SystemClock())
+    for block in stats_tables(_run(query(start))):
+        console.print(block)
 
 
 # ---------------------------------------------------------------- pools

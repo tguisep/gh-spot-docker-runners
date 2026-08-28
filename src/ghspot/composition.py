@@ -155,3 +155,8 @@ def read_only_store(settings: Settings) -> SqliteRunnerRepository:
     also take away the operator's ability to see what the fleet was doing.
     """
     return SqliteRunnerRepository(settings.daemon.state_db)
+
+
+def read_only_events(settings: Settings) -> SqliteEventLog:
+    """The history, on the same terms: no token, no Docker, read from the file."""
+    return SqliteEventLog(settings.daemon.state_db)
