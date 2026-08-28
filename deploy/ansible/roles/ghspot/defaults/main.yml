@@ -59,6 +59,15 @@ ghspot_housekeeping:
 # at a time rather than as a diff against a single growing file.
 ghspot_pools_in_directory: false
 ghspot_pools_directory: /etc/ghspot/pools.d
+# What the host will take, across every pool at once.
+#
+# max_runners bounds one pool; nothing bounds the machine, so four pools with room to spare
+# each start runners on the same box. Every key is optional, and unset means unlimited.
+#
+#   max_containers / max_cpus / max_memory   arithmetic over what is committed
+#   cpu_high_water / memory_high_water       percentages of what is measured; at or above
+#                                            them nothing new starts until the host recovers
+ghspot_capacity: {}
 
 # The pools this host serves. At least one is required.
 #
@@ -77,6 +86,8 @@ ghspot_pools_directory: /etc/ghspot/pools.d
 # `pm` on a pool picks how its runners are kept, as php-fpm's: "dynamic" (a warm band between
 # min_idle and max_idle, the default), "static" (exactly max_runners, never reaped) or
 # "ondemand" (nothing warm). A key that does not apply to the mode is refused at load.
+# `priority: 10` on a pool decides who gets scarce host capacity first when ghspot_capacity
+# bites. Higher goes first; with capacity to spare it changes nothing.
 ghspot_pools: []
 
 # Whether to start the service. Set false to configure a host without running it yet.
