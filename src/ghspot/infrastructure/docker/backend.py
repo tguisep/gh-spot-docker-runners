@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import docker
@@ -24,6 +25,7 @@ from ghspot.domain.ports.backend import (
     PROTECTED_IMAGE_LABEL,
     ContainerSpec,
     ContainerStatus,
+    HostLoad,
     PruneReport,
     PruneRequest,
 )
@@ -81,6 +83,42 @@ class DockerRunnerBackend:
             except (APIError, DockerException) as error:
                 raise BackendError(f"could not list containers: {error}") from error
             return [_to_status(container) for container in containers]
+
+        return await asyncio.to_thread(run)
+
+    async def host_load(self) -> HostLoad:
+        """What the machine looks like right now.
+
+        Two sources, because neither is enough alone. The Engine knows the shape of the host
+        it manages — cores, total memory, how many containers are up — but not how hard it is
+        working. `/proc` knows that, and is where the daemon already runs.
+
+        Nothing here raises. A load reading that fails must degrade the decision to the
+        configured ceilings, not stop the fleet: the whole point of the probe is to be
+        careful, and a careful thing that breaks the daemon is worse than no probe at all.
+        """
+
+        def run() -> HostLoad:
+            cores: int | None = None
+            total: int | None = None
+            containers: int | None = None
+            try:
+                info = self._client.info()
+            except (APIError, DockerException):
+                info = {}
+            if isinstance(info, dict):
+                cores = _positive(info.get("NCPU"))
+                total = _positive(info.get("MemTotal"))
+                containers = _positive(info.get("ContainersRunning"), allow_zero=True)
+
+            used = _memory_used(total)
+            return HostLoad(
+                cpu_percent=_cpu_percent(cores),
+                memory_used_bytes=used,
+                memory_total_bytes=total,
+                containers_running=containers,
+                cores=cores,
+            )
 
         return await asyncio.to_thread(run)
 
@@ -311,6 +349,60 @@ def _duration(delta: timedelta) -> str:
     """Docker's `until` filter wants a Go duration, and rejects fractional hours."""
     seconds = max(1, int(delta.total_seconds()))
     return f"{seconds}s"
+
+
+PROC_LOADAVG = Path("/proc/loadavg")
+PROC_MEMINFO = Path("/proc/meminfo")
+
+
+def _cpu_percent(cores: int | None) -> float | None:
+    """Load average over one minute, as a percentage of the machine's cores.
+
+    Load average rather than an instantaneous sample: it already covers everything on the
+    box, not only containers, and it is the number that says whether work is *queueing* for
+    the CPU. An instantaneous reading would let a burst between two ticks go unnoticed.
+
+    It counts uninterruptible sleep too, so heavy disk IO shows here as load. For deciding
+    whether to add more work to a struggling machine, that is a feature.
+    """
+    try:
+        first = PROC_LOADAVG.read_text(encoding="utf-8").split()[0]
+        load = float(first)
+    except (OSError, ValueError, IndexError):
+        return None
+    if not cores or cores <= 0:
+        return None
+    return round(100.0 * load / cores, 1)
+
+
+def _memory_used(total: int | None) -> int | None:
+    """Memory in use, taking MemAvailable as the kernel's own answer to "what is free".
+
+    Not `MemTotal - MemFree`: that counts the page cache as used, and a Linux box doing any
+    work at all looks 95% full by that measure. MemAvailable is the kernel's estimate of what
+    a new process could actually get.
+    """
+    try:
+        lines = PROC_MEMINFO.read_text(encoding="utf-8").splitlines()
+        fields = {
+            parts[0].rstrip(":"): parts[1]
+            for parts in (line.split() for line in lines)
+            if len(parts) >= 2
+        }
+        available = int(fields["MemAvailable"]) * 1024
+        readable_total = int(fields["MemTotal"]) * 1024
+    except (OSError, KeyError, ValueError):
+        return None
+
+    return max(0, (total or readable_total) - available)
+
+
+def _positive(value: Any, *, allow_zero: bool = False) -> int | None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        return None
+    if value < 0 or (value == 0 and not allow_zero):
+        return None
+    return value
 
 
 def _gpu_request(gpus: str | int | tuple[str, ...] | None) -> DeviceRequest | None:
