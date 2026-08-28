@@ -16,11 +16,24 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY="${REGISTRY:-ghspot/runner}"
 
 # variant -> dockerfile:base-image
+#
+# Order matters: a variant built FROM another variant must come after it, so that building
+# every variant in one pass works from an empty cache.
 VARIANTS="
 ubuntu-24.04:ubuntu.Dockerfile:ubuntu:24.04
 ubuntu-22.04:ubuntu.Dockerfile:ubuntu:22.04
+ubuntu-20.04:ubuntu.Dockerfile:ubuntu:20.04
 rhel-9:rhel.Dockerfile:almalinux:9
 rhel-10:rhel.Dockerfile:almalinux:10
+jetson-r32:jetson.Dockerfile:ghspot/runner:ubuntu-20.04
+"
+
+# Variants that only make sense on one architecture.
+#
+# jetson-r32 is arm64 because a Jetson is arm64. Built on x86-64 it produces an image no
+# Jetson can run, and the failure arrives much later as "exec format error" on the board.
+ARCH_REQUIRED="
+jetson-r32:aarch64
 "
 
 # Variants whose base image will not run on an older CPU.
@@ -77,6 +90,34 @@ MSG
     return 0
 }
 
+check_arch() {
+    local name="$1" line want have
+    have="$(uname -m)"
+    while IFS= read -r line; do
+        [ -n "${line}" ] || continue
+        [ "${line%%:*}" = "${name}" ] || continue
+        want="${line#*:}"
+
+        [ "${have}" = "${want}" ] && return 0
+
+        cat >&2 <<MSG
+error: ${name} is an ${want} image and this machine is ${have}.
+
+  Built here it would produce an image the target cannot execute, which shows up on the
+  board as "exec format error" long after the build succeeded.
+
+  Build it on the Jetson itself, or cross-build with binfmt and buildx:
+      docker run --privileged --rm tonistiigi/binfmt --install arm64
+      docker buildx build --platform linux/arm64 \\
+          --file images/runner/jetson.Dockerfile \\
+          --build-arg BASE_IMAGE=ghspot/runner:ubuntu-20.04 \\
+          --tag ghspot/runner:${name} images/runner/
+MSG
+        return 1
+    done <<< "$(echo "${ARCH_REQUIRED}" | grep -v '^$')"
+    return 0
+}
+
 # The mounted Docker socket is only usable by the unprivileged runner user if the group id
 # inside the image matches the host's. Detected here so nobody has to remember the flag.
 DOCKER_GID="${DOCKER_GID:-$(getent group docker | cut -d: -f3)}"
@@ -93,17 +134,40 @@ list() {
     done
 }
 
+# A variant built FROM another variant needs that one present first. Building it here means
+# `build.sh jetson-r32` works on a clean machine instead of failing on a missing base.
+ensure_base() {
+    local base="$1" line name
+    case "${base}" in "${REGISTRY}:"*) ;; *) return 0 ;; esac
+    docker image inspect "${base}" >/dev/null 2>&1 && return 0
+
+    name="${base#"${REGISTRY}":}"
+    echo "--> ${base} is not built yet; building it first"
+    while IFS= read -r line; do
+        [ "${line%%:*}" = "${name}" ] || continue
+        rest="${line#*:}"
+        build_one "${name}" "${rest%%:*}" "${rest#*:}"
+        return $?
+    done <<< "$(variants)"
+
+    echo "error: ${base} is not a known variant" >&2
+    return 1
+}
+
 build_one() {
     local name="$1" dockerfile="$2" base="$3"
     echo "==> ${REGISTRY}:${name}  (${base}, docker gid ${DOCKER_GID})"
 
     check_microarch "${name}" || return 1
+    check_arch "${name}" || return 1
+    ensure_base "${base}" || return 1
 
     local build_arg
     case "${dockerfile}" in
         ubuntu.Dockerfile) build_arg="UBUNTU_VERSION=${base#ubuntu:}" ;;
         *)                 build_arg="BASE_IMAGE=${base}" ;;
     esac
+
 
     docker build \
         --file "${HERE}/${dockerfile}" \
@@ -123,7 +187,17 @@ while IFS= read -r line; do
     dockerfile="${rest%%:*}"
     base="${rest#*:}"
 
-    if [ -z "${wanted}" ] || [ "${wanted}" = "${name}" ]; then
+    if [ -z "${wanted}" ]; then
+        # Building everything: a variant this machine cannot produce is skipped with a
+        # reason, not treated as a failure. Asking for one by name still fails loudly.
+        if ! check_arch "${name}" 2>/dev/null || ! check_microarch "${name}" 2>/dev/null; then
+            echo "--> skipping ${name}: not buildable on this machine"
+            found=1
+            continue
+        fi
+        build_one "${name}" "${dockerfile}" "${base}"
+        found=1
+    elif [ "${wanted}" = "${name}" ]; then
         build_one "${name}" "${dockerfile}" "${base}"
         found=1
     fi
