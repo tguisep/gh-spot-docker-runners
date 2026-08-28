@@ -235,3 +235,48 @@ The merge rules are php-fpm's, and they are the whole design:
 - Unrelated but found on the way: `fail()` printed error messages through Rich without
   escaping, so `[daemon]` and `[[pool]]` were read as style tags and vanished. The one part of
   a configuration error naming what is wrong was the part being eaten.
+
+## 2026-08-28 — bounding the host, not just the pool
+
+`max_runners` bounds one pool, and nothing bounded the machine. Four pools with room to spare
+each start runners at the same time, on one box. Three mechanisms close that, and they are
+deliberately separate because they fail differently.
+
+**Ceilings** — `max_containers`, `max_cpus`, `max_memory` — are arithmetic over the runners
+that exist. No measurement, so they cannot be wrong. `max_containers` is the one that always
+applies; the resource ceilings only count pools that reserve `cpus` and `memory`.
+
+**Backpressure** — `cpu_high_water`, `memory_high_water` — is a gate on what is measured, and
+catches what the arithmetic cannot: everything else on the box, a job using far more than its
+pool reserved, a machine already struggling. At or above the mark nothing starts, even where a
+pool has a free slot.
+
+**Priority** decides who gets scarce capacity. There is no queue to persist: a pool refused
+this tick wants the same thing on the next one, and the loop re-derives everything anyway.
+The queue is the reconciliation loop.
+
+### The shape this forced
+
+`tick()` used to plan and act per pool in one pass. It cannot: how many runners the host can
+take is a question about every pool at once. So every pool is now planned first — including
+retiring and terminating, which happen in that first pass because they *release* capacity —
+and launches are admitted afterwards against the whole picture.
+
+Only launches are trimmed. Refusing the operations that free capacity is the one thing that
+would turn a busy host into a stuck one, and there is a test for it.
+
+### Notes for later
+
+- **An unreadable host never blocks.** A probe that cannot see the machine degrades to the
+  ceilings, which need no measurement. A careful mechanism that stops the fleet when its own
+  probe breaks is worse than no mechanism.
+- The probe is only taken when a high-water mark is configured *and* something wants to
+  launch. It is an Engine call plus a `/proc` read, and a fleet with no limits should pay for
+  neither.
+- CPU is the one-minute load average over cores, not an instantaneous sample: it already
+  covers everything on the box, and it is the number that says whether work is *queueing* for
+  the CPU. Memory uses `MemAvailable`, because `MemTotal - MemFree` counts the page cache and
+  makes any working machine look 95% full.
+- **`0 == False` in Python**, so the first version of the config parser read
+  `max_containers = 0` as "not configured" — silently unlimited, the opposite of what anyone
+  writing that means. The parser now tests identity. The test suite caught it, not review.

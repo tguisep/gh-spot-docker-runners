@@ -751,6 +751,71 @@ tick a pool is short of it would oscillate.
 | Most things | `dynamic` with `min_idle = 1` — one warm runner takes container boot off the first job |
 | A GPU pool, or anything scarce and expensive | `ondemand`, so the hardware is free between jobs |
 
+## Keeping the host from being overloaded
+
+`max_runners` bounds one pool. Nothing bounds the *machine* — four pools with room to spare
+will each start runners at the same time, on one box. Three settings close that gap, and they
+work at different levels:
+
+```toml
+[capacity]
+max_containers = 8          # runners across every pool
+max_cpus = 12.0             # summed `cpus` of the runners that are up
+max_memory = "24g"
+
+cpu_high_water = 85         # at or above, nothing new starts
+memory_high_water = 90
+```
+
+### Ceilings, on what is committed
+
+`max_containers`, `max_cpus` and `max_memory` are arithmetic over the runners that exist.
+They need no measurement and cannot be wrong: a pool reserving `cpus = 2.0` counts two
+against `max_cpus` whether the job uses them or not.
+
+`max_containers` is the one that always applies. The other two only count pools that set
+`cpus` and `memory`, so a fleet that sets neither is bounded by the count alone.
+
+### Backpressure, on what is measured
+
+`cpu_high_water` and `memory_high_water` are the other half. At or above them **nothing new
+starts, even where a pool has a free slot** — which is the case the arithmetic cannot see:
+everything else running on the box, a job using far more than its pool reserved, or a machine
+already struggling before the daemon woke up.
+
+| Reading | Where it comes from |
+|---|---|
+| CPU | The one-minute load average as a percentage of cores, so `100` means as much work queued as the machine has cores. It counts uninterruptible sleep, so heavy disk IO shows up here — for deciding whether to pile more on, that is a feature |
+| Memory | `MemAvailable`, the kernel's own estimate of what a new process could get. Not `MemTotal - MemFree`, which counts the page cache as used and makes any working machine look 95% full |
+
+A reading the daemon could not take never blocks anything. An unmeasurable host falls back to
+the ceilings, which need no measurement — a careful mechanism that stops the fleet when its
+probe breaks is worse than no mechanism.
+
+### Priority decides who waits
+
+```toml
+[[pool]]
+name = "release"
+priority = 10        # higher goes first; ties break on the pool name
+```
+
+Only consulted when the host cannot satisfy every pool at once. With capacity to spare it
+changes nothing, so most pools can leave it alone — raise it on the one whose jobs people are
+waiting for, or lower it on the one that can wait.
+
+**There is no queue to drain.** A pool refused this tick simply wants the same thing on the
+next one, and the loop re-derives everything anyway. Being held back is not a lost launch,
+and `ghspot pool status` and the daemon log say who was held back and by what:
+
+```
+[batch] held back by max_containers=8 (priority 0)
+host cpu at 94% (high water 85%); deferring every launch until it recovers
+```
+
+Retiring and terminating are never held back. They *release* capacity, and refusing them is
+what would turn a busy host into a stuck one.
+
 ## Tuning
 
 | Setting | Raise it when | Lower it when |
@@ -761,6 +826,8 @@ tick a pool is short of it would oscillate.
 | `max_runners` | The host has capacity to spare | Jobs are starving each other |
 | `max_launch_per_tick` | Large matrices start too slowly | A burst overwhelms the host |
 | `idle_timeout` | Runners churn between jobs | Idle runners linger too long |
+| `capacity.max_containers` | The host has capacity to spare | The box is thrashing |
+| `capacity.cpu_high_water` | Launches are deferred while the host is fine | The host is overloaded before anything defers |
 
 `min_idle = 1` is the setting most worth having: it removes container boot time from the
 critical path of the first job.
