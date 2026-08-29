@@ -210,11 +210,36 @@ def test_pools_can_be_rendered_one_file_each() -> None:
         found = {pool.spec.name for pool in settings.pools}
         check(found == {"ubuntu", "gpu", "rhel"}, f"directory: pools are {sorted(found)}")
 
-        by_name = {pool.spec.name: pool for pool in settings.pools}
-        check(
-            by_name["gpu"].template.gpus == "all",
-            "directory: a pool file lost a key the inline form keeps",
-        )
+        # Compared against the inline form key by key, because two templates for one schema
+        # is two chances to drift — and the drift is silent: a pool file missing `pm` still
+        # loads, and the pool quietly runs in a mode nobody chose.
+        inline = {pool.spec.name: pool for pool in settings_for(VARS / "full.yml").pools}
+        from_files = {pool.spec.name: pool for pool in settings.pools}
+
+        for name, expected in inline.items():
+            got = from_files[name]
+            for attribute in (
+                "pm",
+                "min_idle",
+                "max_idle",
+                "max_runners",
+                "idle_timeout",
+                "max_job_duration",
+                "max_launch_per_tick",
+                "priority",
+                "requires_labels",
+            ):
+                if not hasattr(expected.spec, attribute):
+                    continue
+                check(
+                    getattr(got.spec, attribute) == getattr(expected.spec, attribute),
+                    f"directory: {name}.{attribute} is {getattr(got.spec, attribute)!r}, "
+                    f"but the inline form gives {getattr(expected.spec, attribute)!r}",
+                )
+            check(
+                got.template == expected.template,
+                f"directory: {name}'s container differs from the inline form",
+            )
 
 
 def main() -> int:
