@@ -71,6 +71,7 @@ def test_minimal() -> None:
     """Defaults the template fills in are the defaults the daemon would have chosen."""
     settings = settings_for(VARS / "minimal.yml")
 
+    check(settings.capacity.max_containers is None, "minimal: a capacity limit appeared")
     check(len(settings.pools) == 1, "minimal: expected one pool")
     pool = settings.pools[0]
     check(pool.spec.name == "default", "minimal: pool name lost")
@@ -79,6 +80,7 @@ def test_minimal() -> None:
     check(pool.template.gpus is None, "minimal: a pool asked for a GPU it never wanted")
     check(pool.spec.requires_labels is None, "minimal: unexpected requires_labels")
     check(pool.spec.pm.value == "dynamic", "minimal: a pool is not managed dynamically")
+    check(pool.spec.priority == 1, "minimal: a pool weighs more than the default")
     check(not pool.template.mount_docker_socket, "minimal: socket mounted by default")
 
 
@@ -91,6 +93,13 @@ def test_everything_round_trips() -> None:
     check(settings.daemon.poll_interval == timedelta(seconds=30), "full: poll_interval lost")
     check(str(settings.daemon.state_db) == "/srv/ghspot/state.db", "full: state_db lost")
     check(settings.daemon.api_bind == "127.0.0.1:8770", "full: api_bind lost")
+
+    limits = settings.capacity
+    check(limits.max_containers == 8, "full: capacity.max_containers lost")
+    check(limits.max_cpus == 12.0, "full: capacity.max_cpus lost")
+    check(limits.max_memory_bytes == 24 * 1024**3, "full: capacity.max_memory lost")
+    check(limits.cpu_high_water == 85, "full: capacity.cpu_high_water lost")
+    check(limits.memory_high_water == 90, "full: capacity.memory_high_water lost")
 
     keep = settings.housekeeping
     check(keep.every == timedelta(hours=6), "full: housekeeping.every lost")
@@ -123,6 +132,7 @@ def test_everything_round_trips() -> None:
 
     gpu = pools["gpu"]
     check(gpu.spec.pm.value == "ondemand", f"full: gpu pm is {gpu.spec.pm}")
+    check(gpu.spec.priority == 10, f"full: priority is {gpu.spec.priority}")
     check(gpu.template.gpus == "all", f"full: gpus is {gpu.template.gpus!r}, expected 'all'")
     required = gpu.spec.requires_labels
     check(required is not None and required.as_list() == ["gpu-a100"], "full: requires_labels lost")
@@ -195,6 +205,9 @@ def test_pools_can_be_rendered_one_file_each() -> None:
         body = main.read_text()
         check("include = " in body, "directory: the main file has no include")
         check("[[pool]]" not in body, "directory: pools were written inline as well")
+        # A global table belongs to the host, not to wherever the pools happen to be
+        # written. Merging the two features put it inside the pool-layout branch once.
+        check("[capacity]" in body, "directory: the host's capacity limits were lost")
 
         # The role loops the template over each pool; here that loop is the test's.
         for name in ("ubuntu", "gpu", "rhel"):

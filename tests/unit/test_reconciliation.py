@@ -23,7 +23,8 @@ from ghspot.domain.errors import BackendError
 from ghspot.domain.model.pool import PoolSpec
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
 from ghspot.domain.model.target import RepositoryTarget
-from ghspot.domain.ports.backend import ContainerSpec, ContainerStatus
+from ghspot.domain.policy.admission import CapacityLimits
+from ghspot.domain.ports.backend import ContainerSpec, ContainerStatus, HostLoad
 from ghspot.domain.ports.forge import ForgeRunner
 from tests.fakes.adapters import (
     FakeBackend,
@@ -55,7 +56,7 @@ class Harness:
         return {str(r.id): r.state for r in self.repository.saved.values()}
 
 
-def build(*specs: PoolSpec) -> Harness:
+def build(*specs: PoolSpec, capacity: CapacityLimits | None = None) -> Harness:
     spec = specs[0] if specs else make_spec()
     clock = FakeClock(T0)
     forge = FakeForge()
@@ -75,6 +76,7 @@ def build(*specs: PoolSpec) -> Harness:
         events=events,
         provision=provision,
         retire=retire,
+        capacity=capacity,
     )
     return Harness(service, provision, forge, backend, repository, clock, events, spec)
 
@@ -533,3 +535,90 @@ async def test_one_failed_launch_does_not_abandon_the_rest(harness: Harness) -> 
     report = await harness_.service.tick()
 
     assert report.launched == 2, "the surviving launches should still have happened"
+
+
+# ---------------------------------------------------------------- host capacity
+
+
+async def test_a_global_ceiling_holds_back_a_pool_with_a_free_slot() -> None:
+    """The pool has room by its own max_runners; the host does not. That is the whole point:
+    max_runners bounds one pool, and nothing bounded the machine."""
+    harness = build(
+        make_spec(name="a", min_idle=3, max_runners=5),
+        make_spec(name="b", min_idle=3, max_runners=5),
+        capacity=CapacityLimits(max_containers=2),
+    )
+
+    report = await harness.service.tick()
+
+    assert report.launched == 2
+    assert any("max_containers=2" in note for note in report.notes)
+
+
+async def test_a_heavier_pool_takes_more_of_the_slots_and_a_lighter_one_still_runs() -> None:
+    """A weight, not a rank: the light pool starts something rather than waiting for the
+    heavy one to be satisfied, which on a busy fleet would be never."""
+    harness = build(
+        make_spec(name="batch", min_idle=3, priority=1),
+        make_spec(name="release", min_idle=3, priority=3),
+        capacity=CapacityLimits(max_containers=4),
+    )
+
+    await harness.service.tick()
+
+    started: dict[str, int] = {}
+    for runner in harness.repository.saved.values():
+        started[runner.pool] = started.get(runner.pool, 0) + 1
+    assert started == {"release": 3, "batch": 1}
+
+
+async def test_a_loaded_host_starts_nothing_even_with_slots_free() -> None:
+    """Backpressure: the slot is available and the host is still not in a state to use it."""
+    harness = build(
+        make_spec(min_idle=2),
+        capacity=CapacityLimits(cpu_high_water=80),
+    )
+    harness.backend.load = HostLoad(cpu_percent=95.0, cores=4)
+
+    report = await harness.service.tick()
+
+    assert report.launched == 0
+    assert any("high water" in note for note in report.notes)
+
+
+async def test_the_host_is_not_probed_when_no_backpressure_is_configured() -> None:
+    """A fleet with no limits should pay for neither the Engine call nor the /proc read."""
+    harness = build(make_spec(min_idle=1))
+    harness.backend.fail_on.add("host_load")
+
+    report = await harness.service.tick()
+
+    assert report.launched == 1
+    assert report.errors == []
+
+
+async def test_a_probe_that_fails_does_not_stop_the_fleet() -> None:
+    """Unmeasured is not blocked. A careful thing that breaks the daemon is worse than none."""
+    harness = build(make_spec(min_idle=1), capacity=CapacityLimits(cpu_high_water=50))
+    harness.backend.fail_on.add("host_load")
+
+    report = await harness.service.tick()
+
+    assert report.launched == 1
+
+
+async def test_a_full_host_may_still_retire_so_it_can_recover() -> None:
+    """Refusing the operations that free capacity is what turns a busy host into a stuck one."""
+    spec = make_spec(min_idle=0, idle_timeout=timedelta(minutes=10))
+    harness = build(spec, capacity=CapacityLimits(cpu_high_water=10))
+    runner = await harness.provision(spec, TEMPLATE)
+    assert runner.github_runner_id is not None
+    harness.forge.bring_online(runner.github_runner_id)
+    await harness.service.tick()
+
+    # Only now is the host reported as overloaded, so the runner exists and is idle.
+    harness.backend.load = HostLoad(cpu_percent=99.0, cores=4)
+    harness.clock.advance(minutes=30)
+    report = await harness.service.tick()
+
+    assert report.retired == 1

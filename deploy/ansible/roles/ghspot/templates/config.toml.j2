@@ -33,62 +33,20 @@ volumes = {{ ghspot_housekeeping.volumes | bool | lower }}
 {% if ghspot_housekeeping.keep_build_cache is defined and ghspot_housekeeping.keep_build_cache %}
 keep_build_cache = "{{ ghspot_housekeeping.keep_build_cache }}"
 {% endif %}
-{% if not (ghspot_pools_in_directory | default(false) | bool) %}
-{% for pool in ghspot_pools %}
+{# One table for the whole host, so it must sit outside the pool loop. #}
+{% if ghspot_capacity is defined and ghspot_capacity %}
 
-[[pool]]
-name = "{{ pool.name }}"
-repository = "{{ pool.repository }}"
-labels = [{{ pool.labels | map('tojson') | join(', ') }}]
-{% if pool.pm is defined %}
-pm = "{{ pool.pm }}"
-{% endif %}
-{# Each mode refuses the keys that would do nothing under it, so the template has to know
-   which ones those are — the same table as the daemon's, one layer out. #}
-{% set mode = pool.pm | default('dynamic') %}
-{% if mode == 'dynamic' %}
-min_idle = {{ pool.min_idle | default(0) }}
-{% if pool.max_idle is defined %}
-max_idle = {{ pool.max_idle }}
-{% endif %}
-{% endif %}
-max_runners = {{ pool.max_runners | default(2) }}
-{% if mode != 'static' %}
-idle_timeout = "{{ pool.idle_timeout | default('10m') }}"
-{% endif %}
-max_job_duration = "{{ pool.max_job_duration | default('2h') }}"
-max_launch_per_tick = {{ pool.max_launch_per_tick | default(2) }}
-{% if pool.requires_labels is defined and pool.requires_labels %}
-requires_labels = [{{ pool.requires_labels | map('tojson') | join(', ') }}]
-{% endif %}
-
-[pool.container]
-image = "{{ pool.container.image }}"
-{% if pool.container.cpus is defined %}
-cpus = {{ pool.container.cpus }}
-{% endif %}
-{% if pool.container.memory is defined %}
-memory = "{{ pool.container.memory }}"
-{% endif %}
-docker_socket = {{ pool.container.docker_socket | default(false) | bool | lower }}
-{% if pool.container.gpus is defined and pool.container.gpus %}
-{% if pool.container.gpus is string %}
-gpus = "{{ pool.container.gpus }}"
-{% elif pool.container.gpus is sequence %}
-gpus = [{{ pool.container.gpus | map('string') | map('tojson') | join(', ') }}]
+[capacity]
+{% for key, value in ghspot_capacity.items() %}
+{% if value is string %}
+{{ key }} = "{{ value }}"
 {% else %}
-gpus = {{ pool.container.gpus }}
+{{ key }} = {{ value }}
 {% endif %}
-{% endif %}
-{% if pool.container.network is defined %}
-network = "{{ pool.container.network }}"
-{% endif %}
-{% if pool.container.volumes is defined %}
-
-[pool.container.volumes]
-{% for host_path, container_path in pool.container.volumes.items() %}
-"{{ host_path }}" = "{{ container_path }}"
 {% endfor %}
 {% endif %}
+{% if not (ghspot_pools_in_directory | default(false) | bool) %}
+{% for pool in ghspot_pools %}
+{% include '_pool.toml.j2' %}
 {% endfor %}
 {% endif %}

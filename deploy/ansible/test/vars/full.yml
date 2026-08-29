@@ -13,6 +13,13 @@ ghspot_housekeeping:
   volumes: false
   build_cache_older_than: 12h
   keep_build_cache: 5g
+ghspot_capacity:
+  max_containers: 8
+  max_cpus: 12.0
+  max_memory: 24g
+  cpu_high_water: 85
+  memory_high_water: 90
+
 ghspot_pools:
   - name: ubuntu
     repository: tguisep/my-project
@@ -37,6 +44,7 @@ ghspot_pools:
     labels: [self-hosted, linux, x64, gpu-a100]
     requires_labels: [gpu-a100]
     pm: ondemand
+    priority: 10
     max_runners: 1
     container:
       image: ghspot/runner:ubuntu-24.04

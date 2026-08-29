@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
 from ghspot.domain.errors import BackendError
 from ghspot.domain.ports.backend import ContainerSpec
+from ghspot.infrastructure.docker import backend as backend_module
 from ghspot.infrastructure.docker.backend import (
     DOCKER_SOCKET,
     _parse_time,
@@ -159,3 +162,58 @@ def test_an_empty_id_list_asks_for_nothing() -> None:
 def test_a_nonsense_selection_is_refused() -> None:
     with pytest.raises(BackendError, match="not a GPU selection"):
         _run_arguments(spec(gpus="lots"))
+
+
+# ---------------------------------------------------------------- host load
+
+
+def test_cpu_is_load_average_against_the_core_count(tmp_path: Path) -> None:
+    """Load average, not an instantaneous sample: it covers everything on the box, and it is
+    the number that says whether work is queueing for the CPU."""
+    loadavg = tmp_path / "loadavg"
+    loadavg.write_text("2.00 1.50 1.20 2/431 1234\n")
+
+    with patch.object(backend_module, "PROC_LOADAVG", loadavg):
+        assert backend_module._cpu_percent(4) == 50.0
+        assert backend_module._cpu_percent(2) == 100.0
+
+
+def test_cpu_is_unknown_when_the_core_count_is(tmp_path: Path) -> None:
+    loadavg = tmp_path / "loadavg"
+    loadavg.write_text("2.00 1.50 1.20 2/431 1234\n")
+
+    with patch.object(backend_module, "PROC_LOADAVG", loadavg):
+        assert backend_module._cpu_percent(None) is None
+
+
+def test_cpu_is_unknown_rather_than_zero_when_proc_cannot_be_read(tmp_path: Path) -> None:
+    """Unknown must not read as idle: the policy treats zero as "plenty of room"."""
+    with patch.object(backend_module, "PROC_LOADAVG", tmp_path / "absent"):
+        assert backend_module._cpu_percent(4) is None
+
+
+def test_memory_in_use_excludes_what_the_kernel_would_give_back(tmp_path: Path) -> None:
+    """MemTotal - MemFree counts the page cache as used, and a Linux box doing any work at
+    all looks 95% full by that measure."""
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(
+        "MemTotal:       16000000 kB\nMemFree:          200000 kB\nMemAvailable:    8000000 kB\n"
+    )
+
+    with patch.object(backend_module, "PROC_MEMINFO", meminfo):
+        used = backend_module._memory_used(16000000 * 1024)
+
+    assert used == 8000000 * 1024
+
+
+def test_memory_is_unknown_when_proc_cannot_be_read(tmp_path: Path) -> None:
+    with patch.object(backend_module, "PROC_MEMINFO", tmp_path / "absent"):
+        assert backend_module._memory_used(1024) is None
+
+
+def test_a_field_docker_omitted_is_not_invented() -> None:
+    assert backend_module._positive(None) is None
+    assert backend_module._positive(0) is None
+    assert backend_module._positive(0, allow_zero=True) == 0
+    assert backend_module._positive(True) is None  # a bool is not a count
+    assert backend_module._positive(8) == 8

@@ -115,6 +115,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
         events=events,
         provision=provision,
         retire=retire,
+        capacity=settings.capacity,
     )
 
     keep = settings.housekeeping

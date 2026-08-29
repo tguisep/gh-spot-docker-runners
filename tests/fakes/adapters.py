@@ -20,6 +20,7 @@ from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.ports.backend import (
     ContainerSpec,
     ContainerStatus,
+    HostLoad,
     PruneReport,
     PruneRequest,
 )
@@ -176,6 +177,9 @@ class FakeBackend:
     killed: list[str] = field(default_factory=list)
     images: set[str] = field(default_factory=lambda: {"ghspot/runner:test"})
     pruned: list[PruneRequest] = field(default_factory=list)
+    load: HostLoad = field(default_factory=HostLoad)
+    """What `host_load()` reports."""
+
     now: datetime = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
     _next_id: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
 
@@ -225,6 +229,11 @@ class FakeBackend:
             for status in self.containers.values()
             if all(status.labels.get(key) == value for key, value in label_selector.items())
         ]
+
+    async def host_load(self) -> HostLoad:
+        """Whatever a test set. The default reads as an unmeasurable host, which is the
+        state that must never block a launch."""
+        return self.load
 
     async def logs(self, container_id: str, tail: int = 200) -> str:
         self._guard("logs")

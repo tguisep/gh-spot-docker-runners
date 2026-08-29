@@ -19,12 +19,14 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from ghspot.application.commands.housekeeping import parse_size
 from ghspot.application.commands.provision import RunnerTemplate
 from ghspot.application.reconciliation import PoolConfiguration
 from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.pool import PoolSpec, ProcessManager
 from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.policy.admission import CapacityLimits
 
 TOKEN_ENV = "GHSPOT_GITHUB_TOKEN"
 APP_ID_ENV = "GHSPOT_GITHUB_APP_ID"
@@ -165,6 +167,7 @@ class Settings:
     github: GitHubSettings
     daemon: DaemonSettings
     housekeeping: HousekeepingSettings = field(default_factory=HousekeepingSettings)
+    capacity: CapacityLimits = field(default_factory=CapacityLimits)
     pools: tuple[PoolConfiguration, ...] = field(default=())
     source: Path | None = None
 
@@ -215,6 +218,7 @@ def from_mapping(
         github=github,
         daemon=daemon,
         housekeeping=housekeeping,
+        capacity=_capacity(_section(raw, "capacity")),
         pools=pools,
         source=source,
     )
@@ -388,6 +392,89 @@ def _housekeeping(table: dict[str, Any]) -> HousekeepingSettings:
     )
 
 
+def _priority(value: Any, where: str, name: str) -> int:
+    """A pool's share of contested capacity. A weight, so the floor is 1, not 0.
+
+    Zero is refused rather than quietly treated as one: a weight of nothing has no meaning
+    in a proportional split, and somebody writing it means "never", which is spelled by
+    giving the other pools a much larger number.
+    """
+    if _unset(value):
+        return 1
+    try:
+        weight = int(str(value))
+    except (TypeError, ValueError) as error:
+        raise ConfigError(f"{where} ({name}): 'priority' must be a whole number") from error
+    if weight < 1:
+        raise ConfigError(
+            f"{where} ({name}): 'priority' is a share of contested capacity, so it starts "
+            "at 1. A pool at 10 gets twice the slots of one at 5, not all of them."
+        )
+    return weight
+
+
+def _unset(value: Any) -> bool:
+    """Whether a key was left out, as opposed to given a value.
+
+    Written with identity checks because ``0 == False`` in Python: ``value in (None, False)``
+    would read ``max_containers = 0`` as "not configured", which is the opposite of what
+    anyone writing that means, and it would be silent.
+    """
+    return value is None or value is False or (isinstance(value, str) and not value.strip())
+
+
+def _capacity(table: dict[str, Any]) -> CapacityLimits:
+    """Ceilings on what the host may commit, and how hard it may already be working.
+
+    Everything is optional and unset means unlimited, so a configuration written before this
+    section existed behaves exactly as it did.
+    """
+
+    def count(key: str) -> int | None:
+        value = table.get(key)
+        if _unset(value):
+            return None
+        number = int(str(value))
+        if number < 1:
+            raise ConfigError(f"capacity.{key} must be at least 1, or unset for no limit")
+        return number
+
+    def cpus(key: str) -> float | None:
+        value = table.get(key)
+        if _unset(value):
+            return None
+        number = float(str(value))
+        if number <= 0:
+            raise ConfigError(f"capacity.{key} must be greater than 0, or unset for no limit")
+        return number
+
+    def water(key: str) -> float | None:
+        value = table.get(key)
+        if _unset(value):
+            return None
+        number = float(str(value))
+        if not 1 <= number <= 100:
+            raise ConfigError(f"capacity.{key} is a percentage: use a number between 1 and 100")
+        return number
+
+    memory = table.get("max_memory")
+    try:
+        limit = None if _unset(memory) else parse_size(str(memory))
+    except ValueError as error:
+        raise ConfigError(f"capacity.max_memory: {error}") from error
+
+    try:
+        return CapacityLimits(
+            max_containers=count("max_containers"),
+            max_cpus=cpus("max_cpus"),
+            max_memory_bytes=limit,
+            cpu_high_water=water("cpu_high_water"),
+            memory_high_water=water("memory_high_water"),
+        )
+    except (TypeError, ValueError) as error:
+        raise ConfigError(f"capacity: {error}") from error
+
+
 def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
     where = f"pool[{index}]"
     name = _required(table, "name", where)
@@ -416,6 +503,7 @@ def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
             ),
             max_launch_per_tick=int(table.get("max_launch_per_tick", 2)),
             **_process_manager(table, where, str(name)),
+            priority=_priority(table.get("priority"), where, str(name)),
             requires_labels=_required_labels(table.get("requires_labels"), where, str(name)),
         )
     except GhSpotError as error:

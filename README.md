@@ -26,6 +26,10 @@ sides, when the job finishes.
   bounds you set. No inbound ports, so it works behind NAT on a home server.
 - **No I/O in the domain.** Docker and GitHub sit behind ports, so the scaling policy and the
   reconciliation loop are unit-tested without a daemon or a network.
+- **Bounded by the host, not just by the pool.** `max_runners` bounds one pool; ceilings on
+  containers, CPU and memory bound the machine, and a load high-water mark defers launches
+  while the box is struggling. Pools carry a `priority` — a share of contested capacity, not a rank, so a
+  lighter pool still runs.
 - **GPUs, if the host has them.** A pool can hand its jobs every card, a count, or specific
   ones — and `requires_labels` keeps plain CPU work off them.
 

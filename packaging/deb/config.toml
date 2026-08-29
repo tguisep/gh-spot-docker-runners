@@ -34,6 +34,16 @@ state_db = "/var/lib/ghspot/state.db"
 # Serve the REST API. It has no authentication — keep it on localhost.
 # api_bind = "127.0.0.1:8770"
 
+# What this host will take, across every pool at once. max_runners bounds one pool; nothing
+# bounds the machine. Unset means unlimited.
+#
+# [capacity]
+# max_containers = 8          # runners across every pool
+# max_cpus = 12.0             # summed `cpus` of the runners that are up
+# max_memory = "24g"
+# cpu_high_water = 85         # one-minute load average as a percentage of cores
+# memory_high_water = 90      # page cache excluded, since the kernel gives it back
+
 [[pool]]
 name = "default"
 
@@ -52,6 +62,10 @@ labels = ["self-hosted", "linux", "x64"]
 # (exactly max_runners, never reaped) or "ondemand" (nothing warm). A key that does not apply
 # to the mode is refused rather than ignored.
 # pm = "dynamic"
+
+# This pool's share of contested capacity when [capacity] bites. A weight, not a rank: 10
+# against 5 takes two thirds of the contested slots, interleaved, not all of them. From 1.
+# priority = 10
 
 min_idle = 0          # runners kept warm; 1 removes container boot from the first job
 # max_idle = 3        # warm runners above this are reaped without waiting out idle_timeout

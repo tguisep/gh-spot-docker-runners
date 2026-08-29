@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from ghspot.application import bookkeeping
+from ghspot.application.commands.housekeeping import parse_size
 from ghspot.application.commands.provision import ProvisionRunner, RunnerTemplate
 from ghspot.application.commands.retire import RetireRunner
 from ghspot.application.dto import TickReport
@@ -22,8 +23,14 @@ from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.pool import PoolSpec, RunnerPool
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
 from ghspot.domain.model.target import RepositoryTarget
-from ghspot.domain.policy.scaling import plan_scaling
-from ghspot.domain.ports.backend import ContainerStatus, RunnerBackend
+from ghspot.domain.policy.admission import (
+    Admission,
+    CapacityLimits,
+    LaunchRequest,
+    admit,
+)
+from ghspot.domain.policy.scaling import ScalePlan, plan_scaling
+from ghspot.domain.ports.backend import ContainerStatus, HostLoad, RunnerBackend
 from ghspot.domain.ports.forge import ForgeClient, ForgeRunner
 from ghspot.domain.ports.repository import RunnerRepository
 from ghspot.domain.ports.system import Clock, EventPublisher
@@ -35,6 +42,20 @@ REGISTRATION_GRACE = timedelta(minutes=5)
 #: Runner names this daemon mints all start here, so a foreign runner in the same repository
 #: is never mistaken for our orphan and deleted.
 NAME_PREFIX = "ghspot-"
+
+
+def _memory_bytes(memory: str | None) -> int | None:
+    """A pool's reserved memory, in bytes, for the capacity arithmetic.
+
+    An unparseable value is treated as no reservation rather than raised on: the daemon
+    already validated this at load time, and a ceiling is not worth failing a tick over.
+    """
+    if not memory:
+        return None
+    try:
+        return parse_size(memory)
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +77,7 @@ class ReconciliationService:
         events: EventPublisher,
         provision: ProvisionRunner,
         retire: RetireRunner,
+        capacity: CapacityLimits | None = None,
     ) -> None:
         self._pools = list(pools)
         self._forge = forge
@@ -65,6 +87,7 @@ class ReconciliationService:
         self._events = events
         self._provision = provision
         self._retire_runner = retire
+        self._capacity = capacity or CapacityLimits()
 
     async def tick(self) -> TickReport:
         """One reconciliation pass over every configured pool.
@@ -99,6 +122,11 @@ class ReconciliationService:
 
         demand_by_repository: dict[RepositoryTarget, Sequence[QueuedJob]] = {}
 
+        # Every pool is planned before anything acts, because how many runners the host can
+        # take is a question about all of them at once. Retiring and terminating happen here
+        # too: they release capacity, so doing them first is what lets a full host recover.
+        planned: list[tuple[PoolConfiguration, RunnerPool, ScalePlan]] = []
+
         for configuration in self._pools:
             spec = configuration.spec
             try:
@@ -120,8 +148,21 @@ class ReconciliationService:
                     if await self._retire_by_id(pool, runner_id, "idle timeout", force=False):
                         retired += 1
 
-                launched += await self._launch(spec, configuration.template, plan.launch)
+                planned.append((configuration, pool, plan))
 
+            except GhSpotError as error:
+                errors.append(f"[{spec.name}] {error}")
+
+        admission = await self._admit(planned)
+        notes.extend(admission.reasons)
+
+        for configuration, _pool, _plan in planned:
+            spec = configuration.spec
+            allowed = admission.for_pool(spec.name)
+            if allowed == 0:
+                continue
+            try:
+                launched += await self._launch(spec, configuration.template, allowed)
             except GhSpotError as error:
                 errors.append(f"[{spec.name}] {error}")
 
@@ -136,6 +177,42 @@ class ReconciliationService:
             errors=errors,
             notes=notes,
         )
+
+    async def _admit(
+        self, planned: Sequence[tuple[PoolConfiguration, RunnerPool, ScalePlan]]
+    ) -> Admission:
+        """How much of what the pools want the host will take this tick.
+
+        The load probe is asked for only when something wants to start and a limit is
+        configured — it is a call to the Engine and a read of /proc, and a fleet with no
+        limits should not pay for either. A probe that fails degrades to an unmeasured host,
+        which the policy treats as "no reason to hold back".
+        """
+        requests = [
+            LaunchRequest(
+                pool=configuration.spec.name,
+                wanted=plan.launch,
+                priority=configuration.spec.priority,
+                cpus=configuration.template.cpus,
+                memory_bytes=_memory_bytes(configuration.template.memory),
+                committed=pool.active_count,
+            )
+            for configuration, pool, plan in planned
+        ]
+
+        if not any(request.wanted for request in requests):
+            return Admission(granted={request.pool: 0 for request in requests})
+
+        load = HostLoad()
+        if self._capacity.has_backpressure:
+            try:
+                load = await self._backend.host_load()
+            except GhSpotError:
+                # Unmeasured, not blocked. A probe that cannot see the host must not be able
+                # to stop the fleet.
+                load = HostLoad()
+
+        return admit(requests, load, self._capacity)
 
     # -- observation ----------------------------------------------------------------
 

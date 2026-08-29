@@ -80,6 +80,34 @@ state_db = "~/.local/state/ghspot/state.db"
 # build_cache_older_than = "24h"
 # keep_build_cache = "10g"         # kept below this, or every rebuild starts cold
 
+# ---------------------------------------------------------------- host capacity
+#
+# max_runners bounds one pool. Nothing bounds the *machine*: four pools with room to spare
+# will each start runners at the same time, on one box. This is where you say what the host
+# will take.
+#
+# Every key is optional and unset means unlimited, so leaving the section out behaves exactly
+# as it did before it existed.
+#
+# [capacity]
+
+# Ceilings on what is *committed* — arithmetic over the runners that exist, needing no
+# measurement. max_containers is the one that always applies; the other two only count pools
+# that set cpus and memory.
+# max_containers = 8
+# max_cpus = 12.0
+# max_memory = "24g"
+
+# Ceilings on what is *measured*. At or above these nothing new starts, even where a pool has
+# a free slot — this is what catches what the arithmetic cannot: everything else on the box,
+# or a job using far more than its pool reserved.
+#
+# CPU is the one-minute load average as a percentage of cores, so 100 means as much work
+# queued as the machine has cores. Memory ignores the page cache, which the kernel hands back
+# on demand.
+# cpu_high_water = 85
+# memory_high_water = 90
+
 [[pool]]
 name = "default"
 repository = "tguisep/my-project"
@@ -116,6 +144,15 @@ labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
 #
 # A key that does not apply to the chosen mode is refused rather than ignored.
 # pm = "dynamic"
+
+# This pool's share of contested capacity, when [capacity] bites. A weight, not a rank: at 10
+# against another pool's 5 this one takes two thirds of the contested slots, not all of them,
+# and the slots are interleaved — the lighter pool keeps starting runners rather than waiting
+# for this one to be satisfied.
+#
+# Starts at 1, which is the default, so with capacity to spare it changes nothing. A pool
+# that stops wanting runners gives its share back.
+# priority = 10
 
 min_idle = 1          # runners kept warm so a job doesn't wait for a container to boot
 
