@@ -185,6 +185,33 @@ class Settings:
 GLOBAL_SECTIONS = ("github", "daemon", "housekeeping", "include")
 
 
+PLACEHOLDER_REPOSITORY = "OWNER/REPOSITORY"
+"""What the packaged configuration ships with, so a fresh install is recognisable as one."""
+
+
+def unconfigured(settings: Settings) -> str | None:
+    """Why this host is not ready to run anything, or ``None`` when it is.
+
+    Distinct from `ghspot doctor`, which asks whether everything *works* — Docker, the
+    image, the token's permissions. This asks the narrower question the installer cares
+    about: has anyone finished filling the file in. A daemon can be up, answering, and still
+    be pointing at OWNER/REPOSITORY.
+    """
+    for pool in settings.pools:
+        if str(pool.spec.repository) == PLACEHOLDER_REPOSITORY:
+            return f"pool {pool.spec.name!r} still points at the packaged {PLACEHOLDER_REPOSITORY}"
+
+    github = settings.github
+    try:
+        if github.uses_app:
+            github.resolve_private_key()
+        else:
+            github.resolve_token()
+    except GhSpotError as error:
+        return str(error)
+    return None
+
+
 def load(path: Path | str | None = None) -> Settings:
     """Load and validate configuration, searching the usual places if no path is given."""
     resolved = _locate(path)
@@ -413,6 +440,23 @@ def _priority(value: Any, where: str, name: str) -> int:
     return weight
 
 
+UNLIMITED = "unlimited"
+"""Written where a number would go, to lift a ceiling that otherwise has a default."""
+
+
+def host_cores() -> int:
+    """Cores this machine reports, and never less than one.
+
+    A module-level function so a test can replace it: the default it feeds is a number the
+    suite has to be able to pin down.
+    """
+    return os.cpu_count() or 1
+
+
+def _says_unlimited(value: Any) -> bool:
+    return isinstance(value, str) and value.strip().lower() == UNLIMITED
+
+
 def _unset(value: Any) -> bool:
     """Whether a key was left out, as opposed to given a value.
 
@@ -432,6 +476,8 @@ def _capacity(table: dict[str, Any]) -> CapacityLimits:
 
     def count(key: str) -> int | None:
         value = table.get(key)
+        if isinstance(value, str) and value.strip().lower() == UNLIMITED:
+            return None
         if _unset(value):
             return None
         number = int(str(value))
@@ -463,9 +509,17 @@ def _capacity(table: dict[str, Any]) -> CapacityLimits:
     except ValueError as error:
         raise ConfigError(f"capacity.max_memory: {error}") from error
 
+    containers = count("max_containers")
+    if containers is None and not _says_unlimited(table.get("max_containers")):
+        # One runner per core, unless told otherwise. A host with no ceiling at all will
+        # cheerfully start a container per queued job until it stops responding, and the
+        # first thing an operator learns is that the machine is gone. Cores is not a
+        # measurement of anything — it is a defensible number the box can name for itself.
+        containers = host_cores()
+
     try:
         return CapacityLimits(
-            max_containers=count("max_containers"),
+            max_containers=containers,
             max_cpus=cpus("max_cpus"),
             max_memory_bytes=limit,
             cpu_high_water=water("cpu_high_water"),
