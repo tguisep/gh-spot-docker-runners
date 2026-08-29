@@ -65,6 +65,29 @@ class HostLoad:
 
 
 @dataclass(frozen=True, slots=True)
+class ContainerUsage:
+    """What one container is consuming right now.
+
+    A sample, not a history: the daemon keeps no time series, and the question an operator
+    is asking — "is this box full?" — is answered by the current numbers.
+    """
+
+    container_id: str
+    cpu_percent: float
+    """Across all cores, as `docker stats` reports it: 200% means two cores saturated."""
+
+    memory_bytes: int
+    memory_limit_bytes: int | None = None
+    """The container's limit, or the host's total when the pool set none."""
+
+    @property
+    def memory_percent(self) -> float:
+        if not self.memory_limit_bytes:
+            return 0.0
+        return 100.0 * self.memory_bytes / self.memory_limit_bytes
+
+
+@dataclass(frozen=True, slots=True)
 class ContainerStatus:
     """A container as the backend currently reports it."""
 
@@ -173,6 +196,14 @@ class RunnerBackend(Protocol):
 
         Any field may be ``None`` where it could not be read: an unreadable host degrades the
         decision to the configured ceilings rather than stopping the fleet.
+        """
+        ...
+
+    async def usage(self, container_ids: Sequence[str]) -> Mapping[str, ContainerUsage]:
+        """Current CPU and memory for each container that is still running.
+
+        Absent ids are simply missing from the result: a container that exited between the
+        listing and this call is the normal case, not an error.
         """
         ...
 

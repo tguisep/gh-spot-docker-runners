@@ -48,6 +48,11 @@ provisioner:
         ghspot_service_state: stopped
         ghspot_verify: false
 
+        # Bound so the dashboard path is exercised: the role reports where it is, and
+        # verify checks the address reached the daemon's configuration. Nothing listens —
+        # the service is left stopped.
+        ghspot_api_bind: "127.0.0.1:8770"
+
         ghspot_github_token: github_pat_not_a_real_token
         ghspot_pools:
           - name: default

@@ -28,6 +28,13 @@ class RunnerResponse(BaseModel):
     time_in_state_seconds: float = 0.0
     failure_reason: str | None = None
 
+    cpu_percent: float | None = None
+    """Null unless the request asked for usage: sampling costs a call per container."""
+
+    memory_bytes: int | None = None
+    memory_limit_bytes: int | None = None
+    memory_percent: float | None = None
+
     @classmethod
     def of(cls, view: RunnerView) -> RunnerResponse:
         return cls(
@@ -44,6 +51,10 @@ class RunnerResponse(BaseModel):
             age_seconds=round(view.age_seconds, 1),
             time_in_state_seconds=round(view.time_in_state_seconds, 1),
             failure_reason=view.failure_reason,
+            cpu_percent=view.cpu_percent,
+            memory_bytes=view.memory_bytes,
+            memory_limit_bytes=view.memory_limit_bytes,
+            memory_percent=(None if view.memory_percent is None else round(view.memory_percent, 1)),
         )
 
 
@@ -179,6 +190,18 @@ class HealthResponse(BaseModel):
 
 class LogsResponse(BaseModel):
     runner_id: str
+    lines: str
+
+
+class JobLogsResponse(BaseModel):
+    """The forge's log for the job a runner is running, when the forge has one."""
+
+    runner_id: str
+    job_id: int | None
+    available: bool
+    """False while the job is still running: GitHub writes the log when it finishes, so
+    there is nothing to fetch yet. Distinct from an empty log."""
+
     lines: str
 
 

@@ -11,6 +11,10 @@
 python = "3.12"
 uv = "0.12.6"
 
+# The dashboard's toolchain. Needed only to build `web/`: the daemon serves whatever built
+# assets it finds and runs perfectly well with none of this installed.
+node = "24.11.0"
+
 # The Ansible toolchain, so `mise install` gets everything rather than leaving the role's
 # tests to a uvx incantation nobody remembers.
 #

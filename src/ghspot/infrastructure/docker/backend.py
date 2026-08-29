@@ -25,6 +25,7 @@ from ghspot.domain.ports.backend import (
     PROTECTED_IMAGE_LABEL,
     ContainerSpec,
     ContainerStatus,
+    ContainerUsage,
     HostLoad,
     PruneReport,
     PruneRequest,
@@ -121,6 +122,32 @@ class DockerRunnerBackend:
             )
 
         return await asyncio.to_thread(run)
+
+    async def usage(self, container_ids: Sequence[str]) -> Mapping[str, ContainerUsage]:
+        """Sample CPU and memory for each container.
+
+        One `stats(stream=False)` call per container, run together on the executor: the
+        Engine answers each in a hundred milliseconds or so, and sampling a fleet serially
+        would make the whole listing feel broken.
+
+        A container that has gone between the listing and this call is skipped rather than
+        raising: with ephemeral runners that is the expected case, not a fault.
+        """
+        if not container_ids:
+            return {}
+
+        def sample(container_id: str) -> ContainerUsage | None:
+            try:
+                raw = self._client.containers.get(container_id).stats(stream=False)
+            except (NotFound, APIError, DockerException):
+                return None
+            return _usage_from_stats(container_id, raw)
+
+        async def one(container_id: str) -> ContainerUsage | None:
+            return await asyncio.to_thread(sample, container_id)
+
+        sampled = await asyncio.gather(*(one(cid) for cid in container_ids))
+        return {usage.container_id: usage for usage in sampled if usage is not None}
 
     async def logs(self, container_id: str, tail: int = 200) -> str:
         def run() -> str:
@@ -403,6 +430,57 @@ def _positive(value: Any, *, allow_zero: bool = False) -> int | None:
     if value < 0 or (value == 0 and not allow_zero):
         return None
     return value
+
+
+def _usage_from_stats(container_id: str, raw: Any) -> ContainerUsage | None:
+    """Turn one `docker stats` sample into a usage reading.
+
+    CPU is a rate and the Engine reports counters, so it has to be derived from the two
+    snapshots every sample carries:
+
+        cpu% = (container delta / system delta) * cores * 100
+
+    A first sample on a just-started container has identical snapshots, making the system
+    delta zero. That is reported as 0%, not as a division error.
+
+    Memory subtracts the page cache. Without that a job that merely read a large file looks
+    like a job that leaked, because Linux charges cache to the cgroup until something else
+    needs the pages.
+    """
+    if not isinstance(raw, dict):
+        return None
+
+    cpu = raw.get("cpu_stats") or {}
+    previous = raw.get("precpu_stats") or {}
+    memory = raw.get("memory_stats") or {}
+
+    used = _number(cpu.get("cpu_usage", {}).get("total_usage"))
+    used_before = _number(previous.get("cpu_usage", {}).get("total_usage"))
+    cpu_delta = used - used_before
+    system_delta = _number(cpu.get("system_cpu_usage")) - _number(previous.get("system_cpu_usage"))
+    cores = _number(cpu.get("online_cpus")) or len(
+        cpu.get("cpu_usage", {}).get("percpu_usage") or []
+    )
+
+    percent = 0.0
+    if cpu_delta > 0 and system_delta > 0:
+        percent = (cpu_delta / system_delta) * max(1.0, cores) * 100.0
+
+    cache = _number((memory.get("stats") or {}).get("inactive_file"))
+    resident = max(0.0, _number(memory.get("usage")) - cache)
+    limit = _number(memory.get("limit"))
+
+    return ContainerUsage(
+        container_id=container_id,
+        cpu_percent=round(percent, 1),
+        memory_bytes=int(resident),
+        memory_limit_bytes=int(limit) if limit > 0 else None,
+    )
+
+
+def _number(value: Any) -> float:
+    """Docker omits a field rather than sending zero, so a missing one must read as zero."""
+    return float(value) if isinstance(value, int | float) else 0.0
 
 
 def _gpu_request(gpus: str | int | tuple[str, ...] | None) -> DeviceRequest | None:

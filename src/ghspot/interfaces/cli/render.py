@@ -45,27 +45,61 @@ def duration(seconds: float) -> str:
     return f"{hours}h{remainder // 60:02d}m"
 
 
-def runners_table(runners: Sequence[RunnerView], *, title: str | None = None) -> Table:
+def bytes_(count: int | None) -> str:
+    """Binary units, as `docker stats` prints them, so the two can be compared directly."""
+    if count is None:
+        return "-"
+    size = float(count)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if size < 1024 or unit == "GiB":
+            return f"{size:.0f}{unit}" if unit == "B" else f"{size:.1f}{unit}"
+        size /= 1024
+    return f"{size:.1f}GiB"
+
+
+def runners_table(
+    runners: Sequence[RunnerView], *, title: str | None = None, usage: bool = False
+) -> Table:
     table = Table(title=title, header_style="bold", expand=False)
     table.add_column("runner", style="bold")
     table.add_column("pool")
     table.add_column("state")
     table.add_column("age", justify="right")
     table.add_column("in state", justify="right")
+    if usage:
+        table.add_column("cpu", justify="right")
+        table.add_column("memory", justify="right")
     table.add_column("container")
     table.add_column("gh id", justify="right")
 
     for runner in runners:
-        table.add_row(
+        cells: list[str | Text] = [
             runner.name,
             runner.pool,
             state_text(runner.state),
             duration(runner.age_seconds),
             duration(runner.time_in_state_seconds),
+        ]
+        if usage:
+            # A runner with no sample shows "-", never 0%: "not measured" and "idle" are
+            # different facts, and a container that has exited is not using nothing, it is
+            # not there.
+            cells.append("-" if runner.cpu_percent is None else f"{runner.cpu_percent:.0f}%")
+            cells.append(_memory_cell(runner))
+        cells += [
             runner.short_container_id or "—",
             str(runner.github_runner_id or "—"),
-        )
+        ]
+        table.add_row(*cells)
     return table
+
+
+def _memory_cell(runner: RunnerView) -> str:
+    used = bytes_(runner.memory_bytes)
+    share = runner.memory_percent
+    if runner.memory_bytes is None or share is None:
+        return used
+    return f"{used} ({share:.0f}%)"
 
 
 def pools_table(pools: Sequence[PoolView]) -> Table:

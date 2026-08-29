@@ -157,14 +157,17 @@ ghspot daemon                  run the reconciliation loop
 ghspot pool list               pools and what they hold
 ghspot pool status <name>      one pool, with its runners
 ghspot runner list [--all]     runners, from the local projection
-ghspot runner logs <ref>       container output
+ghspot runner logs <ref>       container output, or --job for GitHub's own
 ghspot runner stop <ref>       retire on both sides
 ghspot stats [--since 7d]      runners, jobs, failures and time spent
 ghspot config validate         load the config and report what it means, from every file
 ```
 
-A REST API is served alongside the daemon when `api_bind` is set — see
-[`docs/operations.md`](docs/operations.md).
+Every listing takes `--watch 2` to repaint in place, and `runner list` takes `--usage` for
+CPU and memory per container.
+
+A REST API is served alongside the daemon when `api_bind` is set, with a web dashboard at
+`/ui` covering the same ground as the CLI — see [`docs/operations.md`](docs/operations.md).
 
 ## Security
 

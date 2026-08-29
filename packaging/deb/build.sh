@@ -75,6 +75,21 @@ install -m 0640 "${HERE}/config.toml" "${STAGE}/etc/ghspot/config.toml"
 # conffile points here, commented out until there is something to include.
 install -d "${STAGE}/etc/ghspot/pools.d"
 
+# The dashboard, when a node toolchain is available to build it. Optional on purpose: the
+# daemon serves whatever it finds and runs normally with nothing here, so a machine without
+# node still produces a working package rather than failing the build. CI has node, so
+# released packages always carry it.
+if command -v npm >/dev/null 2>&1; then
+    echo "==> building the dashboard"
+    (cd "${ROOT}/web" && npm ci --silent && npm run build --silent)
+    install -d "${STAGE}/usr/share/ghspot/web"
+    cp -a "${ROOT}/web/dist/." "${STAGE}/usr/share/ghspot/web/"
+    echo "    dashboard: $(du -sh "${STAGE}/usr/share/ghspot/web" | cut -f1)"
+else
+    echo "==> no npm on PATH; packaging without the dashboard"
+    echo "    the daemon will serve the API only, and say so at /ui"
+fi
+
 install -d "${STAGE}/usr/share/doc/ghspot"
 install -m 0644 "${ROOT}/config.example.toml" "${STAGE}/usr/share/doc/ghspot/config.example.toml"
 install -m 0644 "${ROOT}/LICENSE" "${STAGE}/usr/share/doc/ghspot/copyright"

@@ -1,7 +1,7 @@
 version: 2
 
-# Three ecosystems, because this repository ships in three shapes: a Python application, a
-# set of container images, and the workflows that build both.
+# Four ecosystems, because this repository ships in four shapes: a Python application, a
+# dashboard, a set of container images, and the workflows that build them.
 #
 # The runner tarball inside images/runner is *not* covered — its version is pinned with a
 # checksum in the Dockerfile and comes from a GitHub release, not a package manager.
@@ -31,6 +31,20 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  # The dashboard. Its dependencies reach a browser, unlike every other ecosystem here, so
+  # they go stale in a way that matters rather than merely ageing.
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
 
   # Both runner images, plus the base image the .deb is built in.
   - package-ecosystem: docker

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
 
 from ghspot.application.dto import PoolView, RunnerView
 from ghspot.domain.model.pool import PoolSpec
 from ghspot.domain.model.runner import Runner, RunnerState
+from ghspot.domain.ports.backend import RunnerBackend
 from ghspot.domain.ports.repository import RunnerRepository
 from ghspot.domain.ports.system import Clock
 
@@ -31,14 +33,26 @@ def to_view(runner: Runner, now: datetime) -> RunnerView:
 
 
 class ListRunners:
-    """Every runner the projection knows about, newest first."""
+    """Every runner the projection knows about, newest first.
 
-    def __init__(self, runners: RunnerRepository, clock: Clock) -> None:
+    ``backend`` is optional and only used when a caller asks for resource usage: the CLI and
+    the API both read this list constantly, and sampling every container each time would put
+    a `docker stats` call per runner behind an operation that is otherwise a file read.
+    """
+
+    def __init__(
+        self, runners: RunnerRepository, clock: Clock, backend: RunnerBackend | None = None
+    ) -> None:
         self._runners = runners
         self._clock = clock
+        self._backend = backend
 
     async def __call__(
-        self, pool: str | None = None, *, include_terminal: bool = False
+        self,
+        pool: str | None = None,
+        *,
+        include_terminal: bool = False,
+        with_usage: bool = False,
     ) -> list[RunnerView]:
         if pool is not None:
             found = await self._runners.list_for_pool(pool)
@@ -50,7 +64,37 @@ class ListRunners:
         views = [
             to_view(runner, now) for runner in found if include_terminal or not runner.is_terminal
         ]
+        if with_usage and self._backend is not None:
+            views = await _with_usage(views, self._backend)
         return sorted(views, key=lambda view: view.created_at, reverse=True)
+
+
+async def _with_usage(views: list[RunnerView], backend: RunnerBackend) -> list[RunnerView]:
+    """Attach a resource sample to every view whose container is still running.
+
+    A runner without a sample keeps ``None`` rather than zero: "not measured" and "idle" are
+    different facts, and a table showing 0% for a container that has exited is a lie.
+    """
+    running = [view.container_id for view in views if view.container_id]
+    if not running:
+        return views
+
+    sampled = await backend.usage(running)
+    attached: list[RunnerView] = []
+    for view in views:
+        usage = sampled.get(view.container_id or "")
+        if usage is None:
+            attached.append(view)
+            continue
+        attached.append(
+            replace(
+                view,
+                cpu_percent=usage.cpu_percent,
+                memory_bytes=usage.memory_bytes,
+                memory_limit_bytes=usage.memory_limit_bytes,
+            )
+        )
+    return attached
 
 
 class GetPoolStatus:

@@ -243,6 +243,39 @@
     state: "{{ ghspot_service_state }}"
     daemon_reload: true
 
+# --- the dashboard -------------------------------------------------------------------------
+#
+# Nothing installs it: it rides in the package. What this does is tell the operator whether
+# they got one, and where it is — an api_bind with no dashboard behind it is a silent 404 at
+# a URL the README says will work.
+
+- name: Look for the dashboard
+  ansible.builtin.stat:
+    path: "{{ (ghspot_web_root | length > 0) | ternary(ghspot_web_root, '/usr/share/ghspot/web') }}/index.html"
+  register: ghspot_dashboard
+
+- name: Say where the dashboard is
+  when: ghspot_api_bind | length > 0 and ghspot_dashboard.stat.exists
+  ansible.builtin.debug:
+    msg: >-
+      dashboard: http://{{ ghspot_api_bind }}/ui — no authentication, so reach it over a
+      tunnel unless the bind address is already private:
+      ssh -L {{ ghspot_api_bind.split(':') | last }}:{{ ghspot_api_bind }} {{ inventory_hostname }}
+
+- name: Warn when the API is served without a dashboard behind it
+  when: ghspot_api_bind | length > 0 and not ghspot_dashboard.stat.exists
+  ansible.builtin.debug:
+    msg: >-
+      the API is bound to {{ ghspot_api_bind }} but no dashboard is installed, so /ui will
+      404. The package was built on a machine without npm. The API itself is unaffected.
+
+- name: Note that the dashboard is installed but not reachable
+  when: ghspot_api_bind | length == 0 and ghspot_dashboard.stat.exists
+  ansible.builtin.debug:
+    msg: >-
+      a dashboard is installed but ghspot_api_bind is unset, so nothing is served. Set it to
+      127.0.0.1:8770 to reach it over a tunnel.
+
 - name: Check the daemon is happy with what it was given
   ansible.builtin.command: ghspot doctor --config /etc/ghspot/config.toml
   register: ghspot_doctor

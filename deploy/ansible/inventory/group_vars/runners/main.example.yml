@@ -15,6 +15,10 @@ ghspot_pools:
 
 ghspot_images: [ubuntu-24.04]
 
+# Serves the REST API and the web dashboard at /ui. Loopback on purpose: neither has any
+# authentication. Reach it with  ssh -L 8770:localhost:8770 the-host
+# ghspot_api_bind: "127.0.0.1:8770"
+
 # A personal access token, from vault:
 ghspot_github_token: "{{ vault_ghspot_github_token }}"
 

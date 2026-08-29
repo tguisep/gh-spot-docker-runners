@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import timedelta
 from typing import Annotated
 
@@ -26,9 +27,11 @@ from ghspot.application.queries.views import GetPoolStatus, ListRunners, to_view
 from ghspot.composition import Application
 from ghspot.domain.errors import GhSpotError, RunnerBusyError, RunnerNotFoundError
 from ghspot.domain.model.runner import RunnerState
+from ghspot.interfaces.api import dashboard
 from ghspot.interfaces.api.schemas import (
     ErrorResponse,
     HealthResponse,
+    JobLogsResponse,
     LogsResponse,
     PoolResponse,
     RunnerResponse,
@@ -115,15 +118,38 @@ def create_app(application: Application) -> FastAPI:
         include_terminal: Annotated[
             bool, Query(description="Include retired and failed runners.")
         ] = False,
+        usage: Annotated[
+            bool,
+            Query(
+                description=(
+                    "Sample CPU and memory for each running container. Off by default: it "
+                    "costs one call to the Engine per runner."
+                )
+            ),
+        ] = False,
     ) -> list[RunnerResponse]:
-        query = ListRunners(app.runners, app.clock)
-        views = await query(pool, include_terminal=include_terminal)
+        query = ListRunners(app.runners, app.clock, app.backend)
+        views = await query(pool, include_terminal=include_terminal, with_usage=usage)
         return [RunnerResponse.of(view) for view in views]
 
     @api.get("/runners/{reference}", response_model=RunnerResponse, tags=["runners"])
-    async def get_runner(reference: str, app: Wired) -> RunnerResponse:
+    async def get_runner(
+        reference: str,
+        app: Wired,
+        usage: Annotated[bool, Query(description="Sample CPU and memory.")] = False,
+    ) -> RunnerResponse:
         runner = await ResolveRunner(app.runners)(reference)
-        return RunnerResponse.of(to_view(runner, app.clock.now()))
+        view = to_view(runner, app.clock.now())
+        if usage and runner.container_id:
+            sampled = (await app.backend.usage([runner.container_id])).get(runner.container_id)
+            if sampled is not None:
+                view = replace(
+                    view,
+                    cpu_percent=sampled.cpu_percent,
+                    memory_bytes=sampled.memory_bytes,
+                    memory_limit_bytes=sampled.memory_limit_bytes,
+                )
+        return RunnerResponse.of(view)
 
     @api.get("/runners/{reference}/logs", response_model=LogsResponse, tags=["runners"])
     async def get_runner_logs(
@@ -138,6 +164,29 @@ def create_app(application: Application) -> FastAPI:
             else await app.backend.logs(runner.container_id, tail=tail)
         )
         return LogsResponse(runner_id=str(runner.id), lines=lines)
+
+    @api.get("/runners/{reference}/job-logs", response_model=JobLogsResponse, tags=["runners"])
+    async def get_job_logs(
+        reference: str,
+        app: Wired,
+        tail: Annotated[int, Query(ge=1, le=10_000)] = 500,
+    ) -> JobLogsResponse:
+        """The forge's log for this runner's job.
+
+        The container's own output is the live view — the runner prints the job to stdout.
+        This is the other half: written when the job finishes, and it outlives the container,
+        which a just-in-time runner takes with it seconds later.
+        """
+        runner = await ResolveRunner(app.runners)(reference)
+        lines = None
+        if runner.current_job_id is not None:
+            lines = await app.forge.job_logs(runner.repository, runner.current_job_id, tail=tail)
+        return JobLogsResponse(
+            runner_id=str(runner.id),
+            job_id=runner.current_job_id,
+            available=lines is not None,
+            lines=lines or "",
+        )
 
     @api.delete("/runners/{reference}", response_model=RunnerResponse, tags=["runners"])
     async def stop_runner(
@@ -184,5 +233,9 @@ def create_app(application: Application) -> FastAPI:
     async def reconcile(app: Wired) -> TickResponse:
         """Run one reconciliation tick now instead of waiting for the interval."""
         return TickResponse.of(await app.reconciler.tick())
+
+    # Last, so a dashboard route can never shadow an API one. Absent when it was not built,
+    # which is the normal state of a source checkout and not a failure.
+    dashboard.mount(api)
 
     return api

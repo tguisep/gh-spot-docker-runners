@@ -20,6 +20,7 @@ from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.ports.backend import (
     ContainerSpec,
     ContainerStatus,
+    ContainerUsage,
     HostLoad,
     PruneReport,
     PruneRequest,
@@ -111,6 +112,9 @@ class FakeForge:
 
     deleted: list[int] = field(default_factory=list)
     minted: list[str] = field(default_factory=list)
+    job_output: dict[int, str] = field(default_factory=dict)
+    """What `job_logs()` returns, keyed by job id. Empty means no job has finished."""
+
     _next_id: itertools.count[int] = field(default_factory=lambda: itertools.count(100))
 
     def _guard(self, method: str, repository: RepositoryTarget | None = None) -> None:
@@ -149,6 +153,14 @@ class FakeForge:
         self._guard("list_queued_jobs", repository)
         return list(self.queued.get(repository, []))
 
+    async def job_logs(
+        self, repository: RepositoryTarget, job_id: int, tail: int = 500
+    ) -> str | None:
+        """Whatever a test put in ``job_output``. Absent means the job has not finished, the
+        state a running job is actually in."""
+        self._guard("job_logs")
+        return self.job_output.get(job_id)
+
     async def rate_limit_reset_at(self) -> datetime | None:
         return None
 
@@ -179,6 +191,9 @@ class FakeBackend:
     pruned: list[PruneRequest] = field(default_factory=list)
     load: HostLoad = field(default_factory=HostLoad)
     """What `host_load()` reports."""
+
+    samples: dict[str, ContainerUsage] = field(default_factory=dict)
+    """What `usage()` reports, keyed by container id."""
 
     now: datetime = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
     _next_id: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
@@ -234,6 +249,18 @@ class FakeBackend:
         """Whatever a test set. The default reads as an unmeasurable host, which is the
         state that must never block a launch."""
         return self.load
+
+    async def usage(self, container_ids: Sequence[str]) -> Mapping[str, ContainerUsage]:
+        """Whatever a test put in ``samples``, for the ids that are still running.
+
+        Absent ids are simply missing, which is what the real backend does when a container
+        went away between the listing and the sample.
+        """
+        return {
+            container_id: self.samples[container_id]
+            for container_id in container_ids
+            if container_id in self.samples
+        }
 
     async def logs(self, container_id: str, tail: int = 200) -> str:
         self._guard("logs")

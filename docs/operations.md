@@ -367,6 +367,108 @@ curl -s 'localhost:8770/stats?since_seconds=604800' | jq '.by_repository'
 Nothing prunes the event log, so a busy fleet grows it slowly and the report stays honest
 about the whole period.
 
+### Watching instead of re-running
+
+Every listing takes `--watch`, which repaints in place until interrupted:
+
+```bash
+ghspot pool status --watch 2
+ghspot runner list --watch 2 --usage
+```
+
+This is what `watch ghspot pool status` is reaching for, without its two costs: `watch`
+re-runs the whole command, so every refresh re-reads the configuration and reopens the
+database, and it drops the colours unless told otherwise. Here the process stays up and only
+the frame changes. Ctrl-C ends it.
+
+### CPU and memory
+
+```bash
+ghspot runner list --usage
+```
+
+```
+runner                pool     state   age     in state   cpu   memory          container
+ghspot-default-9f2a   default  busy    4m12s   3m48s      182%  1.4GiB (35%)    3f9a1c2b4d5e
+ghspot-default-7b81   default  idle    9m03s   6m11s        0%  184.2MiB (4%)   9c2e7a10bb33
+```
+
+Sampled from the Engine, one call per running container, so it is **off by default**: every
+other listing here reads only the state database and works with Docker down. A runner with
+no sample shows `-` rather than `0%` — a container that has gone is not using nothing, it is
+not there.
+
+The memory figure excludes the page cache, so a job that read a large file does not look
+like a job that leaked. The CPU figure is per core the way `docker stats` reports it: 200%
+is two cores saturated.
+
+### The dashboard
+
+Set `api_bind` and open `/ui`:
+
+```
+http://localhost:8770/ui
+```
+
+It covers the same ground as the CLI — pools and their capacity, runners with their state
+and resource use, a live log tail, and the usage report — plus the two interventions:
+stopping a runner, and forcing a tick.
+
+| Page | What it is for |
+|---|---|
+| overview | Is the daemon healthy, are pools full, is work queueing |
+| runners | What is running, with an optional CPU and memory column; stop or force-stop |
+| logs | Both logs for one runner, side by side — see below |
+| stats | The usage report, over a window |
+
+It polls; nothing is pushed. The log view re-reads the tail every two seconds, which reads
+as live at a runner's log volume and costs nothing to hold open. Polling pauses while the
+browser tab is hidden, so a dashboard left open overnight is not a steady stream of requests
+against a home server.
+
+#### Two logs, and why they are not the same log
+
+The logs page shows two panes because a runner has two logs on two different schedules:
+
+| Pane | What it is | When |
+|---|---|---|
+| container | The job as it happens. The runner prints its work to stdout, so `docker logs` *is* the live job output | Now, and gone with the container seconds after the job ends |
+| github | GitHub's own log, with timestamps and step structure | Written when the job **finishes**. Nothing exists before then |
+
+GitHub has no endpoint that streams a running job's log — asking for one answers `404
+BlobNotFound` until the job completes. So the left pane is the live view, and the right pane
+says what it is waiting for and fills itself the moment the job ends.
+
+The right pane is the one that matters afterwards: a just-in-time runner is removed as soon
+as its job finishes, taking its container log with it. GitHub's copy is what remains.
+
+Same thing from the CLI:
+
+```bash
+ghspot runner logs <ref>           # the container: the job as it happens
+ghspot runner logs <ref> --job     # GitHub's, once the job has finished
+```
+
+```bash
+curl -s localhost:8770/runners/<ref>/job-logs | jq
+```
+
+It costs one `Actions: read` call, a permission the daemon already has.
+
+**The dashboard carries no authentication of its own**, because the API it talks to has none. The same
+rule applies: bind to localhost, or put a proxy with auth in front.
+
+The `.deb` installs it to `/usr/share/ghspot/web`, and the daemon serves whatever it finds
+there. From a checkout, build it once:
+
+```bash
+cd web && npm ci && npm run build     # then it is served from web/dist
+npm run dev                           # or a dev server on :5173, proxying to the daemon
+```
+
+`GHSPOT_WEB_ROOT` overrides the location. A package built on a machine without `npm` simply
+has no dashboard; the daemon and the API are unaffected.
+
 ### The REST API
 
 Set `api_bind` under `[daemon]` and the API is served in-process with the loop:
@@ -375,6 +477,7 @@ Set `api_bind` under `[daemon]` and the API is served in-process with the loop:
 curl -s localhost:8770/health | jq
 curl -s localhost:8770/pools | jq
 curl -s -X POST localhost:8770/reconcile | jq   # tick now, don't wait
+curl -s 'localhost:8770/runners?usage=true' | jq   # with CPU and memory
 ```
 
 Interactive docs at `/docs`. **There is no authentication** — bind to localhost, or put a

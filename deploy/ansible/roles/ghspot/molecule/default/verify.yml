@@ -66,8 +66,13 @@
       failed_when: not ghspot_env_file.stat.exists or ghspot_env_file.stat.mode != '0640'
 
     # The point of the whole exercise: the daemon accepts what the role wrote.
+    # COLUMNS is set because the assertion below matches strings the renderer would
+    # otherwise wrap at 80 columns — a name split across two lines is still correct output
+    # and a failing test.
     - name: The daemon accepts the configuration the role rendered
       ansible.builtin.command: ghspot config validate --config /etc/ghspot/config.toml
+      environment:
+        COLUMNS: "200"
       register: ghspot_validate
       changed_when: false
 
@@ -79,6 +84,47 @@
         fail_msg: "config validate did not list both pools:\n{{ ghspot_validate.stdout }}"
         quiet: true
 
+    # Asserted against the file the role wrote, not against what the daemon prints: this
+    # installs the latest *release*, so anything the CLI learned to say since then is not
+    # here yet. What the role rendered is the thing under test either way.
+    - name: The API bind address the role was given reached the configuration
+      ansible.builtin.slurp:
+        src: /etc/ghspot/config.toml
+      register: ghspot_rendered
+
+    - name: It is there, and under [daemon] where the parser looks
+      ansible.builtin.assert:
+        that: >-
+          'api_bind = "127.0.0.1:8770"' in (ghspot_rendered.content | b64decode)
+        fail_msg: >-
+          the rendered configuration has no api_bind, so neither the API nor the dashboard
+          would be served
+        quiet: true
+
+    # The dashboard is optional in the package — a release built without npm has none — so
+    # this asserts the shape rather than the presence. A directory with no index.html is the
+    # bad case: the daemon would mount it and 404 every page.
+    - name: Look for the dashboard the package may carry
+      ansible.builtin.stat:
+        path: /usr/share/ghspot/web
+      register: ghspot_web_dir
+
+    - name: If it is there, it is a dashboard and not an empty directory
+      when: ghspot_web_dir.stat.exists
+      block:
+        - name: The page the daemon looks for exists
+          ansible.builtin.stat:
+            path: /usr/share/ghspot/web/index.html
+          register: ghspot_web_index
+          failed_when: not ghspot_web_index.stat.exists
+
+        - name: Its assets came with it
+          ansible.builtin.find:
+            paths: /usr/share/ghspot/web/assets
+            patterns: "*.js"
+          register: ghspot_web_assets
+          failed_when: ghspot_web_assets.matched == 0
+
     - name: The service was left stopped, as asked
       ansible.builtin.assert:
         that: ghspot_service.status.ActiveState != 'active'
@@ -87,4 +133,7 @@
 
     - name: Report
       ansible.builtin.debug:
-        msg: "{{ ghspot_installed_version.stdout }} installed; configuration accepted; service left stopped"
+        msg: >-
+          {{ ghspot_installed_version.stdout }} installed; configuration accepted;
+          service left stopped;
+          dashboard {{ ghspot_web_dir.stat.exists | ternary('present', 'not in this build') }}

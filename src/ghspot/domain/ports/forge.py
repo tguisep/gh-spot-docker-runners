@@ -76,6 +76,18 @@ class ForgeClient(Protocol):
         unchanged queue costs no rate limit."""
         ...
 
+    async def job_logs(
+        self, repository: RepositoryTarget, job_id: int, tail: int = 500
+    ) -> str | None:
+        """The forge's own log for one job, or ``None`` while it does not have one.
+
+        Distinct from the runner's container output, and available on a different schedule:
+        GitHub writes this blob when the job **finishes**, so a job in progress has none.
+        What it buys is the half the container cannot give — the log outlives the container,
+        which a just-in-time runner takes with it seconds after the job ends.
+        """
+        ...
+
     async def rate_limit_reset_at(self) -> datetime | None:
         """When the current rate-limit window resets, if the forge reports one."""
         ...

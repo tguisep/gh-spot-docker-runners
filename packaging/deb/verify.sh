@@ -45,6 +45,19 @@ docker run --rm \
         [ -d /etc/ghspot/pools.d ] || fail "the pool directory was not created"
         echo "    ok: /etc/ghspot/pools.d exists"
 
+        # The dashboard is optional in the package, so its absence is reported rather than
+        # failed. What must not happen is a directory that exists without the one file the
+        # daemon looks for: it would be found, mounted, and 404 on every page.
+        if [ -d /usr/share/ghspot/web ]; then
+            [ -f /usr/share/ghspot/web/index.html ] \
+                || fail "the dashboard is installed without an index.html"
+            ls /usr/share/ghspot/web/assets/*.js >/dev/null 2>&1 \
+                || fail "the dashboard is installed without its assets"
+            echo "    ok: dashboard installed ($(du -sh /usr/share/ghspot/web | cut -f1))"
+        else
+            echo "    note: packaged without the dashboard (no npm at build time)"
+        fi
+
         # The unit points here; if the two ever disagree the service silently fails to start.
         EXEC="$(sed -n "s|^ExecStart=\([^ ]*\).*|\1|p" /lib/systemd/system/ghspot.service)"
         [ -x "${EXEC}" ] || fail "the unit ExecStart (${EXEC}) is not executable"
