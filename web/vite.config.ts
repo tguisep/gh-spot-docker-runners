@@ -1,4 +1,7 @@
-import { defineConfig } from 'vite';
+// From vitest, not vite: the config carries a `test` block, and vite's own defineConfig
+// has no idea what that is. It type-checked until vite 8 tightened the overloads, at which
+// point the error names the key rather than the import — and the import is the fix.
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // The dashboard is served from /ui, not /, and the base has to match or every asset URL in

@@ -8,14 +8,7 @@
  */
 
 export type RunnerState =
-    | 'pending'
-    | 'registered'
-    | 'starting'
-    | 'idle'
-    | 'busy'
-    | 'draining'
-    | 'retired'
-    | 'failed';
+    'pending' | 'registered' | 'starting' | 'idle' | 'busy' | 'draining' | 'retired' | 'failed';
 
 export interface Runner {
     id: string;
