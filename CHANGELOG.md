@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.4.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.3.0...v0.4.0) (2026-08-29)
+
+
+### Features
+
+* add `ghspot stats` ([67e0317](https://github.com/tguisep/gh-spot-docker-runners/commit/67e031701b903b37e914c214374f7e522d9cda29))
+* **api:** serve the same report at GET /stats ([9a9e58e](https://github.com/tguisep/gh-spot-docker-runners/commit/9a9e58e6ef8c35448ed8e530db0e287ede1ff9ee))
+* **cli:** add `ghspot stats` ([b8ab06e](https://github.com/tguisep/gh-spot-docker-runners/commit/b8ab06eaa8fb667f3827662219bf024cbd2d609b))
+* **config:** read pm, and refuse the keys it does not use ([846b2b3](https://github.com/tguisep/gh-spot-docker-runners/commit/846b2b3483ab1b8dd8ae2c474a9477a5de864db6))
+* **core:** fold the event log into usage statistics ([9cea2f0](https://github.com/tguisep/gh-spot-docker-runners/commit/9cea2f0759e5a1065094d509179b121c1db3e012))
+* **domain:** name how a pool keeps its runners, as php-fpm's pm ([98027d3](https://github.com/tguisep/gh-spot-docker-runners/commit/98027d316be548ce391d4879a0d29b7cbe456dbf))
+* **domain:** record the pool, and read the log by time ([783b7f1](https://github.com/tguisep/gh-spot-docker-runners/commit/783b7f109ce3b88dcd78d6febb84961b216510a6))
+* how a pool keeps its runners, as php-fpm's pm ([b3283de](https://github.com/tguisep/gh-spot-docker-runners/commit/b3283de0ce26392be0e7b791a9c9ab4d2fef6e5c))
+* **runner-image:** install uv, uvx and mise ([ec95e80](https://github.com/tguisep/gh-spot-docker-runners/commit/ec95e8080b2ec4d804ac6fe75a1724ea47201c31))
+* **runner-image:** install uv, uvx and mise ([b3be5b7](https://github.com/tguisep/gh-spot-docker-runners/commit/b3be5b7c9748a70179664c9712bcc6e9db6e2b6e))
+
+
+### Refactoring
+
+* **config:** promote the duration parser ([c17b205](https://github.com/tguisep/gh-spot-docker-runners/commit/c17b205394647dbfce2f9f440419669c15d6bab7))
+
+
+### Documentation
+
+* document `ghspot stats` ([a6ce115](https://github.com/tguisep/gh-spot-docker-runners/commit/a6ce11552e67e204626023e1a03d1b5a1b4746e6))
+* document the pm modes ([96a2cbf](https://github.com/tguisep/gh-spot-docker-runners/commit/96a2cbf3a0c0463ca69a2cb2fbb2a3b02c8fa132))
+* drop the sentences that only announce importance ([b6d937f](https://github.com/tguisep/gh-spot-docker-runners/commit/b6d937f5dfe0065e618144dfb24f2648ad34b49a))
+* drop the sentences that only announce importance ([1ea1a2a](https://github.com/tguisep/gh-spot-docker-runners/commit/1ea1a2a056cd60f9d08cde41c6c7d785e742dacd))
+* **readme:** trade rhetorical cadence for plain statements ([59d0a05](https://github.com/tguisep/gh-spot-docker-runners/commit/59d0a05bafc022f6278041702aaa997ed6ed09e3))
+* **readme:** trade rhetorical cadence for plain statements ([6322f77](https://github.com/tguisep/gh-spot-docker-runners/commit/6322f77ca70405131f4dea853ffda6870fb000f3))
+* use the project contact address in the code of conduct ([1215069](https://github.com/tguisep/gh-spot-docker-runners/commit/12150694975e3fab27e84c9936f4077db90f1fc2))
+
+
+### Build and CI
+
+* **deps:** bump the actions group with 5 updates ([af064a8](https://github.com/tguisep/gh-spot-docker-runners/commit/af064a80a665bb85c88c0882e2d2dbef0b1a4358))
+* **deps:** bump the actions group with 5 updates ([46ccaae](https://github.com/tguisep/gh-spot-docker-runners/commit/46ccaae686d5c935fbbc9fc8e7ad6a2d041a4656))
+* let the ansible render check print its report ([b7d4e72](https://github.com/tguisep/gh-spot-docker-runners/commit/b7d4e7245bff195201b3d287ccc94ee8b71ce7af))
+* pin every action to a commit ([c6bd614](https://github.com/tguisep/gh-spot-docker-runners/commit/c6bd614ed13501c1f74ae3d5bca4ba710f4741b6))
+
 ## [0.3.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.2.1...v0.3.0) (2026-08-27)
 
 
