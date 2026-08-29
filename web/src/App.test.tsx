@@ -5,14 +5,21 @@
  * of opening it in a browser reports as healthy. This is the cheap version of opening it.
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 import type { Health, Pool, Stats } from './types';
 
-const HEALTH: Health = { status: 'ok', version: '0.4.0', pools: 1, docker: true };
+const HEALTH: Health = {
+    status: 'ok',
+    version: '0.4.0',
+    pools: 1,
+    docker: true,
+    configured: true,
+    setup_reason: null,
+};
 
 const POOL: Pool = {
     name: 'default',
@@ -72,10 +79,45 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    // Vitest is not running with globals, so testing-library does not register its own
+    // cleanup. Without this the previous test's DOM is still mounted and every query that
+    // should find one element finds two.
+    cleanup();
     vi.unstubAllGlobals();
 });
 
 describe('the dashboard', () => {
+    it('shows the setup screen instead of an empty fleet on a fresh install', async () => {
+        // The alternative is a correct and completely useless picture: zero pools, zero
+        // runners, and no clue that anything is missing.
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async (input: RequestInfo | URL) => {
+                const path = String(input);
+                if (path.startsWith('/health'))
+                    return answer({
+                        ...HEALTH,
+                        configured: false,
+                        setup_reason:
+                            "pool 'default' still points at the packaged OWNER/REPOSITORY",
+                    });
+                return answer([]);
+            }),
+        );
+
+        render(
+            <MemoryRouter initialEntries={['/']}>
+                <App />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/not configured yet/)).toBeTruthy();
+        });
+        expect(screen.getByText(/sudo ghspot setup/)).toBeTruthy();
+        expect(screen.getByText(/OWNER\/REPOSITORY/)).toBeTruthy();
+    });
+
     it('renders the daemon and its pools', async () => {
         render(
             <MemoryRouter initialEntries={['/']}>

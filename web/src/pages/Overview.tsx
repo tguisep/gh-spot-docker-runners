@@ -1,5 +1,6 @@
 import { api } from '../api';
 import { Bar, Panel, Status } from '../components/Chrome';
+import { Setup } from '../components/Setup';
 import { duration } from '../format';
 import { usePoll } from '../usePoll';
 import type { Tick } from '../types';
@@ -23,6 +24,12 @@ export function Overview() {
         } finally {
             setTicking(false);
         }
+    }
+
+    // A fresh install would otherwise show a correct and useless picture: zero pools, zero
+    // runners, and no clue that anything is missing.
+    if (health.data && !health.data.configured) {
+        return <Setup health={health.data} />;
     }
 
     return (

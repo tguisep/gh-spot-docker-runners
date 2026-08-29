@@ -58,6 +58,9 @@ export interface Health {
     version: string;
     pools: number;
     docker: boolean;
+    /** False on a fresh install: the daemon is up and nobody has finished the configuration. */
+    configured: boolean;
+    setup_reason: string | null;
 }
 
 export interface Tick {

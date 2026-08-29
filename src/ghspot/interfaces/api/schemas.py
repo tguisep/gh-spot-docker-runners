@@ -187,6 +187,13 @@ class HealthResponse(BaseModel):
     docker: bool
     """Whether the Docker daemon answered a ping."""
 
+    configured: bool = True
+    """False on a fresh install: the daemon is up and nobody has finished filling in the
+    configuration. Narrower than `doctor`, which asks whether everything works."""
+
+    setup_reason: str | None = None
+    """What is still missing, when `configured` is false."""
+
 
 class LogsResponse(BaseModel):
     runner_id: str
