@@ -390,3 +390,50 @@ is waiting for and filling itself when the job ends.
 - The forge pane polls at ten seconds against the container's two. Until the job ends, every
   one of those requests is a 404 that spends rate limit to learn nothing.
 - Only the tail is returned. A completed job's log runs to megabytes.
+
+## 2026-08-29 — a first run that guides itself
+
+What somebody has after `apt install ghspot` is a package and no idea what to write. Two
+answers to that, one per place they might be standing.
+
+**`ghspot setup`** asks the four things that cannot be guessed — which credential, where it
+is, which repository, what the pool is called — and writes an ordinary configuration file.
+Its whole output is a file an operator could have written by hand, and it says where it put
+it. A token goes to a file created `0600` *before* anything is written to it; an App's private
+key is pointed at, never copied.
+
+**The dashboard** shows a setup screen when the daemon is up and the configuration is not
+finished. Without it a fresh install shows a correct and completely useless picture: zero
+pools, zero runners, and no clue that anything is missing.
+
+### Why the package does not just run the wizard
+
+A Debian install has to work unattended. A maintainer script that stops to ask questions
+breaks `apt install -y` on every machine that images itself, so postinst prints the invitation
+and nothing more.
+
+### Notes for later
+
+- `/health` gained `configured` and `setup_reason`, deliberately *not* folded into `status`.
+  `status` is about whether the daemon can operate; a fresh install is not a broken one, and
+  anything watching that endpoint would have started paging.
+- "Unconfigured" is a narrower question than `doctor` asks. It is: has anyone finished filling
+  the file in — a pool still pointing at the packaged `OWNER/REPOSITORY`, or no credential
+  resolving. Not whether Docker works or the token has the right scopes.
+- Escaping bit twice more. A label list is square brackets, and Rich reads those as style
+  tags, so the one line telling somebody what to paste into their workflow was the line that
+  vanished.
+- The web suite grew a second render test and immediately failed on "found multiple elements":
+  vitest is not running with globals, so testing-library never registered its own cleanup and
+  the previous test's DOM was still mounted. Latent since the first render test.
+
+## 2026-08-29 — a container ceiling by default
+
+`capacity.max_containers` now defaults to the machine's core count rather than to no limit at
+all. An unbounded host starts a container per queued job until it stops responding, and the
+first thing an operator learns about it is that the machine is gone.
+
+Cores is not a measurement of anything — it is a defensible number the box can name for
+itself, and it is wrong in the safe direction. `max_containers = "unlimited"` lifts it on
+purpose, spelled out the way `[housekeeping]` spells `"never"` rather than by writing a zero
+and hoping.

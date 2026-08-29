@@ -146,6 +146,30 @@ the container cannot use the mounted socket.
 
 ## Configure
 
+### The short way
+
+```bash
+sudo ghspot setup
+```
+
+It asks the handful of things that cannot be guessed — token or GitHub App, which repository,
+what the pool is called, whether jobs may use Docker — writes an ordinary configuration file,
+and tells you the three commands that come next. The `.deb` prints the same invitation after
+install.
+
+Nothing it writes is special: the output is a file you could have written by hand, and it
+says where it put it. A token goes into a file of its own, created `0600` *before* anything is
+written to it. A GitHub App's private key is pointed at, never copied.
+
+Run as root it writes `/etc/ghspot/config.toml`; as anyone else, `~/.config/ghspot/config.toml`.
+It refuses to overwrite an existing file without `--force`.
+
+If the daemon is already running with the packaged configuration, its dashboard says the same
+thing at `/ui` — a fresh install shows a setup screen rather than an empty and unexplained
+fleet.
+
+### By hand
+
 ```bash
 cp config.example.toml config.toml
 $EDITOR config.toml
@@ -871,6 +895,12 @@ memory_high_water = 90
 ```
 
 ### Ceilings, on what is committed
+
+**`max_containers` defaults to this machine's core count.** A host with no ceiling at all will
+cheerfully start a container per queued job until it stops responding, and the first thing an
+operator learns is that the machine is gone. Cores is not a measurement of anything — it is a
+defensible number the box can name for itself. Set it explicitly to something else, or
+`max_containers = "unlimited"` to lift it on purpose, the way housekeeping spells `"never"`.
 
 `max_containers`, `max_cpus` and `max_memory` are arithmetic over the runners that exist.
 They need no measurement and cannot be wrong: a pool reserving `cpus = 2.0` counts two

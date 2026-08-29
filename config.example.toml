@@ -94,6 +94,8 @@ state_db = "~/.local/state/ghspot/state.db"
 # Ceilings on what is *committed* — arithmetic over the runners that exist, needing no
 # measurement. max_containers is the one that always applies; the other two only count pools
 # that set cpus and memory.
+# Defaults to this machine's core count — an unbounded host starts a container per queued
+# job until it stops responding. "unlimited" lifts it on purpose.
 # max_containers = 8
 # max_cpus = 12.0
 # max_memory = "24g"
