@@ -89,7 +89,26 @@ labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
 # work that never wanted it.
 # requires_labels = ["gpu-a100"]
 
+# How runners are kept, borrowed from php-fpm's `pm`. Three intentions, named — rather than
+# assembled by hand out of min_idle and idle_timeout, where two of the three ways to write it
+# would be subtly wrong:
+#
+#   dynamic    keep between min_idle and max_idle warm, growing to cover the queue. The
+#              default, and what the daemon has always done.
+#   static     exactly max_runners, always up, never reaped. Fastest first job, paid for
+#              continuously. min_idle, max_idle and idle_timeout do not apply.
+#   ondemand   nothing warm; a runner starts when a job is queued and goes after
+#              idle_timeout. Cheapest, and every job pays container boot time.
+#
+# A key that does not apply to the chosen mode is refused rather than ignored.
+# pm = "dynamic"
+
 min_idle = 1          # runners kept warm so a job doesn't wait for a container to boot
+
+# Warm runners above this are reaped without waiting out idle_timeout. php-fpm's
+# max_spare_servers. Unset, only the timeout bounds them — so a burst leaves the whole pool
+# warm for its full length on a host that has gone back to needing one.
+# max_idle = 3
 max_runners = 4       # hard ceiling for this pool
 idle_timeout = "10m"  # reap runners idle longer than this, never below min_idle
 max_job_duration = "2h"

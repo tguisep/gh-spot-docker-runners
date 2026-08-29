@@ -166,3 +166,36 @@ is reported rather than averaged away.
 - Failure reasons are collapsed to their first line and trimmed to 80 characters. Reasons
   carry ids and messages, and without that every failure looks unique and the tally says
   nothing.
+
+## 2026-08-28 — `pm`, borrowed from php-fpm
+
+"Keep four warm", "keep a band warm" and "start one only when there is work" are three
+different intentions. All three could already be written with `min_idle` and `idle_timeout`,
+and two of the three ways to write each were subtly wrong. So a pool now names its mode:
+
+| `pm` | Applies |
+|---|---|
+| `dynamic` | `min_idle`, `max_idle`, `idle_timeout` — the default, and what the daemon always did |
+| `static` | `max_runners` only. Exactly that many, never reaped |
+| `ondemand` | `idle_timeout` only. Nothing warm |
+
+**A key that does not apply to the mode is refused at load**, the way php-fpm refuses
+`pm.min_spare_servers` under `pm = static`. A setting quietly doing nothing is worse than one
+that will not load: the pool behaves unlike its configuration and nothing says so.
+
+`max_idle` — php-fpm's `max_spare_servers` — is genuinely new, and the gap worth closing.
+Before it, only `idle_timeout` bounded how many warm runners accumulated, so a burst of twelve
+left twelve warm for the full timeout on a host that had gone back to needing one.
+
+### Notes for later
+
+- `ondemand` still waits out `idle_timeout` rather than reaping the instant a job ends. That
+  matches php-fpm's `process_idle_timeout`, and a runner that just finished is the one most
+  likely to be wanted next. The first version reaped immediately; the tests said so.
+- The warm band is derived in the policy, not the parser: `static` means "the floor is
+  `max_runners`", and the loop has to keep agreeing with that as a pool's ceiling changes.
+- Nothing is reaped while work is queued, `max_idle` included. Reaping capacity in the same
+  tick a pool is short of it would oscillate — the rule that already governed `idle_timeout`.
+- The role's template has to know the same "which keys apply" table as the daemon, one layer
+  out. It got that wrong first — it wrote `min_idle` under `ondemand`, which the parser
+  refuses — and the render check caught it before CI did.

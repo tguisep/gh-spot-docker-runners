@@ -39,7 +39,13 @@ labels = ["self-hosted", "linux", "x64"]
 # would land here.
 # requires_labels = ["gpu-a100"]
 
+# How runners are kept, as php-fpm's `pm`: "dynamic" (a warm band, the default), "static"
+# (exactly max_runners, never reaped) or "ondemand" (nothing warm). A key that does not apply
+# to the mode is refused rather than ignored.
+# pm = "dynamic"
+
 min_idle = 0          # runners kept warm; 1 removes container boot from the first job
+# max_idle = 3        # warm runners above this are reaped without waiting out idle_timeout
 max_runners = 2       # hard ceiling for this pool
 idle_timeout = "10m"
 max_job_duration = "2h"

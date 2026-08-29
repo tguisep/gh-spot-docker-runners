@@ -67,6 +67,10 @@ ghspot_housekeeping:
 #       cpus: 2.0
 #       memory: 4g
 #       docker_socket: true
+#
+# `pm` on a pool picks how its runners are kept, as php-fpm's: "dynamic" (a warm band between
+# min_idle and max_idle, the default), "static" (exactly max_runners, never reaped) or
+# "ondemand" (nothing warm). A key that does not apply to the mode is refused at load.
 ghspot_pools: []
 
 # Whether to start the service. Set false to configure a host without running it yet.

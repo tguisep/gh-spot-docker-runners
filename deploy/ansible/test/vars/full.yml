@@ -30,10 +30,13 @@ ghspot_pools:
       network: ghspot-net
       volumes:
         /srv/cache: /home/runner/.cache
+    pm: dynamic
+    max_idle: 4
   - name: gpu
     repository: tguisep/my-project
     labels: [self-hosted, linux, x64, gpu-a100]
     requires_labels: [gpu-a100]
+    pm: ondemand
     max_runners: 1
     container:
       image: ghspot/runner:ubuntu-24.04
