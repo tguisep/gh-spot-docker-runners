@@ -86,7 +86,7 @@ uv tool install .          # then `uv tool update-shell` if ghspot isn't found
 # Build the runner image with the host's docker group, so jobs can use the socket.
 images/runner/build.sh ubuntu-24.04
 
-cp config.example.toml config.toml && $EDITOR config.toml
+ghspot setup       # or edit it yourself: cp config.example.toml config.toml
 
 export GHSPOT_GITHUB_TOKEN=github_pat_...          # or, for a GitHub App:
 # export GHSPOT_GITHUB_APP_ID=123456
@@ -152,6 +152,7 @@ Full detail, including what `requires_labels` cannot prevent:
 ## Commands
 
 ```
+ghspot setup                   write a first configuration by answering a few questions
 ghspot doctor                  check everything the daemon needs
 ghspot daemon                  run the reconciliation loop
 ghspot pool list               pools and what they hold

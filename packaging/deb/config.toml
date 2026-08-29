@@ -38,7 +38,7 @@ state_db = "/var/lib/ghspot/state.db"
 # bounds the machine. Unset means unlimited.
 #
 # [capacity]
-# max_containers = 8          # runners across every pool
+# max_containers = 8          # runners across every pool; defaults to the core count
 # max_cpus = 12.0             # summed `cpus` of the runners that are up
 # max_memory = "24g"
 # cpu_high_water = 85         # one-minute load average as a percentage of cores

@@ -418,3 +418,24 @@ async def test_a_runner_with_no_job_is_answered_plainly(
 
     assert body["job_id"] is None
     assert body["available"] is False
+
+
+# ---------------------------------------------------------------- first run
+
+
+def test_health_says_when_nobody_has_finished_configuring(client: TestClient) -> None:
+    """A fresh install is a daemon that is up, answering, and pointing at nothing useful.
+    The dashboard needs to be able to tell that from a working one."""
+    body = client.get("/health").json()
+
+    assert body["configured"] is False
+    assert body["setup_reason"]
+
+
+def test_being_unconfigured_is_not_the_same_as_being_unhealthy(client: TestClient) -> None:
+    """`status` is about whether the daemon can operate. Folding the two together would make
+    every fresh install look like a broken one to anything watching this endpoint."""
+    body = client.get("/health").json()
+
+    assert body["status"] == "ok"
+    assert body["configured"] is False

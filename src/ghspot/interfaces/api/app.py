@@ -27,6 +27,7 @@ from ghspot.application.queries.views import GetPoolStatus, ListRunners, to_view
 from ghspot.composition import Application
 from ghspot.domain.errors import GhSpotError, RunnerBusyError, RunnerNotFoundError
 from ghspot.domain.model.runner import RunnerState
+from ghspot.infrastructure.config.settings import unconfigured
 from ghspot.interfaces.api import dashboard
 from ghspot.interfaces.api.schemas import (
     ErrorResponse,
@@ -90,11 +91,17 @@ def create_app(application: Application) -> FastAPI:
         except GhSpotError:
             docker_ok = False
 
+        # `status` stays about whether the daemon can *operate*. Being half-configured is a
+        # different question with a different answer — and folding it in here would make a
+        # fresh install look like a broken one to anything watching this endpoint.
+        pending = unconfigured(app.settings)
         return HealthResponse(
             status="ok" if docker_ok else "degraded",
             version=__version__,
             pools=len(app.settings.pools),
             docker=docker_ok,
+            configured=pending is None,
+            setup_reason=pending,
         )
 
     @api.get("/pools", response_model=list[PoolResponse], tags=["pools"])

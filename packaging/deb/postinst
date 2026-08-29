@@ -56,6 +56,13 @@ ENVFILE
 
 ghspot is installed but not started — it needs a repository and a credential first.
 
+  The short way — it asks the handful of things that cannot be guessed and
+  writes the configuration for you:
+
+       sudo ghspot setup
+
+  Or by hand:
+
   1. Edit /etc/ghspot/config.toml            (repository, labels, image)
   2. Add a credential to /etc/ghspot/env     (chmod 600; see below)
   3. Build a runner image, from a clone of the repository:

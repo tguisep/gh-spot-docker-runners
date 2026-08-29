@@ -8,6 +8,7 @@ in the application layer where they can be tested without a terminal.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import Callable, Coroutine
 from pathlib import Path
@@ -33,7 +34,7 @@ from ghspot.infrastructure.logging.setup import configure as configure_logging
 from ghspot.infrastructure.system import SystemClock
 from ghspot.interfaces.api import dashboard
 from ghspot.interfaces.cli import doctor as doctor_module
-from ghspot.interfaces.cli import operations
+from ghspot.interfaces.cli import operations, setup
 from ghspot.interfaces.cli.render import (
     console,
     fail,
@@ -150,6 +151,35 @@ def daemon(
         raise typer.Exit(code=1) from error
 
     _run(run_forever(application, max_ticks=limit))
+
+
+@app.command("setup")
+def setup_command(
+    config: ConfigOption = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="Replace an existing configuration.")
+    ] = False,
+) -> None:
+    """Write a first configuration by answering a few questions.
+
+    What somebody has after installing the package is a package and no idea what to write.
+    This asks the things that cannot be guessed — which credential, which repository, what
+    the pool is called — and leaves an ordinary configuration file behind.
+    """
+    destination = Path(config) if config is not None else _setup_destination()
+    raise typer.Exit(code=setup.run(destination, force=force))
+
+
+def _setup_destination() -> Path:
+    """Where a first configuration should go, given who is running the wizard.
+
+    Root gets the system location the package and the unit already agree on. Anyone else
+    gets their own, because writing under /etc as a normal user fails at the last step,
+    after every question has been answered.
+    """
+    if os.geteuid() == 0 and Path("/etc/ghspot").is_dir():
+        return Path("/etc/ghspot/config.toml")
+    return Path("~/.config/ghspot/config.toml").expanduser()
 
 
 @app.command()

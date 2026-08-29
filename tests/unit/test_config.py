@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from ghspot.infrastructure.config import settings as settings_module
 from ghspot.infrastructure.config.settings import (
     APP_ID_ENV,
     APP_KEY_ENV,
@@ -654,11 +655,12 @@ def test_an_include_written_below_a_table_header_is_refused(tmp_path: Path) -> N
 # ---------------------------------------------------------------- capacity
 
 
-def test_a_host_with_no_capacity_section_is_unlimited() -> None:
-    """Configuration written before this section existed must behave as it always did."""
+def test_a_host_with_no_capacity_section_gets_only_the_core_ceiling() -> None:
+    """The resource ceilings and backpressure stay off until asked for; the container count
+    does not, because an unbounded one is how a host disappears."""
     capacity = parse(MINIMAL).capacity  # type: ignore[attr-defined]
 
-    assert capacity.max_containers is None
+    assert capacity.max_containers == settings_module.host_cores()
     assert capacity.max_cpus is None
     assert capacity.max_memory_bytes is None
     assert capacity.has_backpressure is False
@@ -724,3 +726,40 @@ def test_a_priority_below_one_is_refused(written: str) -> None:
                 'labels = ["self-hosted", "linux"]', f'labels = ["self-hosted", "linux"]\n{written}'
             )
         )
+
+
+# ---------------------------------------------------------------- the core default
+
+
+def test_the_container_ceiling_defaults_to_the_core_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A host with no ceiling starts a container per queued job until it stops responding,
+    and the first thing an operator learns is that the machine is gone."""
+    monkeypatch.setattr(settings_module, "host_cores", lambda: 8)
+
+    assert parse(MINIMAL).capacity.max_containers == 8  # type: ignore[attr-defined]
+
+
+def test_an_explicit_ceiling_wins_over_the_core_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings_module, "host_cores", lambda: 8)
+
+    settings = parse(MINIMAL + "\n[capacity]\nmax_containers = 3\n")
+
+    assert settings.capacity.max_containers == 3  # type: ignore[attr-defined]
+
+
+def test_the_ceiling_can_be_lifted_on_purpose(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Spelled out, the way housekeeping spells "never" — not by writing a zero and hoping."""
+    monkeypatch.setattr(settings_module, "host_cores", lambda: 8)
+
+    settings = parse(MINIMAL + '\n[capacity]\nmax_containers = "unlimited"\n')
+
+    assert settings.capacity.max_containers is None  # type: ignore[attr-defined]
+
+
+def test_a_machine_that_will_not_say_how_many_cores_it_has_still_gets_one() -> None:
+    """os.cpu_count() can return None, and a ceiling of zero would start nothing at all."""
+    assert settings_module.host_cores() >= 1

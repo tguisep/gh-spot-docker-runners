@@ -389,3 +389,32 @@ a.button:hover {
 .split .logs {
     max-height: 55vh;
 }
+
+/* The first-run screen. Wider line length than a table, because it is prose to be read
+   once rather than numbers to be scanned. */
+.setup {
+    max-width: 72ch;
+}
+
+.steps {
+    margin: 0;
+    padding: 4px 14px 14px 34px;
+}
+
+.steps li {
+    margin-bottom: 18px;
+}
+
+.steps pre {
+    margin: 8px 0 6px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    overflow-x: auto;
+    font-size: 13px;
+}
+
+.steps .dim {
+    font-size: 13px;
+}
