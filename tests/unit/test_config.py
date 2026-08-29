@@ -491,3 +491,161 @@ def test_a_band_that_is_upside_down_is_refused() -> None:
     every tick, forever."""
     with pytest.raises(ConfigError, match="below min_idle"):
         parse(with_pool("min_idle = 4", "max_idle = 2"))
+
+
+# ---------------------------------------------------------------- include
+
+
+# `include` sits above the first table on purpose: in TOML a bare key belongs to whichever
+# table precedes it, so written lower down it would become `github.include`.
+MAIN = """
+include = "pools.d/*.toml"
+
+[github]
+token_file = "/tmp/token"
+"""
+
+POOL_FILE = """
+[[pool]]
+name = "{name}"
+repository = "tguisep/gh-spot-docker-runners"
+labels = ["self-hosted", "linux"]
+
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+"""
+
+
+def write_tree(root: Path, main: str = MAIN, **files: str) -> Path:
+    """A main configuration file with a pools.d beside it."""
+    config = root / "config.toml"
+    config.write_text(main)
+    pools = root / "pools.d"
+    pools.mkdir(exist_ok=True)
+    for name, text in files.items():
+        (pools / f"{name}.toml").write_text(text)
+    return config
+
+
+def test_pools_are_gathered_from_the_included_directory(tmp_path: Path) -> None:
+    config = write_tree(
+        tmp_path, web=POOL_FILE.format(name="web"), gpu=POOL_FILE.format(name="gpu")
+    )
+
+    settings = load(config)
+
+    assert {pool.spec.name for pool in settings.pools} == {"web", "gpu"}
+
+
+def test_files_are_merged_rather_than_overriding_one_another(tmp_path: Path) -> None:
+    """Every pool found is a pool that runs. A definition silently replaced by a file later
+    in the alphabet is not something anyone would debug quickly."""
+    main = MAIN + POOL_FILE.format(name="in-the-main-file")
+    config = write_tree(tmp_path, main=main, extra=POOL_FILE.format(name="from-pools-d"))
+
+    settings = load(config)
+
+    assert {pool.spec.name for pool in settings.pools} == {"in-the-main-file", "from-pools-d"}
+
+
+def test_a_duplicate_name_is_fatal_and_names_both_files(tmp_path: Path) -> None:
+    config = write_tree(tmp_path, a=POOL_FILE.format(name="web"), b=POOL_FILE.format(name="web"))
+
+    with pytest.raises(ConfigError, match="two pools are both named 'web'") as raised:
+        load(config)
+
+    assert "a.toml" in str(raised.value) and "b.toml" in str(raised.value)
+
+
+def test_a_pool_defined_twice_across_the_main_file_and_a_pool_file_is_fatal(
+    tmp_path: Path,
+) -> None:
+    main = MAIN + POOL_FILE.format(name="web")
+    config = write_tree(tmp_path, main=main, web=POOL_FILE.format(name="web"))
+
+    with pytest.raises(ConfigError, match="two pools are both named 'web'"):
+        load(config)
+
+
+def test_files_are_read_in_sorted_order(tmp_path: Path) -> None:
+    """So the fleet a host ends up with does not depend on what order a directory returns."""
+    config = write_tree(
+        tmp_path,
+        zulu=POOL_FILE.format(name="zulu"),
+        alpha=POOL_FILE.format(name="alpha"),
+        mike=POOL_FILE.format(name="mike"),
+    )
+
+    names = [pool.spec.name for pool in load(config).pools]
+
+    assert names == ["alpha", "mike", "zulu"]
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        '[github]\ntoken_file = "/tmp/t"',
+        '[daemon]\npoll_interval = "30s"',
+        'include = "other/*.toml"',
+    ],
+)
+def test_global_configuration_is_refused_in_a_pool_file(tmp_path: Path, section: str) -> None:
+    """php-fpm keeps [global] out of php-fpm.d for the same reason: otherwise which file wins
+    becomes a question, and the answer is not obvious from either of them."""
+    config = write_tree(tmp_path, web=section + "\n" + POOL_FILE.format(name="web"))
+
+    with pytest.raises(ConfigError, match="belongs in the main configuration file"):
+        load(config)
+
+
+def test_an_included_file_with_no_pool_is_refused(tmp_path: Path) -> None:
+    """It is almost always a typo in a file whose whole purpose is to define one."""
+    config = write_tree(tmp_path, empty="# nothing here yet\n")
+
+    with pytest.raises(ConfigError, match="at least one"):
+        load(config)
+
+
+def test_a_pattern_matching_nothing_is_not_an_error_by_itself(tmp_path: Path) -> None:
+    """An empty pools.d on a host still being set up is a normal state."""
+    main = MAIN + POOL_FILE.format(name="only-one")
+    config = write_tree(tmp_path, main=main)
+
+    assert [pool.spec.name for pool in load(config).pools] == ["only-one"]
+
+
+def test_no_pools_anywhere_still_says_so(tmp_path: Path) -> None:
+    config = write_tree(tmp_path)
+
+    with pytest.raises(ConfigError, match="at least one"):
+        load(config)
+
+
+def test_a_relative_pattern_resolves_beside_the_main_file(tmp_path: Path) -> None:
+    """Not against the working directory: a daemon started by systemd has no useful one."""
+    nested = tmp_path / "etc"
+    nested.mkdir()
+    config = write_tree(nested, web=POOL_FILE.format(name="web"))
+
+    assert [pool.spec.name for pool in load(config).pools] == ["web"]
+
+
+def test_several_patterns_are_allowed(tmp_path: Path) -> None:
+    (tmp_path / "extra").mkdir()
+    (tmp_path / "extra" / "gpu.toml").write_text(POOL_FILE.format(name="gpu"))
+    main = MAIN.replace(
+        'include = "pools.d/*.toml"', 'include = ["pools.d/*.toml", "extra/*.toml"]'
+    )
+    config = write_tree(tmp_path, main=main, web=POOL_FILE.format(name="web"))
+
+    assert {pool.spec.name for pool in load(config).pools} == {"web", "gpu"}
+
+
+def test_an_include_written_below_a_table_header_is_refused(tmp_path: Path) -> None:
+    """TOML would make it `github.include`, and the daemon would start with none of the pools
+    the operator wrote. A directive that silently does nothing is the worst outcome here."""
+    main = '[github]\ntoken_file = "/tmp/token"\ninclude = "pools.d/*.toml"\n'
+    config = write_tree(tmp_path, main=main, web=POOL_FILE.format(name="web"))
+
+    with pytest.raises(ConfigError, match="Move it above the first"):
+        load(config)

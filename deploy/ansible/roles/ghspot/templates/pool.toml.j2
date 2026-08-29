@@ -1,41 +1,10 @@
 # Managed by Ansible — edits here are overwritten on the next run.
-# Change the role's variables instead.
-{% if ghspot_pools_in_directory | default(false) | bool %}
-
-{# Above the first [section]: TOML gives a bare key to whichever table precedes it. #}
-include = "{{ ghspot_pools_directory }}/*.toml"
-{% endif %}
-
-[github]
-api_url = "{{ ghspot_api_url }}"
-{% if ghspot_github_app_id | length > 0 %}
-app_id = "{{ ghspot_github_app_id }}"
-{% endif %}
-
-[daemon]
-poll_interval = "{{ ghspot_poll_interval }}"
-state_db = "{{ ghspot_state_db }}"
-log_level = "{{ ghspot_log_level }}"
-log_format = "json"
-{% if ghspot_api_bind | length > 0 %}
-api_bind = "{{ ghspot_api_bind }}"
-{% endif %}
-
-[housekeeping]
-enabled = {{ ghspot_housekeeping.enabled | bool | lower }}
-every = "{{ ghspot_housekeeping.every }}"
-volumes = {{ ghspot_housekeeping.volumes | bool | lower }}
-{# Each sweep can be turned off individually with "never"; the daemon reads that as "do not". #}
-{% for key in ['containers_older_than', 'images_older_than', 'build_cache_older_than'] %}
-{% set age = ghspot_housekeeping[key] | default('never') %}
-{{ key }} = "{{ 'never' if age in [none, false, '', 'never'] else age }}"
-{% endfor %}
-{% if ghspot_housekeeping.keep_build_cache is defined and ghspot_housekeeping.keep_build_cache %}
-keep_build_cache = "{{ ghspot_housekeeping.keep_build_cache }}"
-{% endif %}
-{% if not (ghspot_pools_in_directory | default(false) | bool) %}
-{% for pool in ghspot_pools %}
-
+# One pool, the way php-fpm keeps one per file in php-fpm.d.
+#
+# The same block as config.toml.j2's inline form. The render check loads both and
+# compares them key by key, because two templates for one schema is two chances to
+# drift — and the drift is silent: a pool file missing `pm` still loads, and the pool
+# quietly runs in a mode nobody chose.
 [[pool]]
 name = "{{ pool.name }}"
 repository = "{{ pool.repository }}"
@@ -88,7 +57,5 @@ network = "{{ pool.container.network }}"
 [pool.container.volumes]
 {% for host_path, container_path in pool.container.volumes.items() %}
 "{{ host_path }}" = "{{ container_path }}"
-{% endfor %}
-{% endif %}
 {% endfor %}
 {% endif %}

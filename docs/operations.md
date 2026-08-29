@@ -163,6 +163,48 @@ never starting a runner. It verifies the config parses, Docker answers, the runn
 exists, the socket is present, the token resolves, and each repository is reachable with the
 permissions the daemon needs. Failures print the command that fixes them.
 
+### Pools in their own files
+
+One growing `config.toml` stops being reviewable somewhere around the fourth pool. Pools can
+live one per file instead, the way php-fpm keeps them in `php-fpm.d`:
+
+```toml
+# /etc/ghspot/config.toml — above the first [section], see below
+include = "/etc/ghspot/pools.d/*.toml"
+```
+
+```toml
+# /etc/ghspot/pools.d/web.toml
+[[pool]]
+name = "web"
+repository = "you/your-project"
+labels = ["self-hosted", "linux", "x64"]
+
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+```
+
+The `.deb` creates `/etc/ghspot/pools.d` and ships the `include` commented out in the
+conffile. The Ansible role writes a file per pool when `ghspot_pools_in_directory: true`, and
+removes the file of a pool you delete from the inventory — nothing else would, since the
+include is a glob.
+
+**How files are merged**, which is where the surprises would otherwise be:
+
+| | |
+|---|---|
+| Order | The glob is expanded and **sorted**, so the fleet a host ends up with does not depend on the order a directory happens to return |
+| Merging | Files are **merged, never overridden**. Every pool found is a pool that runs — there is no last-one-wins, because a pool silently replaced by a file later in the alphabet is not something you would debug quickly |
+| Duplicates | **Fatal**, naming both files. The same as `php-fpm` refusing to start rather than picking one |
+| Scope | An included file defines **pools and nothing else**. `[github]`, `[daemon]` and the rest stay in the main file, and putting one in a pool file is an error rather than a question about which wins |
+| Nothing matched | Not an error by itself — an empty `pools.d` on a host still being set up is normal. "At least one pool" still applies overall |
+
+Pools defined in `config.toml` and pools in `pools.d` coexist; they are one set.
+
+> **`include` has to sit above the first `[section]`.** In TOML a bare key belongs to
+> whichever table precedes it, so written lower down it becomes `github.include` and does
+> nothing. `ghspot config validate` refuses that rather than starting with no pools.
+
 ## Run
 
 Interactively, to watch it work:

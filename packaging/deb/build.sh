@@ -70,6 +70,11 @@ install -m 0644 "${ROOT}/deploy/ghspot.service" "${STAGE}/lib/systemd/system/ghs
 install -d "${STAGE}/etc/ghspot"
 install -m 0640 "${HERE}/config.toml" "${STAGE}/etc/ghspot/config.toml"
 
+# Empty on purpose: the directory exists so an operator can drop a pool file in without
+# first working out where it goes. dpkg keeps a directory it owns, and `include` in the
+# conffile points here, commented out until there is something to include.
+install -d "${STAGE}/etc/ghspot/pools.d"
+
 install -d "${STAGE}/usr/share/doc/ghspot"
 install -m 0644 "${ROOT}/config.example.toml" "${STAGE}/usr/share/doc/ghspot/config.example.toml"
 install -m 0644 "${ROOT}/LICENSE" "${STAGE}/usr/share/doc/ghspot/copyright"

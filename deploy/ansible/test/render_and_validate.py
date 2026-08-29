@@ -173,12 +173,82 @@ def test_the_credential_file_takes_both_forms() -> None:
         check("GHSPOT_GITHUB_TOKEN" not in body, "env: token written alongside an App")
 
 
+def test_pools_can_be_rendered_one_file_each() -> None:
+    """Directory mode: the main file carries only `include`, and each pool is its own file.
+
+    Rendered the way the role renders them, then loaded together — which is the only way to
+    find out that the two templates still agree on the schema.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        pools_d = root / "pools.d"
+        pools_d.mkdir()
+
+        variables = root / "vars.yml"
+        variables.write_text(
+            (VARS / "full.yml").read_text()
+            + f"\nghspot_pools_in_directory: true\nghspot_pools_directory: {pools_d}\n"
+        )
+
+        main = root / "config.toml"
+        render("config.toml.j2", variables, main)
+        body = main.read_text()
+        check("include = " in body, "directory: the main file has no include")
+        check("[[pool]]" not in body, "directory: pools were written inline as well")
+
+        # The role loops the template over each pool; here that loop is the test's.
+        for name in ("ubuntu", "gpu", "rhel"):
+            one = root / f"{name}.yml"
+            one.write_text(
+                (VARS / "full.yml").read_text()
+                + f"\npool: \"{{{{ ghspot_pools | selectattr('name', 'equalto', '{name}') "
+                '| first }}"\n'
+            )
+            render("pool.toml.j2", one, pools_d / f"{name}.toml")
+
+        settings = load(main)
+        found = {pool.spec.name for pool in settings.pools}
+        check(found == {"ubuntu", "gpu", "rhel"}, f"directory: pools are {sorted(found)}")
+
+        # Compared against the inline form key by key, because two templates for one schema
+        # is two chances to drift — and the drift is silent: a pool file missing `pm` still
+        # loads, and the pool quietly runs in a mode nobody chose.
+        inline = {pool.spec.name: pool for pool in settings_for(VARS / "full.yml").pools}
+        from_files = {pool.spec.name: pool for pool in settings.pools}
+
+        for name, expected in inline.items():
+            got = from_files[name]
+            for attribute in (
+                "pm",
+                "min_idle",
+                "max_idle",
+                "max_runners",
+                "idle_timeout",
+                "max_job_duration",
+                "max_launch_per_tick",
+                "priority",
+                "requires_labels",
+            ):
+                if not hasattr(expected.spec, attribute):
+                    continue
+                check(
+                    getattr(got.spec, attribute) == getattr(expected.spec, attribute),
+                    f"directory: {name}.{attribute} is {getattr(got.spec, attribute)!r}, "
+                    f"but the inline form gives {getattr(expected.spec, attribute)!r}",
+                )
+            check(
+                got.template == expected.template,
+                f"directory: {name}'s container differs from the inline form",
+            )
+
+
 def main() -> int:
     for test in (
         test_minimal,
         test_everything_round_trips,
         test_housekeeping_can_be_turned_off,
         test_the_credential_file_takes_both_forms,
+        test_pools_can_be_rendered_one_file_each,
     ):
         test()
         print(f"  {'FAIL' if failures else 'ok  '}  {test.__name__}")

@@ -15,6 +15,15 @@
 #
 # A fully commented reference lives at /usr/share/doc/ghspot/config.example.toml
 
+# Pools may live one per file in /etc/ghspot/pools.d, the way php-fpm keeps them in
+# php-fpm.d. The directory ships empty; drop a file in and uncomment this.
+#
+# Files are merged, not overridden: every pool found runs, and two of one name is a fatal
+# error naming both files. An included file defines pools and nothing else.
+#
+# Must stay above the first [section] — in TOML a bare key belongs to the table above it.
+# include = "/etc/ghspot/pools.d/*.toml"
+
 [github]
 # api_url = "https://api.github.com"     # change for GitHub Enterprise Server
 

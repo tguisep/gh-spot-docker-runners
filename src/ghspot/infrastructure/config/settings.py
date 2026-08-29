@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import re
 import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -175,33 +176,40 @@ class Settings:
         return list(seen)
 
 
+#: Top-level keys a pool file may not carry. Global configuration belongs in the main file,
+#: the way php-fpm keeps [global] out of php-fpm.d — otherwise which file wins becomes a
+#: question, and the answer is never obvious from either of them.
+GLOBAL_SECTIONS = ("github", "daemon", "housekeeping", "include")
+
+
 def load(path: Path | str | None = None) -> Settings:
     """Load and validate configuration, searching the usual places if no path is given."""
     resolved = _locate(path)
-    try:
-        raw = tomllib.loads(resolved.read_text(encoding="utf-8"))
-    except OSError as error:
-        raise ConfigError(f"could not read {resolved}: {error}") from error
-    except tomllib.TOMLDecodeError as error:
-        raise ConfigError(f"{resolved} is not valid TOML: {error}") from error
-
-    return from_mapping(raw, source=resolved)
+    raw = _read(resolved)
+    return from_mapping(raw, source=resolved, included=_include(raw, resolved))
 
 
-def from_mapping(raw: dict[str, Any], source: Path | None = None) -> Settings:
+def from_mapping(
+    raw: dict[str, Any],
+    source: Path | None = None,
+    included: Sequence[tuple[dict[str, Any], Path]] = (),
+) -> Settings:
     """Build settings from an already-parsed mapping. Used by tests and by ``load``."""
     github = _github(_section(raw, "github"))
     daemon = _daemon(_section(raw, "daemon"))
     housekeeping = _housekeeping(_section(raw, "housekeeping"))
 
-    pool_tables = raw.get("pool", [])
-    if isinstance(pool_tables, dict):  # a single [pool] table rather than [[pool]]
-        pool_tables = [pool_tables]
-    if not isinstance(pool_tables, list) or not pool_tables:
+    here = source or Path("configuration")
+    defined: list[tuple[dict[str, Any], Path]] = [
+        (table, here) for table in _pool_tables(raw, here)
+    ]
+    defined += list(included)
+
+    if not defined:
         raise ConfigError("at least one [[pool]] must be configured")
 
-    pools = tuple(_pool(table, index) for index, table in enumerate(pool_tables))
-    _reject_duplicate_names(pools)
+    pools = tuple(_pool(table, index) for index, (table, _origin) in enumerate(defined))
+    _reject_duplicate_names(pools, [origin for _table, origin in defined])
 
     return Settings(
         github=github,
@@ -210,6 +218,107 @@ def from_mapping(raw: dict[str, Any], source: Path | None = None) -> Settings:
         pools=pools,
         source=source,
     )
+
+
+def _pool_tables(raw: dict[str, Any], origin: Path) -> list[dict[str, Any]]:
+    tables = raw.get("pool", [])
+    if isinstance(tables, dict):  # a single [pool] table rather than [[pool]]
+        tables = [tables]
+    if not isinstance(tables, list):
+        raise ConfigError(f"{origin}: 'pool' must be a list of [[pool]] tables")
+    return tables
+
+
+def _read(path: Path) -> dict[str, Any]:
+    try:
+        parsed: dict[str, Any] = tomllib.loads(path.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise ConfigError(f"could not read {path}: {error}") from error
+    except tomllib.TOMLDecodeError as error:
+        raise ConfigError(f"{path} is not valid TOML: {error}") from error
+    return parsed
+
+
+def _include(raw: dict[str, Any], source: Path) -> list[tuple[dict[str, Any], Path]]:
+    """Expand ``include``, the way php-fpm expands its own.
+
+        include = "pools.d/*.toml"
+
+    Four rules, all of them php-fpm's:
+
+    * The glob is expanded and the matches are **sorted**, so the fleet a host ends up with
+      does not depend on the order a directory happens to return.
+    * Files are **merged, never overridden**. Every pool found is a pool that runs; there is
+      no last-one-wins, because a pool silently replaced by a file later in the alphabet is
+      not a thing anyone would debug quickly.
+    * A **duplicate name is fatal**, naming both files.
+    * A pool file carries **pools only**. Global sections belong in the main file.
+
+    A pattern that matches nothing is not an error by itself — an empty ``pools.d`` on a host
+    still being set up is a normal state, and the "at least one pool" check already covers
+    the case where that leaves nothing at all.
+    """
+    patterns = raw.get("include")
+    if patterns in (None, "", []):
+        _reject_misplaced_include(raw, source)
+        return []
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    if not isinstance(patterns, list) or not all(isinstance(one, str) for one in patterns):
+        raise ConfigError("'include' must be a glob, or a list of globs")
+
+    found: list[tuple[dict[str, Any], Path]] = []
+    for pattern in patterns:
+        for path in _matches(str(pattern), source):
+            parsed = _read(path)
+            for key in GLOBAL_SECTIONS:
+                if key in parsed:
+                    raise ConfigError(
+                        f"{path}: [{key}] belongs in the main configuration file, not in an "
+                        "included one. Included files define pools."
+                    )
+            tables = _pool_tables(parsed, path)
+            if not tables:
+                raise ConfigError(f"{path}: an included file must define at least one [[pool]]")
+            found += [(table, path) for table in tables]
+    return found
+
+
+def _reject_misplaced_include(raw: dict[str, Any], source: Path) -> None:
+    """Catch ``include`` written below a table header, where TOML swallows it.
+
+    A bare key belongs to whatever table precedes it, so this:
+
+        [github]
+        token_file = "..."
+        include = "pools.d/*.toml"
+
+    is `github.include`, not an include — and without this it would load, run, and quietly
+    serve none of the pools the operator wrote. A misplaced directive that does nothing is
+    the worst outcome available, so it is an error that says where to move it.
+    """
+    for name, section in raw.items():
+        if isinstance(section, dict) and "include" in section:
+            raise ConfigError(
+                f"{source}: 'include' is inside [{name}], where TOML puts any key written "
+                f"below a table header. Move it above the first [section] in the file."
+            )
+
+
+def _matches(pattern: str, source: Path) -> list[Path]:
+    """Files a pattern names, sorted. Relative patterns resolve beside the main file."""
+    candidate = Path(pattern).expanduser()
+    if candidate.is_absolute():
+        root, glob = Path(candidate.anchor), str(candidate.relative_to(candidate.anchor))
+    else:
+        root, glob = source.resolve().parent, str(candidate)
+
+    try:
+        return sorted(path for path in root.glob(glob) if path.is_file())
+    except (OSError, ValueError) as error:
+        raise ConfigError(
+            f"'include' pattern {pattern!r} could not be expanded: {error}"
+        ) from error
 
 
 # -- sections ------------------------------------------------------------------------
@@ -496,7 +605,23 @@ def parse_duration(value: Any, where: str) -> timedelta:
     return timedelta(seconds=float(amount) * _UNITS[(unit or "s").lower()])
 
 
-def _reject_duplicate_names(pools: tuple[PoolConfiguration, ...]) -> None:
+def _reject_duplicate_names(
+    pools: tuple[PoolConfiguration, ...], origins: Sequence[Path] = ()
+) -> None:
+    """Two pools of one name is fatal, and the message names both files.
+
+    php-fpm refuses to start on this rather than picking one, and so does this: which
+    definition won would be invisible in the running fleet.
+    """
+    if origins and len(origins) == len(pools):
+        first: dict[str, Path] = {}
+        for pool, origin in zip(pools, origins, strict=True):
+            name = pool.spec.name
+            if name in first:
+                raise ConfigError(f"two pools are both named {name!r}: {first[name]} and {origin}")
+            first[name] = origin
+        return
+
     seen: set[str] = set()
     for pool in pools:
         if pool.spec.name in seen:

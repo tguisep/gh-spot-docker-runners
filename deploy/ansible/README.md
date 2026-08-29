@@ -148,6 +148,15 @@ ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass \
 The configuration is rewritten from the role's variables each run, so edits made directly on
 the host are overwritten. That is the point of a role — change the variables.
 
+## One file per pool
+
+Set `ghspot_pools_in_directory: true` and the role writes `/etc/ghspot/pools.d/<name>.toml`
+per pool, with the main file carrying only `include`. It also **removes** the file of a pool
+you delete from the inventory — the include is a glob, so nothing else would.
+
+Files are merged, not overridden: two pools of one name is a fatal error naming both files.
+The same arrangement, and the same rules, as `php-fpm.d`.
+
 ## What it does not do
 
 - **It does not add your user to the `docker` group.** The package puts the *service*

@@ -42,6 +42,9 @@ docker run --rm \
         getent passwd ghspot >/dev/null || fail "the ghspot user was not created"
         echo "    ok: service account created"
 
+        [ -d /etc/ghspot/pools.d ] || fail "the pool directory was not created"
+        echo "    ok: /etc/ghspot/pools.d exists"
+
         # The unit points here; if the two ever disagree the service silently fails to start.
         EXEC="$(sed -n "s|^ExecStart=\([^ ]*\).*|\1|p" /lib/systemd/system/ghspot.service)"
         [ -x "${EXEC}" ] || fail "the unit ExecStart (${EXEC}) is not executable"

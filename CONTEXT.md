@@ -199,3 +199,39 @@ left twelve warm for the full timeout on a host that had gone back to needing on
 - The role's template has to know the same "which keys apply" table as the daemon, one layer
   out. It got that wrong first — it wrote `min_idle` under `ondemand`, which the parser
   refuses — and the render check caught it before CI did.
+
+## 2026-08-28 — pools in their own files
+
+One growing `config.toml` stops being reviewable somewhere around the fourth pool, so pools
+can live one per file, the way php-fpm keeps them in `php-fpm.d`:
+
+```toml
+include = "/etc/ghspot/pools.d/*.toml"
+```
+
+The merge rules are php-fpm's, and they are the whole design:
+
+- The glob is **sorted**, so the fleet does not depend on the order a directory returns.
+- Files are **merged, never overridden**. There is no last-one-wins: a pool silently replaced
+  by a file later in the alphabet is not something anyone would debug quickly.
+- A **duplicate name is fatal**, naming both files. php-fpm refuses to start rather than
+  picking one, and so does this — which definition won would be invisible in the running fleet.
+- An included file defines **pools only**. Global sections stay in the main file, or which
+  file wins becomes a question with no obvious answer from either of them.
+
+### Notes for later
+
+- **`include` has to sit above the first `[section]`.** In TOML a bare key belongs to whichever
+  table precedes it, so written lower down it quietly becomes `github.include` and does
+  nothing at all. That is now an error naming the section it landed in and saying where to
+  move it — a misplaced directive that silently does nothing is the worst outcome available.
+- A pattern matching nothing is not an error. An empty `pools.d` on a host still being set up
+  is normal, and "at least one pool" already covers the case where that leaves none.
+- The Ansible role gained a second template, and with it the chance for the two to disagree
+  about the schema. The render check now renders both and loads them together; dropping a key
+  from the per-pool template fails it with `directory: a pool file lost a key the inline form
+  keeps`. The role also deletes the file of a pool removed from the inventory — the include is
+  a glob, so nothing else would.
+- Unrelated but found on the way: `fail()` printed error messages through Rich without
+  escaping, so `[daemon]` and `[[pool]]` were read as style tags and vanished. The one part of
+  a configuration error naming what is wrong was the part being eaten.
