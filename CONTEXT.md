@@ -437,3 +437,42 @@ Cores is not a measurement of anything — it is a defensible number the box can
 itself, and it is wrong in the safe direction. `max_containers = "unlimited"` lifts it on
 purpose, spelled out the way `[housekeeping]` spells `"never"` rather than by writing a zero
 and hoping.
+
+## 2026-08-31 — the runner build comes with the daemon
+
+Every "build the runner image" hint printed `images/runner/build.sh` verbatim: the wizard's
+first next-step, `doctor`'s remedy, the `ImageNotFoundError` message, the postinst, the
+dashboard's setup screen, the README quick start. That path is real only for somebody
+standing in a clone, and the `.deb` shipped the daemon without `images/` — so on exactly the
+host the package exists to serve, the instruction named a file that could not be there.
+
+Two halves. The package now installs the sources to `/usr/share/ghspot/images/runner`, and
+`ghspot image build <variant>` finds them — packaged location first, then the checkout, with
+`GHSPOT_RUNNER_IMAGES` overriding both, the same shape `dashboard.find_root` already used for
+`web/dist`. Every hint says `ghspot image build`, which is the one instruction true in both
+places.
+
+The CLI does not reimplement the build. It locates `build.sh` and runs it with stdio
+inherited, so a `docker build`'s minutes of layer progress stay visible. `build.sh` grew a
+`--list`, which is what `ghspot image list` calls — the variant table stays declared once.
+
+`doctor`'s remedy used to be a hand-written `docker build` restating the `DOCKER_GID`
+build-arg. It is now the same `ghspot image build` line; a remedy that drifts from the real
+build is worse than no remedy.
+
+### The wizard also had a sudo bug
+
+Step 2 printed `ghspot doctor -c /etc/ghspot/config.toml` with no `sudo`, while step 3 knew
+to ask for it. The file is `root:ghspot 0640` and the checks want the Docker socket, and the
+operator reads that list in a shell where the wizard's own sudo has long expired.
+
+### Notes for later
+
+- The Ansible role lost its shallow checkout and the `git` it installed to make one, along
+  with `ghspot_checkout`. It builds through `ghspot image build` now, which has the side
+  effect of pinning the images to the installed version rather than to whatever `main` held.
+- `subprocess` output does not reach Click's `CliRunner` buffer, because it goes to the real
+  file descriptor. The tests use `capfd`, and a test that reached for `result.output` passed
+  its exit-code assertion while silently checking an empty string.
+- `from ... import setup as setup_module` in a test module collides with pytest's own xunit
+  hook name and every test in the file errors before it runs.

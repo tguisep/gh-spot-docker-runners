@@ -138,11 +138,17 @@ with `uv tool install .`.
 Then build the runner image, which both install methods need:
 
 ```bash
-images/runner/build.sh ubuntu-24.04
+ghspot image build ubuntu-24.04     # `ghspot image list` names the variants
 ```
 
+The image sources ship inside the package, so this works on a host with no clone. It runs
+`images/runner/build.sh` from wherever they are installed — `/usr/share/ghspot/images/runner`
+from the `.deb`, the checkout when you are in one — which is what keeps the packaged build and
+the development build the same build. `--sources` overrides the search, as does
+`GHSPOT_RUNNER_IMAGES`.
+
 `DOCKER_GID` must match the host's `docker` group, or the unprivileged `runner` user inside
-the container cannot use the mounted socket.
+the container cannot use the mounted socket. The script detects it; you do not pass it.
 
 ## Configure
 
@@ -519,8 +525,16 @@ reverse proxy with auth in front of it.
 | `rhel-10` | `almalinux:10` | `runs-on: [self-hosted, rhel-10]` |
 
 ```bash
-images/runner/build.sh                 # all of them
-images/runner/build.sh rhel-9          # just one
+ghspot image build                     # all of them
+ghspot image build rhel-9              # just one
+ghspot image list                      # the variants and their base images
+```
+
+From a checkout the script is there to call directly, which is what `ghspot image build`
+does for you:
+
+```bash
+images/runner/build.sh rhel-9          # the same build
 images/runner/verify.sh rhel-9         # check the contract and the toolset
 ```
 
@@ -993,7 +1007,13 @@ for `tick.error` lines — the daemon only deletes runners whose name starts wit
 and which are offline, so a hand-registered runner is never touched.
 
 **`ImageNotFoundError`.**
-The runner image is not built on this host. `ghspot doctor` prints the exact build command.
+The runner image is not built on this host. Run `ghspot image build <variant>`; `ghspot doctor`
+prints the exact command for the image the pool asks for.
+
+**`the runner image sources are not installed`.**
+`ghspot image build` found neither `/usr/share/ghspot/images/runner` nor a checkout. On a
+packaged host that means the package is older than this command or the directory was removed
+— reinstall it. Otherwise point `GHSPOT_RUNNER_IMAGES` at a copy of `images/runner`.
 
 **Rate limited.**
 `ForgeRateLimitedError` means the hourly budget is spent. Raise `poll_interval` or reduce the

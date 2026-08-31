@@ -165,6 +165,16 @@ tool resolves. CI runs it for each variant on every pull request.
 ```bash
 images/runner/build.sh                 # every variant
 images/runner/build.sh rhel-9          # just one
+images/runner/build.sh --list          # the variants and their base images
+```
+
+On a host installed from the `.deb` there is no checkout to run this from, so the package
+ships these sources to `/usr/share/ghspot/images/runner` and `ghspot image build` runs them
+there. It is the same script — the CLI finds it, it does not reimplement it:
+
+```bash
+ghspot image build rhel-9
+ghspot image list
 ```
 
 The script detects the host's `docker` group id and passes it in. That id must match, or the
