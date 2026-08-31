@@ -492,7 +492,7 @@ stopping a runner, and forcing a tick.
 | Page | What it is for |
 |---|---|
 | overview | Is the daemon healthy, are pools full, is work queueing |
-| runners | What is running, with an optional CPU and memory column; stop or force-stop |
+| runners | What is running, with an optional CPU and memory column; **stop** (refused mid-job) or **kill** (SIGKILL, fails the build) |
 | logs | Both logs for one runner, side by side — see below |
 | stats | The usage report, over a window |
 
