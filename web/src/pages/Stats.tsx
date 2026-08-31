@@ -77,7 +77,7 @@ export function Stats() {
     return (
         <>
             <Panel
-                title="usage"
+                title={stats.data?.host ? `usage on ${stats.data.host}` : 'usage'}
                 actions={
                     <select
                         value={seconds ?? ''}
