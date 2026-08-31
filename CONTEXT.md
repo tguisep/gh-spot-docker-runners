@@ -99,7 +99,7 @@ Added as a second authentication mode, alongside the personal access token. For 
 polling continuously, an App is the better credential: the rate limit belongs to the
 installation rather than to a person, the permissions are the app's rather than everything
 the account can reach, and installation tokens expire hourly on their own. Recorded in
-[ADR 6](docs/adr/0006-github-app-alongside-pat.md).
+[ADR 6](https://tguisep.github.io/gh-spot-docker-runners/reference/adr/0006-github-app-alongside-pat/).
 
 The structural change is small but real: `GitHubClient` used to set `Authorization` once in
 its constructor. An installation token expires under a long-running daemon, so the header is
@@ -743,6 +743,114 @@ said so, so adding a label looked identical to writing it wrong. `/health` now r
   worse than no check. Only a process holding settings from earlier can answer it.
 - Reporting staleness is not reloading. The daemon still needs a restart; it now says so
   instead of leaving the operator to guess.
+
+## 2026-08-31 — the documentation became a site
+
+`docs/operations.md` had reached 1177 lines across fifteen top-level sections, which is not a
+document anybody reads — it is a file people scroll through hoping to recognise something. It
+is now fifteen pages under `site/`, built with Astro and Starlight, deployed to GitHub Pages.
+
+The split follows the headings that were already there; nothing was rewritten. What changed is
+that each section became addressable, the sidebar shows what exists without scrolling, and
+Pagefind indexes the lot — searching 1177 lines of Markdown on GitHub was the only way to find
+anything before.
+
+`docs/` is gone rather than kept alongside. Two copies of an operations guide is precisely the
+drift `CLAUDE.md` warns about, and the one nobody edits is the one everybody finds.
+
+### Notes for later
+
+- Links between pages are relative paths to the other `.md` file. Astro resolves those at build
+  time, which is what survives the `/gh-spot-docker-runners` base path; a hand-written
+  `/guides/gpus/` works on a dev server and 404s in production.
+- `scripts/check-site-links.py` checks the built HTML against the pages actually generated,
+  because a rename turns inbound links into 404s that the build is perfectly happy with. It
+  reports 711 links today, and it fails when one breaks — checked by breaking one.
+- Every inbound reference moved with it, including the ones that ship: `postinst` and
+  `packaging/deb/config.toml` print a URL at operators, and the wizard and the dashboard's
+  setup screen both name the authentication guide. A released `.deb` still points at the old
+  blob URL; nothing can be done about the ones already out.
+- Frontmatter values are quoted. "How runners are kept: `pm`" contains a colon, and an
+  unquoted YAML title fails the build with a message about indentation.
+
+## 2026-08-31 — the site, reorganised by domain and cut back
+
+Two passes over the site from the previous entry.
+
+**Grouped by domain rather than by document.** The first cut mirrored `operations.md`'s
+headings, which is the order things were written in, not the order anybody needs them. Pages
+now sit under the thing they are about: `guides/pools/`, `guides/host/`, `guides/operate/`. A
+setting belongs to whichever owns it — `max_runners` bounds one pool, `max_containers` bounds
+the machine, and they were on the same page.
+
+Three pages split along that line:
+
+- `images.md` → labels and routing (a pool concern) and building images (a host one).
+- `capacity.md` → host ceilings, and `priority`, which is a pool's share of them.
+- `day-to-day.md` → monitoring, the dashboard, and the API. At 1419 words it was the largest
+  page on the site and covered three unrelated jobs.
+
+**Cut back.** Paragraphs of 4+ lines went from 32 to 8, of which 3 are ADRs — decision records
+argue, and that is what they are for. Enumerations became bullets, comparisons became tables,
+and troubleshooting opens with a symptom/cause/fix table instead of fifteen bold headings.
+
+### Notes for later
+
+- Splitting pages breaks in-page anchors silently: `install.md` linked `[Configure](#configure)`
+  from when both lived in one file, which renders as `href="#configure"` and so slips past the
+  link checker, which only follows `href="/gh-spot-docker-runners..."`. Anchors are now checked
+  against the headings of the page they are on.
+- Moving a page deeper breaks its own outbound `../` links, and the first repair pass left them
+  because the resolved path did not exist so it declined to guess. Resolving by filename fixed
+  it; the check that every relative `.md` link resolves on disk is what caught it.
+- `gpus.md` explained subset matching in full, which is now `pools/labels.md`'s job. Grouping by
+  domain surfaces that kind of duplication — it was invisible while both were "a guide".
+
+## 2026-08-31 — the analogy comes out
+
+Every "the way php-fpm does it" is gone from the site, the configuration files, the Ansible
+role, the source docstrings and the tests. Thirty-odd of them.
+
+The analogy only ever helped readers who already knew php-fpm; for everyone else it explained
+one unfamiliar thing with another, and it made the design read as derivative rather than
+reasoned. Each one was replaced by what it was standing in for — `max_idle` is "an upper bound
+on the warm band", not "`max_spare_servers`" — which is what a reader needed either way.
+
+Left alone: the dated entries above, and `CHANGELOG.md`. One is a record of what was thought at
+the time and the other is generated from commit subjects. Editing either would be falsifying a
+log to match a later opinion.
+
+## 2026-08-31 — the link checker was checking the wrong links
+
+Splitting troubleshooting and architecture into sub-pages meant extending the link checker to
+follow relative hrefs, and that immediately reported **22 broken links** on a site that had
+been reporting zero.
+
+The zero was true and useless. The checker only followed `href="/gh-spot-docker-runners/..."`,
+which is what Starlight generates for its own sidebar and breadcrumbs — never what a page's
+prose contains. Every content link had been invisible to it since the site was created.
+
+What it found, once it could see them:
+
+- **Astro does not rewrite `.md` links in prose.** `[Layers](./layers.md)` is emitted verbatim
+  and 404s in production. Starlight rewrites its sidebar; it does not touch your paragraphs.
+  `site/README.md` had been confidently telling the next person to write links that way.
+- **A page is served one level deeper than its file.** `start/install.md` is at
+  `/start/install/`, so its sibling is `../configure/` and not `./configure/`. Only `index.md`
+  pages have a URL that matches their directory, which is why the index pages happened to work
+  and nothing else did.
+- A root-absolute `/guides/...` is always wrong under a base path — it works on the dev server
+  and 404s in production, which is the worst way for a link to break.
+
+All three shapes now fail the check, verified by planting one of each.
+
+### Notes for later
+
+- The lesson is not "the links were wrong". It is that a green check over the wrong subset
+  reads exactly like a green check, and the subset it covered was the one nobody writes by
+  hand. Worth asking of any checker: what does it *not* see?
+- Moving a page deeper breaks its own outbound relative links, and this is the second time it
+  has. The checker is the thing that catches it; nothing about the build will.
 
 ## 2026-08-31 — `ghspot runner stop --all`
 

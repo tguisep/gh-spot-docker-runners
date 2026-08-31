@@ -116,7 +116,8 @@ def _ask(config_path: Path) -> Answers:
         "  [dim]A token is two minutes' work and fine for a couple of repositories.\n"
         "  A GitHub App has its own rate limit and outlives your account's access —\n"
         "  worth it for anything left running. Either needs Administration: read & write\n"
-        "  and Actions: read. See docs/authentication.md.[/dim]"
+        "  and Actions: read. See https://tguisep.github.io/gh-spot-docker-runners/"
+        "start/authentication/[/dim]"
     )
     uses_app = (
         Prompt.ask("  which", choices=["token", "app"], default="token", console=console) == "app"
@@ -361,7 +362,7 @@ def _write_secret(path: Path, contents: str) -> None:
     """Create the file with its mode before anything is written to it.
 
     The other order leaves the secret briefly world-readable, which is the whole reason
-    `docs/authentication.md` tells an operator to use `install -m 600`.
+    the authentication guide tells an operator to use `install -m 600`.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)

@@ -1,19 +1,14 @@
-# Authentication
+---
+title: "Authentication"
+description: "Setting up a token or a GitHub App, with the exact permissions each needs."
+---
 
 The daemon needs credentials to register runners and to see which jobs are queued. There are
 two ways to give it those, and this page walks through both.
 
 **Neither credential ever enters a runner container.** Containers receive a single-use
 just-in-time config blob and nothing else, in both modes. See
-[ADR 1](adr/0001-just-in-time-registration.md).
-
-- [Which permissions, and why](#which-permissions-and-why)
-- [Which mode should I use?](#which-mode-should-i-use)
-- [Setting up a fine-grained personal access token](#setting-up-a-fine-grained-personal-access-token)
-- [Setting up a GitHub App](#setting-up-a-github-app)
-- [Supplying credentials from the environment](#supplying-credentials-from-the-environment)
-- [Verifying](#verifying)
-- [When permissions are wrong](#when-permissions-are-wrong)
+[ADR 1](../../reference/adr/0001-just-in-time-registration/).
 
 ---
 
@@ -72,7 +67,7 @@ reach, which is why the scoping matters more than the level.
 factor: the daemon polls forever, so with a token it is a permanent tenant of a budget shared
 with your own `gh` usage and every other script you run.
 
-Recorded as [ADR 6](adr/0006-github-app-alongside-pat.md).
+Recorded as [ADR 6](../../reference/adr/0006-github-app-alongside-pat/).
 
 ---
 
@@ -125,9 +120,10 @@ Or set `GHSPOT_GITHUB_TOKEN` instead and omit `token_file` entirely.
 
 ### A note on classic tokens
 
-Classic tokens work — the endpoints accept the `repo` scope — but `repo` grants read and
-write access to **every repository you can reach**, including code, issues and settings. A
-fine-grained token limited to two repositories is strictly better. Use classic only if
+Classic tokens work — the endpoints accept the `repo` scope — but `repo` grants read and write
+to **every repository you can reach**, including code, issues and settings.
+
+A fine-grained token limited to two repositories is strictly better. Use classic only if
 fine-grained tokens are unavailable to you.
 
 ---
@@ -144,10 +140,9 @@ Go to **Settings → Developer settings → GitHub Apps → New GitHub App**.
 | Homepage URL | Anything — your repository URL is fine |
 | **Webhook → Active** | **Uncheck it** |
 
-Unchecking *Active* matters: this project polls the API and needs no inbound endpoint, which
-is what lets it run behind NAT on a home server. Leaving webhooks on would make GitHub try to
-deliver events to a URL that does not exist. See
-[ADR 3](adr/0003-polling-over-webhooks.md).
+Unchecking *Active* matters. This project polls the API and needs no inbound endpoint — which
+is what lets it run behind NAT — so leaving webhooks on would have GitHub deliver events to a
+URL that does not exist. See [ADR 3](../../reference/adr/0003-polling-over-webhooks/).
 
 Under **Repository permissions**:
 
@@ -297,7 +292,7 @@ and the reason is an unapproved request sitting in your inbox. If `doctor` still
 
 ## See also
 
-- [`operations.md`](operations.md) — installing, running and tuning the daemon
-- [`SECURITY.md`](../SECURITY.md) — threat model and hardening checklist
-- [ADR 1](adr/0001-just-in-time-registration.md) — why no credential enters a container
-- [ADR 6](adr/0006-github-app-alongside-pat.md) — why both modes are supported
+- [`operations.md`](../../guides/operate/monitoring/) — installing, running and tuning the daemon
+- [`SECURITY.md`](https://github.com/tguisep/gh-spot-docker-runners/blob/main/SECURITY.md) — threat model and hardening checklist
+- [ADR 1](../../reference/adr/0001-just-in-time-registration/) — why no credential enters a container
+- [ADR 6](../../reference/adr/0006-github-app-alongside-pat/) — why both modes are supported

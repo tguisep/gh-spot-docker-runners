@@ -3,7 +3,7 @@
 # Copy to ./config.toml, ~/.config/ghspot/config.toml or /etc/ghspot/config.toml,
 # then check it with: ghspot config validate
 
-# Pools may live in their own files, the way php-fpm keeps them in php-fpm.d. Uncomment,
+# Pools may live in their own files, one per file in a directory. Uncomment,
 # drop one [[pool]] per file into that directory, and they are added to whatever is defined
 # below.
 #
@@ -21,7 +21,8 @@
 # Two ways to authenticate. Credentials are never read from this file itself — it points
 # at files, or you set the environment variables (the environment always wins).
 #
-# Full walkthrough for both, with the exact permissions: docs/authentication.md
+# Full walkthrough for both, with the exact permissions:
+# https://tguisep.github.io/gh-spot-docker-runners/start/authentication/
 
 # --- Option A: personal access token -------------------------------------------------
 # Quickest to set up. A fine-grained token scoped to the repositories below, with:
@@ -78,7 +79,7 @@ state_db = "~/.local/state/ghspot/state.db"
 # This bounds that. It does not eliminate it: a job that leaves a container *running* is
 # never touched, because nothing tells it apart from something you started yourself. Genuine
 # zero-residue needs each runner to have its own Docker daemon, which is a different
-# architecture. See docs/operations.md.
+# architecture. See https://tguisep.github.io/gh-spot-docker-runners/guides/housekeeping/.
 [housekeeping]
 # enabled = true
 # every = "1h"                     # wall clock, not ticks
@@ -143,7 +144,7 @@ labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
 # work that never wanted it.
 # requires_labels = ["gpu-a100"]
 
-# How runners are kept, borrowed from php-fpm's `pm`. Three intentions, named — rather than
+# How runners are kept. Three intentions, named — rather than
 # assembled by hand out of min_idle and idle_timeout, where two of the three ways to write it
 # would be subtly wrong:
 #
@@ -168,8 +169,8 @@ labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
 
 min_idle = 1          # runners kept warm so a job doesn't wait for a container to boot
 
-# Warm runners above this are reaped without waiting out idle_timeout. php-fpm's
-# max_spare_servers. Unset, only the timeout bounds them — so a burst leaves the whole pool
+# Warm runners above this are reaped without waiting out idle_timeout — an upper bound on the
+# warm band. Unset, only the timeout bounds them — so a burst leaves the whole pool
 # warm for its full length on a host that has gone back to needing one.
 # max_idle = 3
 max_runners = 4       # hard ceiling for this pool

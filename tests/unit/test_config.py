@@ -498,8 +498,7 @@ def test_a_mode_that_does_not_exist_lists_the_ones_that_do() -> None:
 
 @pytest.mark.parametrize("key", ["min_idle = 2", "max_idle = 2", 'idle_timeout = "5m"'])
 def test_static_refuses_the_knobs_that_would_do_nothing(key: str) -> None:
-    """php-fpm refuses pm.min_spare_servers under static for the same reason: a setting that
-    is quietly doing nothing is worse than one that will not load."""
+    """A setting quietly doing nothing is worse than one that will not load."""
     with pytest.raises(ConfigError, match="does nothing under"):
         parse(with_pool('pm = "static"', key))
 
@@ -628,7 +627,7 @@ def test_files_are_read_in_sorted_order(tmp_path: Path) -> None:
     ],
 )
 def test_global_configuration_is_refused_in_a_pool_file(tmp_path: Path, section: str) -> None:
-    """php-fpm keeps [global] out of php-fpm.d for the same reason: otherwise which file wins
+    """Global configuration belongs in the main file: otherwise which file wins
     becomes a question, and the answer is not obvious from either of them."""
     config = write_tree(tmp_path, web=section + "\n" + POOL_FILE.format(name="web"))
 

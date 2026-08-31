@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/tguisep/gh-spot-docker-runners/security/advisories/new
     about: Report privately, not as an issue. See SECURITY.md.
   - name: Setting up a token or a GitHub App
-    url: https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/authentication.md
+    url: https://tguisep.github.io/gh-spot-docker-runners/start/authentication/
     about: The exact permissions, and what each error message means.
