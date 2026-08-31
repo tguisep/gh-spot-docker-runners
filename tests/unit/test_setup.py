@@ -23,6 +23,17 @@ runner = CliRunner()
 TOKEN_ANSWERS = "token\nghp_pretend\ntguisep/my-project\nbuilders\nubuntu-24.04\n3\ny\ny\n"
 
 
+@pytest.fixture(autouse=True)
+def no_docker(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unreachable Docker, unless a test says otherwise.
+
+    The wizard asks whether the runner image is already built. Left alone, every test here
+    would answer that from whatever the machine running them happens to have pulled, and the
+    build offer would appear on a developer's box and not in CI.
+    """
+    monkeypatch.setattr(wizard, "_image_present", lambda _: None)
+
+
 def test_it_writes_a_configuration_the_daemon_accepts(tmp_path: Path) -> None:
     """The only assertion that really matters: the wizard cannot produce a file its own
     parser rejects."""
@@ -156,12 +167,13 @@ def test_the_build_hint_is_a_command_and_not_a_path(tmp_path: Path) -> None:
     ],
 )
 def test_only_a_system_configuration_is_checked_with_sudo(
-    directory: Path, expected: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    directory: Path,
+    expected: str,
+    capsys: pytest.CaptureFixture,
 ) -> None:
     """`/etc/ghspot/config.toml` is root:ghspot 0640 and the checks want the Docker socket,
-    so step 2 needs the privilege step 3 always asked for — the wizard's own sudo is gone by
-    the time the operator types it. A configuration in $HOME must not ask for it."""
-    monkeypatch.setattr(wizard, "load_settings", lambda _: None)
+    so that step needs the privilege the systemctl one always asked for — the wizard's own
+    sudo is gone by the time the operator types it. A configuration in $HOME must not ask."""
     answers = wizard.Answers(
         repository=RepositoryTarget.parse("tguisep/my-project"),
         pool="builders",
@@ -169,10 +181,11 @@ def test_only_a_system_configuration_is_checked_with_sudo(
         uses_app=False,
     )
 
-    assert wizard._verify(directory / "config.toml", answers) == 0
+    wizard._next_steps(directory / "config.toml", answers, built=True)
 
     line = next(row for row in capsys.readouterr().out.splitlines() if "ghspot doctor" in row)
-    assert line.strip().startswith(f"2. check everything         {expected}")
+    assert expected in line
+    assert ("sudo ghspot doctor" in line) == (expected.startswith("sudo"))
 
 
 def test_the_written_file_carries_every_setting_not_just_the_answers(tmp_path: Path) -> None:
@@ -259,3 +272,114 @@ def test_a_missing_reference_still_writes_a_configuration(
 
     assert result.exit_code == 0
     assert load(config).pools[0].spec.max_runners == 3
+
+
+BUILD_ANSWERS = TOKEN_ANSWERS + "y\n"
+
+
+def test_a_missing_image_is_offered_and_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Building the runner image is the wizard's own first next-step, and the one nothing
+    works without — a pool whose image is missing starts no runners and says so only in the
+    daemon's log."""
+    built: list[str | None] = []
+    monkeypatch.setattr(wizard, "_image_present", lambda _: False)
+    monkeypatch.setattr(wizard.images, "build", lambda variant: built.append(variant) or 0)
+
+    result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=BUILD_ANSWERS)
+
+    assert result.exit_code == 0
+    assert built == ["ubuntu-24.04"]
+
+
+def test_a_built_image_drops_the_step_that_asks_for_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(wizard, "_image_present", lambda _: False)
+    monkeypatch.setattr(wizard.images, "build", lambda _: 0)
+
+    result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=BUILD_ANSWERS)
+
+    assert "build the runner image" not in result.output
+    assert "1. check everything" in result.output
+
+
+def test_declining_leaves_the_instruction_where_it_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """It is minutes of work on a machine somebody may not want busy yet. Saying no has to
+    put them back exactly where the wizard used to leave everyone."""
+    monkeypatch.setattr(wizard, "_image_present", lambda _: False)
+    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+
+    result = runner.invoke(
+        app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS + "n\n"
+    )
+
+    assert result.exit_code == 0
+    assert "1. build the runner image" in result.output
+
+
+def test_a_failed_build_keeps_the_step(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reporting it as done because it was attempted would send the operator to `doctor`
+    looking for a different problem."""
+    monkeypatch.setattr(wizard, "_image_present", lambda _: False)
+    monkeypatch.setattr(wizard.images, "build", lambda _: 1)
+
+    result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=BUILD_ANSWERS)
+
+    assert "1. build the runner image" in result.output
+
+
+def test_an_image_that_is_already_there_is_not_offered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(wizard, "_image_present", lambda _: True)
+    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+
+    result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS)
+
+    assert "already built" in result.output
+    assert "build the runner image" not in result.output
+
+
+def test_unreachable_docker_is_not_an_unbuilt_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Offering a build that cannot start is worse than not offering: `doctor`, one step
+    later, reports the real problem properly."""
+    monkeypatch.setattr(wizard, "_image_present", lambda _: None)
+    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+
+    result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS)
+
+    assert "Build ghspot/runner" not in result.output
+    assert "1. build the runner image" in result.output
+
+
+def test_nothing_is_offered_without_sources_to_build_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(wizard, "_image_present", lambda _: False)
+    monkeypatch.setattr(wizard, "runner_sources", lambda: None)
+    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+
+    result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS)
+
+    assert "Build ghspot/runner" not in result.output
+    assert "1. build the runner image" in result.output
+
+
+def test_a_configuration_the_daemon_rejects_is_not_followed_by_a_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Validation comes first. Spending several minutes on an image for a configuration that
+    was never going to load is the wrong order to find that out in."""
+    monkeypatch.setattr(wizard, "_image_present", lambda _: False)
+    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+    monkeypatch.setattr(wizard, "_validate", lambda _: False)
+
+    result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=BUILD_ANSWERS)
+
+    assert result.exit_code == 1

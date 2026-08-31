@@ -14,6 +14,7 @@ output is a file an operator could have written, and it says where it put it.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import stat
 from dataclasses import dataclass
@@ -28,6 +29,8 @@ from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.config.settings import ConfigError, host_cores
 from ghspot.infrastructure.config.settings import load as load_settings
+from ghspot.infrastructure.docker.backend import DockerRunnerBackend
+from ghspot.interfaces.cli import images
 from ghspot.interfaces.cli.render import console, fail, hint
 from ghspot.interfaces.cli.scaffold import (
     SYSTEM_DIRECTORY,
@@ -36,7 +39,7 @@ from ghspot.interfaces.cli.scaffold import (
     render,
     replace_header,
 )
-from ghspot.paths import build_command, example_config
+from ghspot.paths import build_command, example_config, runner_sources
 
 IMAGES = ("ubuntu-24.04", "ubuntu-22.04", "rhel-9", "rhel-10")
 
@@ -91,7 +94,12 @@ def run(config_path: Path, *, force: bool = False) -> int:
     for extra in written:
         console.print(f"[green]written[/green] {extra}")
 
-    return _verify(config_path, answers)
+    if not _validate(config_path):
+        return 1
+
+    built = _offer_build(answers)
+    _next_steps(config_path, answers, built=built)
+    return 0
 
 
 # -- asking ----------------------------------------------------------------------------
@@ -301,34 +309,98 @@ def _write_secret(path: Path, contents: str) -> None:
 # -- checking --------------------------------------------------------------------------
 
 
-def _verify(config_path: Path, answers: Answers) -> int:
+def _image_present(image: str) -> bool | None:
+    """Whether the runner image is already built, or ``None`` when Docker cannot say.
+
+    Three answers, not two. "Docker is not reachable" must not read as "not built", because
+    the wizard would then offer a build that cannot start — and `doctor`, one step later,
+    reports the real problem properly.
+    """
+
+    async def ask() -> bool:
+        backend = DockerRunnerBackend()
+        await backend.ping()
+        return await backend.image_exists(image)
+
+    try:
+        return asyncio.run(ask())
+    except GhSpotError:
+        return None
+
+
+def _offer_build(answers: Answers) -> bool:
+    """Offer to build the runner image now. Returns whether it is there afterwards.
+
+    "Build the runner image" has always been the first thing the wizard tells somebody to do
+    next, and it is the one step nothing works without: a pool whose image is missing starts
+    no runners and says so only in the daemon's log. Now that ghspot can build it, asking is
+    better than instructing.
+
+    Only ever an offer. It is minutes of work on a machine the operator may not want busy
+    yet, and declining leaves the instruction in the list exactly as before.
+    """
+    image = f"ghspot/runner:{answers.image}"
+    present = _image_present(image)
+
+    if present:
+        console.print(f"\n[green]have[/green] {image} — already built")
+        return True
+    if present is None or runner_sources() is None:
+        return False
+
+    console.print()
+    try:
+        wanted = Confirm.ask(f"Build {image} now? A few minutes", default=True, console=console)
+    except (KeyboardInterrupt, EOFError):
+        console.print()
+        return False
+
+    if not wanted:
+        return False
+
+    console.print()
+    return images.build(answers.image) == 0
+
+
+def _validate(config_path: Path) -> bool:
+    """Whether the daemon accepts what was just written."""
     try:
         load_settings(config_path)
     except ConfigError as error:
         fail(str(error))
         hint("the file is on disk; fix it and run: ghspot config validate")
-        return 1
+        return False
+    return True
 
+
+def _next_steps(config_path: Path, answers: Answers, *, built: bool) -> None:
     # A configuration under /etc is root:ghspot 0640 and the checks want the Docker socket,
     # so the next command an operator types — in a shell where the wizard's sudo has already
-    # expired — needs its own. Step 3 always knew this; step 2 did not.
-    system = config_path.parent == Path("/etc/ghspot")
-    doctor = f"{'sudo ' if system else ''}ghspot doctor -c {config_path}"
+    # expired — needs its own.
+    system = config_path.parent == SYSTEM_DIRECTORY
+
+    steps: list[tuple[str, str]] = []
+    if not built:
+        steps.append(("build the runner image", build_command(answers.image)))
+    steps.append(("check everything", f"{'sudo ' if system else ''}ghspot doctor -c {config_path}"))
+    steps.append(
+        (
+            "start it",
+            "sudo systemctl enable --now ghspot" if system else "ghspot daemon",
+        )
+    )
+    if answers.api_bind:
+        steps.append(("the dashboard", f"http://{answers.api_bind}/ui"))
 
     console.print()
     console.print("[bold]Next[/bold]")
-    console.print(f"  1. build the runner image   {build_command(answers.image)}")
-    console.print(f"  2. check everything         {doctor}")
-    console.print(
-        "  3. start it                 sudo systemctl enable --now ghspot"
-        if system
-        else "  3. start it                 ghspot daemon"
-    )
-    if answers.api_bind:
-        console.print(f"  4. the dashboard            http://{answers.api_bind}/ui")
+    if built:
+        console.print(f"  [green]done[/green]  the runner image ghspot/runner:{answers.image}")
+    for number, (label, command) in enumerate(steps, start=1):
+        console.print(f"  {number}. {label:<25}{command}")
+
     console.print()
     labels = escape(f'runs-on: [self-hosted, linux, x64, "{answers.image}"]'.replace('"', ""))
     # Escaped: a label list is square brackets, which Rich reads as a style tag — and the
     # one line telling somebody what to paste into their workflow is the line that vanishes.
     console.print(f"  [dim]Point a workflow at:  {labels}[/dim]")
-    return 0
