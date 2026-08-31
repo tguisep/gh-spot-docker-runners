@@ -7,6 +7,7 @@ client against it, and it should not change because an internal dataclass did.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -209,6 +210,17 @@ class HealthResponse(BaseModel):
 class LogsResponse(BaseModel):
     runner_id: str
     lines: str
+
+    source: Literal["container", "archive", "none"] = "container"
+    """Where these lines came from.
+
+    ``container`` is the live view. ``archive`` is the tail kept when the runner was retired
+    and its container removed — the same output, but frozen and no longer growing. ``none``
+    means there is nothing: an empty string used to be the answer to all three, so a retired
+    runner looked identical to one that had simply printed nothing yet."""
+
+    reason: str | None = None
+    """Why there is nothing, when ``source`` is ``none``."""
 
 
 class JobLogsResponse(BaseModel):

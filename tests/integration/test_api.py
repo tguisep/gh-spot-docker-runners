@@ -25,6 +25,7 @@ from tests.fakes.adapters import (
     FakeBackend,
     FakeClock,
     FakeForge,
+    InMemoryRunnerLogs,
     InMemoryRunnerRepository,
     RecordingPublisher,
     SequentialIds,
@@ -41,12 +42,20 @@ class Harness:
         self.forge = FakeForge()
         self.backend = FakeBackend(now=T0)
         self.repository = InMemoryRunnerRepository()
+        self.runner_logs = InMemoryRunnerLogs()
         self.events = RecordingPublisher()
 
         provision = ProvisionRunner(
             self.forge, self.backend, self.repository, self.clock, SequentialIds(), self.events
         )
-        retire = RetireRunner(self.forge, self.backend, self.repository, self.clock, self.events)
+        retire = RetireRunner(
+            self.forge,
+            self.backend,
+            self.repository,
+            self.clock,
+            self.events,
+            archive=self.runner_logs,
+        )
         # A fixed host, so the API's answers do not vary with whatever machine runs the
         # suite — and so a test can assert on the name the daemon reports for itself.
         settings = Settings(
@@ -61,6 +70,7 @@ class Harness:
             backend=self.backend,  # type: ignore[arg-type]
             runners=self.repository,  # type: ignore[arg-type]
             events=self.events,  # type: ignore[arg-type]
+            runner_logs=self.runner_logs,  # type: ignore[arg-type]
             reconciler=ReconciliationService(
                 pools=settings.pools,
                 forge=self.forge,
@@ -449,3 +459,62 @@ def test_health_and_stats_both_name_the_host(client: TestClient) -> None:
     client polling three of them cannot otherwise tell their answers apart."""
     assert client.get("/health").json()["host"] == "builders-01"
     assert client.get("/stats").json()["host"] == "builders-01"
+
+
+# ---------------------------------------------------------------- logs of the departed
+
+
+async def _retired_runner(harness: Harness, *, said: str) -> str:
+    """A runner that ran, spoke, and was retired — so its container no longer exists."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    assert runner.container_id is not None
+    harness.backend.logs_by_container[runner.container_id] = said
+    await harness.application.retire(runner, reason="test")
+    return str(runner.id)
+
+
+@pytest.mark.anyio
+async def test_a_retired_runner_still_shows_what_its_container_said(
+    client: TestClient, harness: Harness
+) -> None:
+    """Retiring removes the container, which used to take the only copy of its output with
+    it — so a runner that failed said it had failed and nothing whatsoever about why."""
+    runner_id = await _retired_runner(harness, said="Traceback: it went wrong\n")
+
+    body = client.get(f"/runners/{runner_id}/logs").json()
+
+    assert body["source"] == "archive"
+    assert "it went wrong" in body["lines"]
+
+
+@pytest.mark.anyio
+async def test_a_live_container_is_preferred_over_the_archive(
+    client: TestClient, harness: Harness
+) -> None:
+    """The archive is the last words of a dead container, not a cache of a living one."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    assert runner.container_id is not None
+    harness.backend.logs_by_container[runner.container_id] = "still going\n"
+    await harness.runner_logs.store(runner.id, "stale\n")
+
+    body = client.get(f"/runners/{runner.id}/logs").json()
+
+    assert body["source"] == "container"
+    assert body["lines"] == "still going\n"
+
+
+@pytest.mark.anyio
+async def test_nothing_at_all_says_which_kind_of_nothing_it_is(
+    client: TestClient, harness: Harness
+) -> None:
+    """An empty string answered "not started yet", "printed nothing" and "gone forever"
+    identically, which is the bug: the reader cannot tell whether to wait."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    assert runner.container_id is not None
+    harness.backend.logs_by_container[runner.container_id] = ""
+
+    body = client.get(f"/runners/{runner.id}/logs").json()
+
+    assert body["source"] == "none"
+    assert body["lines"] == ""
+    assert "not printed anything yet" in body["reason"]
