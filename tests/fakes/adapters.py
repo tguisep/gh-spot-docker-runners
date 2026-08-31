@@ -113,6 +113,12 @@ class FakeForge:
     deleted: list[int] = field(default_factory=list)
     minted: list[str] = field(default_factory=list)
     job_output: dict[int, str] = field(default_factory=dict)
+
+    job_by_runner_name: dict[str, int] = field(default_factory=dict)
+    """What `find_job_for_runner` answers, keyed by runner name."""
+
+    searched_for: list[str] = field(default_factory=list)
+    """Every name searched for, so a test can prove the answer was remembered not re-asked."""
     """What `job_logs()` returns, keyed by job id. Empty means no job has finished."""
 
     _next_id: itertools.count[int] = field(default_factory=lambda: itertools.count(100))
@@ -152,6 +158,15 @@ class FakeForge:
     async def list_queued_jobs(self, repository: RepositoryTarget) -> Sequence[QueuedJob]:
         self._guard("list_queued_jobs", repository)
         return list(self.queued.get(repository, []))
+
+    async def find_job_for_runner(
+        self, repository: RepositoryTarget, runner_name: str, limit: int = 30
+    ) -> int | None:
+        """Whatever a test put in ``job_by_runner_name``. Absent means the search came back
+        empty, which is the ordinary answer for a runner that never took a job."""
+        self._guard("find_job_for_runner")
+        self.searched_for.append(runner_name)
+        return self.job_by_runner_name.get(runner_name)
 
     async def job_logs(
         self, repository: RepositoryTarget, job_id: int, tail: int = 500
