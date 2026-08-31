@@ -20,7 +20,13 @@ PACKAGED = Path("/usr/share/ghspot/images/runner")
 """Where the .deb installs them."""
 
 IN_TREE = Path(__file__).resolve().parents[2] / "images" / "runner"
-"""Where they live in a checkout, so a developer needs no install step."""
+"""Where they live in a checkout, so a developer needs no install step.
+
+Searched *before* the packaged copy. This path resolves only when the running code is the
+checkout's own — from the installed `/usr/bin/ghspot` it points inside the virtualenv and
+holds nothing — so its existence already means "you are working in the tree", and building
+from the version you have installed instead would be a surprise.
+"""
 
 
 def runner_sources(override: str | None = None) -> Path | None:
@@ -39,8 +45,32 @@ def runner_sources(override: str | None = None) -> Path | None:
         named = Path(explicit).expanduser()
         return named if (named / "build.sh").is_file() else None
 
-    for candidate in (PACKAGED, IN_TREE):
+    for candidate in (IN_TREE, PACKAGED):
         if (candidate / "build.sh").is_file():
+            return candidate
+    return None
+
+
+EXAMPLE_PACKAGED = Path("/usr/share/doc/ghspot/config.example.toml")
+"""Where the .deb installs the commented reference."""
+
+EXAMPLE_IN_TREE = Path(__file__).resolve().parents[2] / "config.example.toml"
+
+
+def example_config(override: str | None = None) -> Path | None:
+    """The fully commented reference configuration, or ``None`` when it is not installed.
+
+    `ghspot setup` writes its output *from* this file rather than from a template of its own,
+    so the explanation an operator reads next to a setting is the one that ships — there is no
+    second copy of it to fall behind.
+    """
+    explicit = override or os.environ.get("GHSPOT_CONFIG_EXAMPLE")
+    if explicit:
+        named = Path(explicit).expanduser()
+        return named if named.is_file() else None
+
+    for candidate in (EXAMPLE_IN_TREE, EXAMPLE_PACKAGED):
+        if candidate.is_file():
             return candidate
     return None
 
