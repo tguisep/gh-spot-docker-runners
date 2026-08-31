@@ -45,6 +45,16 @@ docker run --rm \
         [ -d /etc/ghspot/pools.d ] || fail "the pool directory was not created"
         echo "    ok: /etc/ghspot/pools.d exists"
 
+        # Without the sources, `ghspot image build` has nothing to build from and the
+        # instruction every hint prints is a dead end.
+        [ -x /usr/share/ghspot/images/runner/build.sh ] \
+            || fail "the runner image sources are missing or not executable"
+        ls /usr/share/ghspot/images/runner/*.Dockerfile >/dev/null 2>&1 \
+            || fail "the runner sources are installed without their Dockerfiles"
+        ghspot image list | grep -q ubuntu-24.04 \
+            || fail "ghspot image list does not find the packaged sources"
+        echo "    ok: runner sources installed and found by ghspot image list"
+
         # The dashboard is optional in the package, so its absence is reported rather than
         # failed. What must not happen is a directory that exists without the one file the
         # daemon looks for: it would be found, mounted, and 404 on every page.

@@ -90,6 +90,19 @@ else
     echo "    the daemon will serve the API only, and say so at /ui"
 fi
 
+# The runner image sources. A few Dockerfiles and a shell script — small enough that
+# shipping them costs nothing, and without them `ghspot image build` on an installed host
+# has nothing to build from and every "build the runner image" hint names a missing file.
+install -d "${STAGE}/usr/share/ghspot/images/runner"
+install -m 0644 "${ROOT}/images/runner/"*.Dockerfile "${STAGE}/usr/share/ghspot/images/runner/"
+install -m 0644 "${ROOT}/images/runner/upstream.lock.yml" \
+    "${STAGE}/usr/share/ghspot/images/runner/"
+for script in build.sh verify.sh entrypoint.sh sync-toolset.sh; do
+    install -m 0755 "${ROOT}/images/runner/${script}" \
+        "${STAGE}/usr/share/ghspot/images/runner/${script}"
+done
+echo "    runner sources: $(du -sh "${STAGE}/usr/share/ghspot/images" | cut -f1)"
+
 install -d "${STAGE}/usr/share/doc/ghspot"
 install -m 0644 "${ROOT}/config.example.toml" "${STAGE}/usr/share/doc/ghspot/config.example.toml"
 install -m 0644 "${ROOT}/LICENSE" "${STAGE}/usr/share/doc/ghspot/copyright"
