@@ -254,7 +254,12 @@ def stats(
             raise typer.Exit(code=2) from error
         start = SystemClock().now() - window
 
-    query = GatherStats(read_only_events(settings), read_only_store(settings), SystemClock())
+    query = GatherStats(
+        read_only_events(settings),
+        read_only_store(settings),
+        SystemClock(),
+        settings.daemon.host,
+    )
     for block in stats_tables(_run(query(start))):
         console.print(block)
 

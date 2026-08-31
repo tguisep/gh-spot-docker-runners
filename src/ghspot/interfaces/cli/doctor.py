@@ -61,7 +61,9 @@ def _configuration(settings: Settings) -> Check:
     return Check(
         name="configuration",
         ok=True,
-        detail=f"{settings.source} — {len(settings.pools)} pool(s): {pools}",
+        detail=(
+            f"{settings.source} — {len(settings.pools)} pool(s) on {settings.daemon.host}: {pools}"
+        ),
     )
 
 

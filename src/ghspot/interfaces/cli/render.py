@@ -176,12 +176,13 @@ def stats_tables(view: StatsView) -> list[Table | Text]:
         if view.since is not None
         else "the whole recorded history"
     )
-    blocks: list[Table | Text] = [
-        Text.assemble(
-            ("usage ", "bold"),
-            (f"— {window}, {view.events_read} event(s) read", "dim"),
-        )
-    ]
+    # The host leads, because these are one machine's numbers and the commonest way to read
+    # them wrong is to think they are the fleet's.
+    heading: list[tuple[str, str]] = [("usage ", "bold")]
+    if view.host:
+        heading.append((f"on {view.host} ", "bold cyan"))
+    heading.append((f"— {window}, {view.events_read} event(s) read", "dim"))
+    blocks: list[Table | Text] = [Text.assemble(*heading)]
 
     if not view.by_repository:
         blocks.append(
