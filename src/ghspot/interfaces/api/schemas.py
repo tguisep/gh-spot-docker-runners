@@ -203,6 +203,13 @@ class HealthResponse(BaseModel):
     """False on a fresh install: the daemon is up and nobody has finished filling in the
     configuration. Narrower than `doctor`, which asks whether everything works."""
 
+    config_stale: bool = False
+    """The configuration on disk has been edited since the daemon read it.
+
+    The daemon builds pools, labels and clients from settings once, at startup, so an edit
+    changes nothing until it restarts. Without this the operator adds a label, watches the
+    dashboard keep showing the old one, and cannot tell a stale process from a bad file."""
+
     setup_reason: str | None = None
     """What is still missing, when `configured` is false."""
 

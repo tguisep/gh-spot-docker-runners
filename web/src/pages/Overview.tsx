@@ -34,6 +34,14 @@ export function Overview() {
 
     return (
         <>
+            {health.data?.config_stale ? (
+                <p className="notice">
+                    The configuration has been edited since the daemon read it. Settings —
+                    pools, labels, limits — are read once, at startup, so nothing here reflects
+                    the change yet. <code>sudo systemctl restart ghspot</code>
+                </p>
+            ) : null}
+
             <Panel title="daemon">
                 <Status loading={health.loading} error={health.error} />
                 {health.data ? (

@@ -1051,6 +1051,13 @@ Leave it. The next tick either adopts it or deletes it. If it persists past a fe
 for `tick.error` lines — the daemon only deletes runners whose name starts with `ghspot-`
 and which are offline, so a hand-registered runner is never touched.
 
+**`/etc/ghspot/token is readable by other users`.**
+Check *which* others before acting on it. `0640 root:ghspot` is the packaged layout and is
+correct — the daemon runs as `ghspot` and a credential only root can read stops it starting.
+The warning fires for genuinely wider access: any permission for `other`, group-write, or
+group-read by a group that is not the daemon's. The remedy it prints is the packaged layout,
+not `chmod 600`, which would break the service.
+
 **`could not read the token from /etc/ghspot/token: Permission denied`, and the unit will
 not start.**
 The daemon runs as `ghspot`, not as the root you ran the wizard with. Wizards from before
@@ -1075,6 +1082,20 @@ cd web && npm ci && npm run build
 sudo mkdir -p /usr/share/ghspot/web && sudo cp -a dist/. /usr/share/ghspot/web/
 sudo systemctl restart ghspot
 ```
+
+**A configuration change does nothing.**
+Settings are read **once, at startup** — pools, labels, limits, the forge client, all of it.
+Editing `config.toml` or a file under `pools.d/` changes nothing in a running daemon:
+
+```bash
+sudo systemctl restart ghspot
+```
+
+`/health` reports `config_stale: true` once the file is newer than what the daemon read, and
+the dashboard shows a banner saying so, because the alternative was watching a label you just
+added fail to appear with no way to tell a stale process from a bad file. Note that `ghspot
+doctor` cannot tell you this: it reads the file itself, so it always reports on what is on
+disk rather than on what the daemon is running.
 
 **The GitHub pane says no job was found.**
 Nothing records which job a runner takes while it works — GitHub's runner list reports *that*

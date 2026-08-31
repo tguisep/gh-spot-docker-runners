@@ -8,12 +8,19 @@ set -e
 
 case "$1" in
     remove)
+        # dpkg deletes the files it shipped and stops. Running the daemon leaves __pycache__
+        # beside them, so every directory holding one survives as "not empty so not removed"
+        # — a bundled interpreter has hundreds. /opt/ghspot is entirely ours, so taking the
+        # whole tree is both safe and the only way to leave nothing behind.
+        rm -rf /opt/ghspot
         if [ -d /run/systemd/system ]; then
             systemctl --system daemon-reload >/dev/null 2>&1 || true
         fi
         ;;
 
     purge)
+        rm -rf /opt/ghspot
+        rm -rf /usr/share/ghspot
         rm -rf /var/lib/ghspot
         rm -rf /etc/ghspot
         if getent passwd ghspot >/dev/null; then

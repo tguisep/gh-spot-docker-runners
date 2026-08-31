@@ -7,7 +7,9 @@ busy runner is not stopped by accident.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -572,3 +574,17 @@ async def test_a_runner_that_never_registered_is_not_searched_for(
 
     assert body["job_id"] is None
     assert harness.forge.searched_for == []
+
+
+def test_health_says_when_the_configuration_has_moved_on(
+    client: TestClient, harness: Harness, tmp_path: Path
+) -> None:
+    """Settings are read once, at startup. An operator who adds a label and watches the
+    dashboard show the old one cannot otherwise tell a stale process from a bad file."""
+    config = tmp_path / "config.toml"
+    config.write_text("# edited after the daemon read it\n")
+    harness.application.settings = replace(
+        harness.settings, sources=(config,), loaded_mtime=config.stat().st_mtime - 10
+    )
+
+    assert client.get("/health").json()["config_stale"] is True

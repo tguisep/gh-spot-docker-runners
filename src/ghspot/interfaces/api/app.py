@@ -28,7 +28,7 @@ from ghspot.application.queries.views import GetPoolStatus, ListRunners, to_view
 from ghspot.composition import Application
 from ghspot.domain.errors import GhSpotError, RunnerBusyError, RunnerNotFoundError
 from ghspot.domain.model.runner import Runner, RunnerState
-from ghspot.infrastructure.config.settings import unconfigured
+from ghspot.infrastructure.config.settings import changed_on_disk, unconfigured
 from ghspot.interfaces.api import dashboard
 from ghspot.interfaces.api.schemas import (
     ErrorResponse,
@@ -120,6 +120,7 @@ def create_app(application: Application) -> FastAPI:
             pools=len(app.settings.pools),
             docker=docker_ok,
             configured=pending is None,
+            config_stale=changed_on_disk(app.settings),
             setup_reason=pending,
         )
 

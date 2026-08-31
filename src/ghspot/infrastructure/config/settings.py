@@ -15,7 +15,7 @@ import re
 import socket
 import tomllib
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -184,6 +184,12 @@ class Settings:
     pools: tuple[PoolConfiguration, ...] = field(default=())
     source: Path | None = None
 
+    sources: tuple[Path, ...] = ()
+    """Every file that was read, including the pool files an `include` pulled in."""
+
+    loaded_mtime: float = 0.0
+    """Newest mtime across `sources` when this was loaded, for spotting later edits."""
+
     @property
     def repositories(self) -> list[RepositoryTarget]:
         seen: dict[RepositoryTarget, None] = {}
@@ -229,7 +235,37 @@ def load(path: Path | str | None = None) -> Settings:
     """Load and validate configuration, searching the usual places if no path is given."""
     resolved = _locate(path)
     raw = _read(resolved)
-    return from_mapping(raw, source=resolved, included=_include(raw, resolved))
+    included = _include(raw, resolved)
+    settings = from_mapping(raw, source=resolved, included=included)
+
+    # Every file that contributed, so the daemon can later notice it is running configuration
+    # somebody has since edited. Pools live in their own files too, and a change to one of
+    # those is exactly as invisible as a change to the main one.
+    read = (resolved, *(origin for _table, origin in included))
+    return replace(settings, sources=read, loaded_mtime=_newest_mtime(read))
+
+
+def _newest_mtime(paths: Sequence[Path]) -> float:
+    newest = 0.0
+    for path in paths:
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return newest
+
+
+def changed_on_disk(settings: Settings) -> bool:
+    """Whether the configuration has been edited since the daemon read it.
+
+    The daemon builds everything from settings once, at startup: pools, labels, the forge
+    client, the backend. Editing the file changes none of it, and nothing said so — the
+    operator adds a label, watches the dashboard keep showing the old one, and has no way to
+    tell a stale process from a mistake in the file.
+    """
+    if not settings.sources:
+        return False
+    return _newest_mtime(settings.sources) > settings.loaded_mtime
 
 
 def from_mapping(
@@ -810,15 +846,47 @@ def _reject_credential_environment(environment: dict[str, Any], where: str, name
         )
 
 
+#: The account the systemd unit runs as. A credential it cannot read stops the daemon dead,
+#: so group-readable *by this group* is the packaged layout rather than a mistake.
+SERVICE_GROUP = "ghspot"
+
+
 def _warn_if_world_readable(path: Path) -> None:
+    """Complain about a credential more people can read than need to.
+
+    Not simply "anything but 0600". The package deliberately installs credentials 0640
+    root:ghspot, because the daemon runs as ``ghspot`` and a file only root can read stops it
+    starting. Warning about that told an operator to run ``chmod 600`` — which would break the
+    very service the check exists to protect.
+    """
     try:
-        mode = path.stat().st_mode
+        info = path.stat()
     except OSError:
         return
-    if mode & 0o077:
-        import warnings
 
-        warnings.warn(
-            f"{path} is readable by other users; run: chmod 600 {path}",
-            stacklevel=2,
-        )
+    mode = info.st_mode
+    if mode & 0o007:
+        complaint = "is readable by everybody"
+    elif mode & 0o020:
+        complaint = "is writable by its group"
+    elif mode & 0o040 and not _is_service_group(info.st_gid):
+        complaint = "is readable by a group other than the daemon's"
+    else:
+        return
+
+    import warnings
+
+    warnings.warn(
+        f"{path} {complaint}; run: chown root:{SERVICE_GROUP} {path} && chmod 640 {path}",
+        stacklevel=2,
+    )
+
+
+def _is_service_group(gid: int) -> bool:
+    try:
+        import grp
+
+        return bool(grp.getgrnam(SERVICE_GROUP).gr_gid == gid)
+    except (KeyError, ImportError):
+        # No packaged service account here, so there is no group that legitimately needs it.
+        return False

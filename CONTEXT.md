@@ -712,3 +712,34 @@ is looking at when they go hunting for a log.
   necessarily watching.
 - The old message blamed the runner ("is not running a job") for what was really the daemon
   not knowing. Both the CLI and the dashboard now say what actually happened.
+
+## 2026-08-31 — three things a real install found
+
+**Purge left directories behind.** dpkg removes the files it shipped and stops, so any
+directory holding something it does not own survives as "not empty so not removed". Running the
+daemon once leaves `__pycache__` throughout the bundled interpreter, which is hundreds of them.
+`postrm` now takes `/opt/ghspot` on remove and `/usr/share/ghspot` on purge — both are entirely
+ours. `verify.sh` creates two unowned files first, so the test fails without the fix; before,
+it passed because a container that never ran the daemon has nothing to leave behind.
+
+**The credential warning contradicted the packaging.** `_warn_if_world_readable` flagged
+`mode & 0o077` — any group or other bit — and advised `chmod 600`. The package installs
+credentials `0640 root:ghspot` on purpose, because the daemon runs as `ghspot`, so the check
+fired on the correct layout and its advice would have broken the service. It now distinguishes
+the three cases that actually matter: any access for `other`, group-write, and group-read by a
+group that is not the daemon's.
+
+**A configuration change did nothing, silently.** Settings are read once, at startup — pools,
+labels, limits, every client. Editing the file changes nothing in a running daemon and nothing
+said so, so adding a label looked identical to writing it wrong. `/health` now reports
+`config_stale`, and the dashboard says it with the restart command.
+
+### Notes for later
+
+- Staleness is the newest mtime across *every* file that was read, `pools.d/*.toml` included. A
+  change to a pool file is exactly as invisible as one to the main file.
+- `ghspot doctor` cannot report this and does not try. It loads the file itself, so its
+  `loaded_mtime` is always "now" — a check there would have passed unconditionally, which is
+  worse than no check. Only a process holding settings from earlier can answer it.
+- Reporting staleness is not reloading. The daemon still needs a restart; it now says so
+  instead of leaving the operator to guess.
