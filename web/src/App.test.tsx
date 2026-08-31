@@ -19,6 +19,7 @@ const HEALTH: Health = {
     pools: 1,
     docker: true,
     configured: true,
+    config_stale: false,
     setup_reason: null,
 };
 

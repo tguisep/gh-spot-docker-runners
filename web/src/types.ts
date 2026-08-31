@@ -55,6 +55,8 @@ export interface Health {
     docker: boolean;
     /** False on a fresh install: the daemon is up and nobody has finished the configuration. */
     configured: boolean;
+    /** The file on disk has been edited since the daemon read it. Settings are read once. */
+    config_stale: boolean;
     setup_reason: string | null;
 }
 
