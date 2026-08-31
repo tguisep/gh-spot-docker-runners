@@ -169,7 +169,7 @@ max_launch_per_tick = 2   # spreads a large matrix across ticks
 
 [pool.container]
 # The image tag and the OS label above are the same string, deliberately: build with
-# images/runner/build.sh and the two cannot drift apart.
+# `ghspot image build ubuntu-24.04` and the two cannot drift apart.
 #
 # Available: ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10
 image = "ghspot/runner:ubuntu-24.04"

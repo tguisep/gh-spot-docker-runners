@@ -476,3 +476,37 @@ operator reads that list in a shell where the wizard's own sudo has long expired
   its exit-code assertion while silently checking an empty string.
 - `from ... import setup as setup_module` in a test module collides with pytest's own xunit
   hook name and every test in the file errors before it runs.
+
+## 2026-08-31 — `ghspot setup` fills in the reference
+
+The wizard wrote eighteen lines: the four answers it asked for and nothing else. It parsed,
+it ran, and it said nothing about the thirty settings it had not mentioned — the capacity
+ceilings, the housekeeping, the pool modes. The file that arrives after `apt install` is the
+one an operator is least equipped to go and research, and it arrived empty.
+
+It now writes `config.example.toml` with the answers substituted into it. There is no second
+copy of the prose to fall behind: the explanation beside a setting is the shipped one, and a
+setting added to the reference turns up in the next configuration the wizard writes without
+anybody remembering to add it in two places.
+
+Only what was asked is substituted. Everything else keeps the reference's value — which for
+`idle_timeout`, `max_job_duration` and `max_launch_per_tick` *is* the code's default, so the
+file says out loud what the daemon would have done in silence. `cpus` and `memory` are the
+exception and get commented out: unset they mean no limit, and inheriting the reference's
+illustration would cap every job on the host at two cores.
+
+### Notes for later
+
+- The reference is found the same way the runner sources are, and both now prefer the
+  checkout over the packaged copy. `IN_TREE` resolves only when the running code *is* the
+  checkout's — from the installed `/usr/bin/ghspot` it points inside the virtualenv — so its
+  existence already means "you are working in the tree", and quietly using the installed
+  version instead is the surprise.
+- The wizard echoes the file back after writing it. At eighteen lines that was a
+  confirmation; at two hundred it buried the four next steps, which are the point of the
+  ending. It prints the live settings only.
+- Line surgery on a documentation file has three ways to go wrong and the tests name all
+  three: matching a key in the wrong section, matching the commented-out `[[pool]]` the
+  reference ends with as if it were real, and echoing a commented-out assignment back as its
+  own trailing comment when switching it on.
+- `config.example.toml` was carrying a stale `images/runner/build.sh` of its own.
