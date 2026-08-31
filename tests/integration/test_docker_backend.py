@@ -109,7 +109,7 @@ async def test_a_missing_image_says_how_to_build_it(backend: DockerRunnerBackend
         labels={MANAGED: "true"},
     )
 
-    with pytest.raises(ImageNotFoundError, match=r"build\.sh"):
+    with pytest.raises(ImageNotFoundError, match=r"ghspot image build"):
         await backend.create(spec)
 
 
