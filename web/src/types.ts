@@ -73,6 +73,13 @@ export interface Tick {
 export interface Logs {
     runner_id: string;
     lines: string;
+    /**
+     * `container` is live. `archive` is the tail kept when the runner retired and its
+     * container was removed — the same output, frozen. `none` means there is nothing.
+     */
+    source: 'container' | 'archive' | 'none';
+    /** Why there is nothing, when `source` is `none`. */
+    reason: string | null;
 }
 
 export interface JobLogs {
