@@ -1076,6 +1076,16 @@ sudo mkdir -p /usr/share/ghspot/web && sudo cp -a dist/. /usr/share/ghspot/web/
 sudo systemctl restart ghspot
 ```
 
+**The GitHub pane says no job was found.**
+Nothing records which job a runner takes while it works — GitHub's runner list reports *that*
+a runner is busy without saying which job it took. So the job is looked up when you ask for it,
+by searching the last 30 workflow runs for one whose `runner_name` matches. The answer is
+written back to the runner's record, so the search happens once per runner and never again.
+
+Two consequences. A runner whose run has scrolled past those 30 is not found — nothing is
+broken, the search window simply does not reach it. And a runner that never registered is
+never searched for, because it cannot have been handed a job.
+
 **A retired runner's logs are empty.**
 Retiring removes the container, and Docker drops its output with it — proven, not assumed: the
 same `docker logs` call returns the output one moment and an empty string the next. The daemon

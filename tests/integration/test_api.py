@@ -518,3 +518,57 @@ async def test_nothing_at_all_says_which_kind_of_nothing_it_is(
     assert body["source"] == "none"
     assert body["lines"] == ""
     assert "not printed anything yet" in body["reason"]
+
+
+# ---------------------------------------------------------------- finding the job
+
+
+@pytest.mark.anyio
+async def test_a_retired_runner_s_job_log_is_found_by_searching_for_it(
+    client: TestClient, harness: Harness
+) -> None:
+    """Nothing records which job a runner took: the runner list says a runner is busy without
+    saying which job it took, so `current_job_id` was never once set outside a test. The whole
+    GitHub pane could not fire."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    harness.forge.job_by_runner_name[runner.name] = 4242
+    harness.forge.job_output[4242] = "the job, as GitHub kept it\n"
+
+    body = client.get(f"/runners/{runner.id}/job-logs").json()
+
+    assert body["job_id"] == 4242
+    assert body["available"] is True
+    assert "as GitHub kept it" in body["lines"]
+
+
+@pytest.mark.anyio
+async def test_the_job_it_found_is_remembered(client: TestClient, harness: Harness) -> None:
+    """The page polls every ten seconds. A search per poll would spend the hourly budget on
+    one open tab."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    harness.forge.job_by_runner_name[runner.name] = 4242
+
+    client.get(f"/runners/{runner.id}/job-logs")
+    client.get(f"/runners/{runner.id}/job-logs")
+    client.get(f"/runners/{runner.id}/job-logs")
+
+    assert harness.forge.searched_for == [runner.name]
+    remembered = await harness.repository.get(runner.id)
+    assert remembered is not None
+    assert remembered.current_job_id == 4242
+
+
+@pytest.mark.anyio
+async def test_a_runner_that_never_registered_is_not_searched_for(
+    client: TestClient, harness: Harness
+) -> None:
+    """It cannot have been handed a job, so a walk through recent history could only prove
+    what the record already says."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    runner.github_runner_id = None
+    await harness.repository.save(runner)
+
+    body = client.get(f"/runners/{runner.id}/job-logs").json()
+
+    assert body["job_id"] is None
+    assert harness.forge.searched_for == []

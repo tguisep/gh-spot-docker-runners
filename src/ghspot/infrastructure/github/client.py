@@ -206,6 +206,45 @@ class GitHubClient:
 
         return jobs
 
+    async def find_job_for_runner(
+        self, repository: RepositoryTarget, runner_name: str, limit: int = MAX_RUNS_PER_POLL
+    ) -> int | None:
+        """Search recent runs for the job this runner took.
+
+        Newest first, stopping at the first match: the runner name is unique per registration,
+        so one hit is the answer and there is no reason to read the rest of the history.
+
+        Bounded by ``limit`` runs. An unbounded walk of a busy repository is how a page nobody
+        was watching spends the whole hourly budget.
+        """
+        if not runner_name:
+            return None
+
+        runs = await self._paginate(
+            f"/{repository.api_path}/actions/runs",
+            key="workflow_runs",
+            limit=limit,
+        )
+        run_ids = [run["id"] for run in runs if isinstance(run.get("id"), int)]
+
+        # Concurrent for the same reason list_queued_jobs is: done in sequence, thirty runs
+        # is thirty round trips and the page appears to hang.
+        gate = asyncio.Semaphore(_JOB_FETCH_CONCURRENCY)
+
+        async def jobs_for(run_id: int) -> list[dict[str, Any]]:
+            async with gate:
+                return await self._paginate(
+                    f"/{repository.api_path}/actions/runs/{run_id}/jobs",
+                    key="jobs",
+                    params={"filter": "latest"},
+                )
+
+        for items in await asyncio.gather(*(jobs_for(run_id) for run_id in run_ids)):
+            for item in items:
+                if item.get("runner_name") == runner_name and isinstance(item.get("id"), int):
+                    return int(item["id"])
+        return None
+
     async def job_logs(
         self, repository: RepositoryTarget, job_id: int, tail: int = 500
     ) -> str | None:
