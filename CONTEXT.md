@@ -871,3 +871,28 @@ are returning and what to do instead — stop the daemon, or set `min_idle = 0` 
   nine is how somebody concludes the command is unreliable.
 - `--pool` without `--all` is refused rather than ignored. It would silently do nothing, which
   is the worst possible answer to a command about stopping things.
+
+## 2026-08-31 — v0.5.0 shipped with no packages
+
+`gh release upload` failed with **HTTP 422: Cannot upload assets to an immutable release**, and
+v0.5.0 has zero assets against v0.4.0's three. The README tells people to take the package from
+the latest release; for v0.5.0 there was nothing there.
+
+The ordering had always been wrong and only now had consequences. release-please **published**
+the release, the packages then took minutes to build, and the upload came last. Publishing is
+what makes a release immutable, so by the time the `.deb`s existed the release was sealed.
+
+Draft first, published last. release-please leaves a draft, the packages and the notes go onto
+it, and `gh release edit --draft=false --latest` seals it with everything already attached.
+
+A build that fails now leaves a **draft** — recoverable, and invisible to anyone browsing
+releases — rather than a published release nobody can install.
+
+### Notes for later
+
+- Nothing changed in the repository to cause this. Immutable releases became the behaviour
+  underneath a workflow that had been publishing-then-uploading since it was written, and the
+  first symptom was a release that looked fine and contained nothing.
+- v0.5.0 itself cannot be repaired in place, for the same reason it broke: assets cannot be
+  added to a published immutable release. It needs deleting and recreating from its tag, or
+  superseding.

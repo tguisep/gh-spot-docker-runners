@@ -136,8 +136,10 @@ jobs:
           sha256sum *.deb > SHA256SUMS
           cat SHA256SUMS
 
-      # release-please has already created the release with the changelog as its notes, so
-      # this uploads to it and appends installation instructions rather than replacing them.
+      # release-please leaves the release as a *draft*, which is the only window in which
+      # assets can be attached: a published release is immutable, and uploading to one fails
+      # with "Cannot upload assets to an immutable release". v0.5.0 shipped with no packages
+      # at all because the release was published minutes before its .debs finished building.
       - name: Upload the packages
         run: gh release upload "${TAG}" dist/*.deb dist/SHA256SUMS --clobber
 
@@ -170,3 +172,11 @@ jobs:
           BODY
 
           gh release edit "${TAG}" --notes-file "${NOTES}"
+
+      # Last, and only once the packages and the notes are both on it. Publishing is what
+      # seals the release: everything that has to be part of it has to be there first.
+      #
+      # It also means a failed build leaves a *draft* rather than a published release nobody
+      # can install — which is the state v0.5.0 ended up in.
+      - name: Publish the release
+        run: gh release edit "${TAG}" --draft=false --latest
