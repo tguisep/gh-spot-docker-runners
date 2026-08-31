@@ -1,5 +1,7 @@
 name: Dashboard
 
+# Smoke test: this comment exists to trigger a run and prove where jobs land.
+
 on:
   push:
     branches: [main]
