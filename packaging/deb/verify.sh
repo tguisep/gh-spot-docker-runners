@@ -61,18 +61,17 @@ docker run --rm \
             || fail "ghspot image list does not find the packaged sources"
         echo "    ok: runner sources installed and found by ghspot image list"
 
-        # The dashboard is optional in the package, so its absence is reported rather than
-        # failed. What must not happen is a directory that exists without the one file the
-        # daemon looks for: it would be found, mounted, and 404 on every page.
-        if [ -d /usr/share/ghspot/web ]; then
-            [ -f /usr/share/ghspot/web/index.html ] \
-                || fail "the dashboard is installed without an index.html"
-            ls /usr/share/ghspot/web/assets/*.js >/dev/null 2>&1 \
-                || fail "the dashboard is installed without its assets"
-            echo "    ok: dashboard installed ($(du -sh /usr/share/ghspot/web | cut -f1))"
-        else
-            echo "    note: packaged without the dashboard (no npm at build time)"
-        fi
+        # A missing dashboard used to be a note. It is a failure: build.sh packages without
+        # one when node is absent, so a build container that lost node produced a package
+        # that installs cleanly, starts cleanly, and 404s at /ui — reported nowhere until
+        # somebody opened it. Every released package had this.
+        [ -d /usr/share/ghspot/web ] \
+            || fail "packaged without the dashboard — no usable node at build time"
+        [ -f /usr/share/ghspot/web/index.html ] \
+            || fail "the dashboard is installed without an index.html"
+        ls /usr/share/ghspot/web/assets/*.js >/dev/null 2>&1 \
+            || fail "the dashboard is installed without its assets"
+        echo "    ok: dashboard installed ($(du -sh /usr/share/ghspot/web | cut -f1))"
 
         # The unit points here; if the two ever disagree the service silently fails to start.
         EXEC="$(sed -n "s|^ExecStart=\([^ ]*\).*|\1|p" /lib/systemd/system/ghspot.service)"
