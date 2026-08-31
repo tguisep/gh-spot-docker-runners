@@ -22,7 +22,11 @@ from ghspot.infrastructure.github.auth import (
     TokenProvider,
 )
 from ghspot.infrastructure.github.client import GitHubClient
-from ghspot.infrastructure.persistence.sqlite import SqliteEventLog, SqliteRunnerRepository
+from ghspot.infrastructure.persistence.sqlite import (
+    SqliteEventLog,
+    SqliteRunnerLogs,
+    SqliteRunnerRepository,
+)
 from ghspot.infrastructure.system import SystemClock, UuidGenerator
 
 
@@ -35,6 +39,7 @@ class Application:
     backend: DockerRunnerBackend
     runners: SqliteRunnerRepository
     events: SqliteEventLog
+    runner_logs: SqliteRunnerLogs
     reconciler: ReconciliationService
     housekeeping: ReclaimHostSpace
     clock: SystemClock
@@ -94,6 +99,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
     container_backend = backend or DockerRunnerBackend()
     runners = SqliteRunnerRepository(settings.daemon.state_db)
     events = SqliteEventLog(settings.daemon.state_db)
+    runner_logs = SqliteRunnerLogs(settings.daemon.state_db)
 
     provision = ProvisionRunner(
         forge=forge, backend=container_backend, runners=runners, clock=clock, ids=ids, events=events
@@ -105,6 +111,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
         clock=clock,
         events=events,
         stop_timeout_seconds=int(settings.daemon.stop_timeout.total_seconds()),
+        archive=runner_logs,
     )
     reconciler = ReconciliationService(
         pools=settings.pools,
@@ -141,6 +148,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
         backend=container_backend,
         runners=runners,
         events=events,
+        runner_logs=runner_logs,
         reconciler=reconciler,
         housekeeping=housekeeping,
         clock=clock,
@@ -161,3 +169,8 @@ def read_only_store(settings: Settings) -> SqliteRunnerRepository:
 def read_only_events(settings: Settings) -> SqliteEventLog:
     """The history, on the same terms: no token, no Docker, read from the file."""
     return SqliteEventLog(settings.daemon.state_db)
+
+
+def read_only_runner_logs(settings: Settings) -> SqliteRunnerLogs:
+    """What retired containers said, on the same read-only terms as the projection."""
+    return SqliteRunnerLogs(settings.daemon.state_db)
