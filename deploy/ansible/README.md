@@ -57,7 +57,7 @@ credential does not appear in output even at `-vvv` — the point of that file i
 a secret, and Ansible logs template contents by default.
 
 Setting either up, with the exact permissions:
-[`docs/authentication.md`](../../docs/authentication.md).
+[the authentication guide](https://tguisep.github.io/gh-spot-docker-runners/start/authentication/).
 
 ## Tests
 
@@ -126,7 +126,7 @@ ghspot_pools:
 
 The role does **not** install the NVIDIA Container Toolkit. That is driver territory and
 varies too much per host to do behind someone's back. Install it first — see
-[GPUs in the operations guide](../../docs/operations.md#gpus) — and the run will confirm it,
+[GPUs](https://tguisep.github.io/gh-spot-docker-runners/guides/gpus/) — and the run will confirm it,
 since `ghspot doctor` fails the play when a pool asks for GPUs the host cannot provide.
 
 Give GPU work its own pool, and set `max_runners` to the number of GPUs you have: two runners

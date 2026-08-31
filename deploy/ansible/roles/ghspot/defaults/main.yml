@@ -58,7 +58,7 @@ ghspot_web_root: ""
 #
 # Jobs reach the host's Docker daemon through the mounted socket, so what they build, pull
 # and create outlives them. This bounds that; it does not eliminate it — a container a job
-# leaves *running* is never touched. See docs/operations.md.
+# leaves *running* is never touched. See https://tguisep.github.io/gh-spot-docker-runners/guides/housekeeping/.
 #
 # Any age may be "never" to turn that sweep off; enabled: false turns off all of it.
 ghspot_housekeeping:

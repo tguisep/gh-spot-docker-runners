@@ -11,7 +11,7 @@
 #     GHSPOT_GITHUB_APP_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...
 #
 # Setting up either, with the exact permissions needed:
-# https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/authentication.md
+# https://tguisep.github.io/gh-spot-docker-runners/start/authentication/
 #
 # A fully commented reference lives at /usr/share/doc/ghspot/config.example.toml
 

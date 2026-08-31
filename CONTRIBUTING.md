@@ -107,7 +107,7 @@ it can affect:
 |---|---|
 | `python.yml` | `src/`, `tests/`, `pyproject.toml`, `uv.lock` |
 | `runner-images.yml` | `images/runner/` |
-| `packaging.yml` | `packaging/`, `deploy/`, `src/`, `docs/operations.md` |
+| `packaging.yml` | `packaging/`, `deploy/`, `src/`, `site/src/content/docs/start/install.md` |
 | `ansible.yml` | `deploy/ansible/`, and the daemon's configuration module |
 | `upstream-toolset.yml` | `images/runner/`, and weekly |
 | `release.yml` | pushes to `main` |
@@ -118,7 +118,7 @@ gates.
 Two entries are deliberate rather than obvious:
 
 - **`src/` starts packaging**, because the `.deb` embeds the application.
-- **`docs/operations.md` starts packaging**, because `verify-source-install.sh` runs the
+- **The install page starts packaging**, because `verify-source-install.sh` runs the
   commands that file tells people to run. Editing them without running them is exactly how
   they were wrong three times.
 

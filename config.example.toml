@@ -21,7 +21,8 @@
 # Two ways to authenticate. Credentials are never read from this file itself — it points
 # at files, or you set the environment variables (the environment always wins).
 #
-# Full walkthrough for both, with the exact permissions: docs/authentication.md
+# Full walkthrough for both, with the exact permissions:
+# https://tguisep.github.io/gh-spot-docker-runners/start/authentication/
 
 # --- Option A: personal access token -------------------------------------------------
 # Quickest to set up. A fine-grained token scoped to the repositories below, with:
@@ -78,7 +79,7 @@ state_db = "~/.local/state/ghspot/state.db"
 # This bounds that. It does not eliminate it: a job that leaves a container *running* is
 # never touched, because nothing tells it apart from something you started yourself. Genuine
 # zero-residue needs each runner to have its own Docker daemon, which is a different
-# architecture. See docs/operations.md.
+# architecture. See https://tguisep.github.io/gh-spot-docker-runners/guides/housekeeping/.
 [housekeeping]
 # enabled = true
 # every = "1h"                     # wall clock, not ticks

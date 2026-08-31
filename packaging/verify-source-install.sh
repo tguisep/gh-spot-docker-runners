@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Run the install sequence exactly as docs/operations.md documents it, on a clean system.
+# Run the install sequence exactly as the documentation site documents it, on a clean
+# system. Source: site/src/content/docs/start/install.md
 #
 # This exists because the documented commands were wrong three times running: `uv sync`
 # leaves nothing on PATH, the systemd unit pointed at a virtualenv nothing created, and

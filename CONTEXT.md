@@ -99,7 +99,7 @@ Added as a second authentication mode, alongside the personal access token. For 
 polling continuously, an App is the better credential: the rate limit belongs to the
 installation rather than to a person, the permissions are the app's rather than everything
 the account can reach, and installation tokens expire hourly on their own. Recorded in
-[ADR 6](docs/adr/0006-github-app-alongside-pat.md).
+[ADR 6](https://tguisep.github.io/gh-spot-docker-runners/reference/adr/0006-github-app-alongside-pat/).
 
 The structural change is small but real: `GitHubClient` used to set `Authorization` once in
 its constructor. An installation token expires under a long-running daemon, so the header is
@@ -743,3 +743,32 @@ said so, so adding a label looked identical to writing it wrong. `/health` now r
   worse than no check. Only a process holding settings from earlier can answer it.
 - Reporting staleness is not reloading. The daemon still needs a restart; it now says so
   instead of leaving the operator to guess.
+
+## 2026-08-31 — the documentation became a site
+
+`docs/operations.md` had reached 1177 lines across fifteen top-level sections, which is not a
+document anybody reads — it is a file people scroll through hoping to recognise something. It
+is now fifteen pages under `site/`, built with Astro and Starlight, deployed to GitHub Pages.
+
+The split follows the headings that were already there; nothing was rewritten. What changed is
+that each section became addressable, the sidebar shows what exists without scrolling, and
+Pagefind indexes the lot — searching 1177 lines of Markdown on GitHub was the only way to find
+anything before.
+
+`docs/` is gone rather than kept alongside. Two copies of an operations guide is precisely the
+drift `CLAUDE.md` warns about, and the one nobody edits is the one everybody finds.
+
+### Notes for later
+
+- Links between pages are relative paths to the other `.md` file. Astro resolves those at build
+  time, which is what survives the `/gh-spot-docker-runners` base path; a hand-written
+  `/guides/gpus/` works on a dev server and 404s in production.
+- `scripts/check-site-links.py` checks the built HTML against the pages actually generated,
+  because a rename turns inbound links into 404s that the build is perfectly happy with. It
+  reports 711 links today, and it fails when one breaks — checked by breaking one.
+- Every inbound reference moved with it, including the ones that ship: `postinst` and
+  `packaging/deb/config.toml` print a URL at operators, and the wizard and the dashboard's
+  setup screen both name the authentication guide. A released `.deb` still points at the old
+  blob URL; nothing can be done about the ones already out.
+- Frontmatter values are quoted. "How runners are kept: `pm`" contains a colon, and an
+  unquoted YAML title fails the build with a message about indentation.

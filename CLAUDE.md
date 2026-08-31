@@ -12,7 +12,7 @@ project ships three ways of installing itself, and each restates the same facts:
 | The systemd unit, or anything it depends on | `deploy/ghspot.service`, `packaging/deb/postinst`, the Ansible role |
 | The `.deb` layout, or a new file it installs | `packaging/deb/build.sh`, `packaging/deb/verify.sh` |
 | A runner image variant, or the tools in one | `images/runner/build.sh`, `images/runner/verify.sh`, `images/runner/README.md` |
-| Anything an operator does by hand | `docs/operations.md` |
+| Anything an operator does by hand | the matching page under `site/src/content/docs/` |
 
 The Ansible role is the one most easily forgotten, because **nothing fails when it falls
 behind**. It keeps rendering a configuration the daemon quietly ignores, and the drift
