@@ -5,11 +5,15 @@ description: "The unit will not start, or ignores what you changed."
 
 ## A configuration change does nothing
 
-Settings are read **once, at startup** — pools, labels, limits, clients.
+Settings are read at startup and on reload — not on every tick.
 
 ```bash
-sudo systemctl restart ghspot
+sudo systemctl reload ghspot    # pools, labels, ceilings — runners untouched
 ```
+
+`reload` is what you want. `restart` also works and also retires every runner, failing the
+builds in flight. If a reload was refused, `journalctl -u ghspot | grep reload.rejected` names
+the problem; the daemon keeps running the configuration it already had.
 
 `/health` reports `config_stale: true` once the file is newer than what the daemon read, and
 the dashboard shows a banner. `ghspot doctor` cannot tell you this: it reads the file itself,

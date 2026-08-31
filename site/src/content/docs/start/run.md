@@ -80,9 +80,29 @@ sudo systemctl enable --now ghspot
 journalctl -u ghspot -f
 ```
 
-The unit sets `TimeoutStopSec=300`. On stop the daemon finishes its current tick and leaves
-busy runners alone — killing one fails a build that was about to pass — so that timeout is
-how long systemd waits before insisting.
+### stop, restart and reload are three different things
+
+**The host is the master: when the daemon stops, the fleet stops.** A runner outliving the
+process that made it keeps taking jobs with nothing enforcing `idle_timeout` or
+`max_job_duration`, nothing reaping it, and a registration on GitHub that corresponds to
+nothing watching.
+
+| Command | Daemon | Runners |
+|---|---|---|
+| `systemctl reload ghspot` | Re-reads the configuration in place | **Untouched** — builds keep running |
+| `systemctl restart ghspot` | Replaced | Retired, then rebuilt by the first tick |
+| `systemctl stop ghspot` | Stopped | **Retired** — registrations deleted, containers removed |
+
+Stop and restart cost the jobs in flight: they fail and have to be re-run. The deliberate
+trade — a CI run can be replayed, a fleet nobody owns cannot be reasoned about.
+
+Use `reload` for a configuration change. It applies the pools, labels and ceilings and leaves
+every runner where it is, which is what makes changing a label routine rather than something
+scheduled around the builds. A file that no longer parses is **refused**, logged as
+`reload.rejected`, and the daemon carries on with what it had.
+
+`TimeoutStopSec=300` covers finishing the current tick and stopping every container. They stop
+concurrently, so it is one container's grace period rather than the sum of them.
 
 If you installed elsewhere, point `ExecStart=` at your own path — `command -v ghspot` shows
 it. The unit runs as the `ghspot` user, so a binary under *your* home directory will not be
