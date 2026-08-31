@@ -1,5 +1,86 @@
 # Changelog
 
+## [0.5.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.4.0...v0.5.0) (2026-08-31)
+
+
+### Features
+
+* **ansible:** render daemon.host from ghspot_host ([17168af](https://github.com/tguisep/gh-spot-docker-runners/commit/17168afaa89c52572f3fbc7e1fa5e68a20ee845f))
+* **api:** report the host from /health and /stats ([b67e619](https://github.com/tguisep/gh-spot-docker-runners/commit/b67e6190af2d9d504282e2051f7a1a8693d29cc5))
+* **api:** say when the configuration on disk has moved on ([e6d3438](https://github.com/tguisep/gh-spot-docker-runners/commit/e6d3438bc5eebac8e9c8c4a6af13228b87a5bbcc))
+* **api:** serve archived logs, and say when there are none ([e4ae9eb](https://github.com/tguisep/gh-spot-docker-runners/commit/e4ae9eb17b62ca5a08335f79a94b399b79133458))
+* build the runner images from ghspot itself ([a9073d0](https://github.com/tguisep/gh-spot-docker-runners/commit/a9073d0f6eab2426d24e6db2ed9cb207eea3cc10))
+* **cli:** add ghspot image build ([80ce434](https://github.com/tguisep/gh-spot-docker-runners/commit/80ce4342548acc6a482fcd2dc885505318f639ab))
+* **cli:** ghspot runner stop --all ([f0cfc28](https://github.com/tguisep/gh-spot-docker-runners/commit/f0cfc284f83b85d8270fe798144f30cf236417f6))
+* **cli:** ghspot runner stop --all ([c7027c6](https://github.com/tguisep/gh-spot-docker-runners/commit/c7027c6e061d8c9435d001aa9d3fe3146fd30d47))
+* **cli:** offer to build the runner image from the wizard ([019001f](https://github.com/tguisep/gh-spot-docker-runners/commit/019001f3f0b71b60c8ea92fe23384303624ec010))
+* **cli:** put the host in stats and doctor ([0dede92](https://github.com/tguisep/gh-spot-docker-runners/commit/0dede922ad138b78d6d09243c6ff557552f8ea5c))
+* **cli:** the wizard writes the full configuration, offers the build, and grants nothing by default ([9f072ad](https://github.com/tguisep/gh-spot-docker-runners/commit/9f072ad7119ab4216130fa26f5dd752bfd2c0e85))
+* **cli:** write the whole commented configuration, not four answers ([dd5cdbb](https://github.com/tguisep/gh-spot-docker-runners/commit/dd5cdbbbe7b6e5ba815aa8db9e476bb101d363bc))
+* **core:** capture the container log before removing it ([ce4e237](https://github.com/tguisep/gh-spot-docker-runners/commit/ce4e2374a98f7e72c989111072a8b7b65c2d1e58))
+* **core:** keep the tail of a retired runner's container ([3a18c08](https://github.com/tguisep/gh-spot-docker-runners/commit/3a18c08b41a4b08b933fda547110413fa3183b84))
+* **core:** name the machine a daemon reports for ([de40e2c](https://github.com/tguisep/gh-spot-docker-runners/commit/de40e2cd52f17953b5925790e0f90f40037ef013))
+* **core:** stop takes the fleet with it, reload does not ([2430ab3](https://github.com/tguisep/gh-spot-docker-runners/commit/2430ab3d941bf7c8d01672e95958687996dc680a))
+* **dashboard:** call the force button "kill" ([383a0ac](https://github.com/tguisep/gh-spot-docker-runners/commit/383a0ac5bad8164b0c9765ad4efdeebcc273ff31))
+* **dashboard:** call the force button "kill" ([5798135](https://github.com/tguisep/gh-spot-docker-runners/commit/5798135ed24d4da3c50d1758d59034e25952fca5))
+* **dashboard:** name the host in the header and the overview ([6a939fa](https://github.com/tguisep/gh-spot-docker-runners/commit/6a939fa6dee2ccd24270e66d57890dd784d9adab))
+* **dashboard:** point the setup screen at ghspot image build ([7d6efff](https://github.com/tguisep/gh-spot-docker-runners/commit/7d6efff1c12550951fc075bfe2734128bda2ade4))
+* **dashboard:** show a retired runner's kept output ([fbbf02d](https://github.com/tguisep/gh-spot-docker-runners/commit/fbbf02d70a9fc7ef32beda524fc87c999c47e8f0))
+* **deploy:** ExecReload, and an Ansible handler that uses it ([67f0451](https://github.com/tguisep/gh-spot-docker-runners/commit/67f0451e7fb32b36f3d53702e516130d9f979bc9))
+* **github:** find the job a runner ran, by name ([5ffc4c0](https://github.com/tguisep/gh-spot-docker-runners/commit/5ffc4c08d81afa94c990e62e69e3d3a4296a5b79))
+* **images:** let build.sh list its variants ([d675bc6](https://github.com/tguisep/gh-spot-docker-runners/commit/d675bc65fe9ca667b295644f3cb8cb9ca7c2db67))
+* keep a retired runner's logs instead of losing them with the container ([2dd50d9](https://github.com/tguisep/gh-spot-docker-runners/commit/2dd50d97ebf9924ab4bdbaf3900f332b86d47158))
+* **packaging:** ship the runner image sources in the .deb ([a4e00af](https://github.com/tguisep/gh-spot-docker-runners/commit/a4e00af04f2070e289ad7e0c1d847db4405033f7))
+* say which host every report is about ([e45e103](https://github.com/tguisep/gh-spot-docker-runners/commit/e45e103ce317e128fa1c36b9b6374ee04b3fa6d6))
+* stop takes the fleet with it, reload does not ([9d9936f](https://github.com/tguisep/gh-spot-docker-runners/commit/9d9936f357903b9487a7a329e1adb6beade6e2ea))
+
+
+### Fixes
+
+* **ansible:** assert the template adds no capacity limit of its own ([cfe1815](https://github.com/tguisep/gh-spot-docker-runners/commit/cfe1815252d820f703a95d46431cdbfb51fe264e))
+* **ansible:** assert the template adds no capacity limit of its own ([c7ca46b](https://github.com/tguisep/gh-spot-docker-runners/commit/c7ca46b65265b4812c7db3b940d0803c99f68497))
+* **cli:** default the wizard's two grants to no ([bc214e2](https://github.com/tguisep/gh-spot-docker-runners/commit/bc214e26994f798f56ad18b16f78bcd734395547))
+* **cli:** make the job log reachable at all ([daf4b44](https://github.com/tguisep/gh-spot-docker-runners/commit/daf4b446b8f2906a9f4690847c0487868fcbe07e))
+* **cli:** prefer the checkout over the installed copy ([d44470c](https://github.com/tguisep/gh-spot-docker-runners/commit/d44470c3fc4f2527a2c7a8030eda1208a50d2a5a))
+* **cli:** write credentials the service account can read ([c370cd9](https://github.com/tguisep/gh-spot-docker-runners/commit/c370cd9bb06c3de26d6b6a7678aabe3b3bea04e4))
+* **core:** stop warning about the credential layout the package creates ([729f9ca](https://github.com/tguisep/gh-spot-docker-runners/commit/729f9ca637b2ee1eababd719be0164214ced0d01))
+* **deploy:** pin ConfigurationDirectoryMode to the mode the package creates ([11cef67](https://github.com/tguisep/gh-spot-docker-runners/commit/11cef67ee440d0fd0b574b52165c616f7ef1fb94))
+* **docker:** point ImageNotFoundError at ghspot image build ([22c0e6c](https://github.com/tguisep/gh-spot-docker-runners/commit/22c0e6c40ad48ca6d60cbfc56f172f7cdc6df7ef))
+* **images:** survive a host with no docker group ([d2902ee](https://github.com/tguisep/gh-spot-docker-runners/commit/d2902ee57156585c6028ea65a8ab529dc2f45acb))
+* make a fresh apt install actually start, and ship the dashboard ([3418ee6](https://github.com/tguisep/gh-spot-docker-runners/commit/3418ee64fad23c6c9d4d86ba9b75ce58ac2f07ef))
+* make the GitHub job log reachable at all ([e0e139c](https://github.com/tguisep/gh-spot-docker-runners/commit/e0e139cd5d973e1515caed742a83ed470c8bb3a1))
+* **packaging:** do not check the variant list through grep -q ([7f818c5](https://github.com/tguisep/gh-spot-docker-runners/commit/7f818c5d02a4d7fd34e281a137e709e7beef4cc5))
+* **packaging:** leave nothing behind on remove and purge ([e62c184](https://github.com/tguisep/gh-spot-docker-runners/commit/e62c184e0b8f3b8aa8909e3bbe0e5acd8a91fd48))
+* **packaging:** put the dashboard in the released package ([a834ece](https://github.com/tguisep/gh-spot-docker-runners/commit/a834eceb61eee1495aff718b1f518d60b1f16e85))
+* purge leftovers, a wrong credential warning, and silently stale settings ([81c42f1](https://github.com/tguisep/gh-spot-docker-runners/commit/81c42f1935bf4877ed45cc4f519b04c01eed0645))
+
+
+### Refactoring
+
+* **ansible:** build the runner images without a checkout ([3b5349f](https://github.com/tguisep/gh-spot-docker-runners/commit/3b5349fa6bdcb6fe4e18e6594841740229c059ae))
+
+
+### Documentation
+
+* cover the purge leftovers, the credential warning and stale settings ([2a6abd7](https://github.com/tguisep/gh-spot-docker-runners/commit/2a6abd760f75d9eebbab3e6fbe7ffe22b117b4c8))
+* **dashboard:** say the job was not found, not that none was taken ([b44fb4e](https://github.com/tguisep/gh-spot-docker-runners/commit/b44fb4e23e513ac3e3931089933a9a8b7c9fc7e3))
+* describe the configuration the wizard writes ([1bb8047](https://github.com/tguisep/gh-spot-docker-runners/commit/1bb80472edb8e7fd3550d78d74005eddb96b7679))
+* describe the wizard's build offer ([530ba8a](https://github.com/tguisep/gh-spot-docker-runners/commit/530ba8a685f3184da05af5508e5a132fda759de4))
+* document ghspot image build ([21b2175](https://github.com/tguisep/gh-spot-docker-runners/commit/21b2175f3423796d94e3606d06c6eb3fbf4db974))
+* explain that stats are per host, not per fleet ([f4d9943](https://github.com/tguisep/gh-spot-docker-runners/commit/f4d9943dc10391cf22a5c7e5240bff268ac989cc))
+* explain the settings rather than name php-fpm ([26fc9d8](https://github.com/tguisep/gh-spot-docker-runners/commit/26fc9d863cd8dba1793cf04b091067fa1d795243))
+* explain what happens to a retired runner's logs ([fe3764c](https://github.com/tguisep/gh-spot-docker-runners/commit/fe3764c0a21e2dfc240f09df4aef7965c084bdcf))
+* note that the wizard's two grants default to no ([acbae2a](https://github.com/tguisep/gh-spot-docker-runners/commit/acbae2aad5b47070f029250dcbd56d4934b938a9))
+* point every reference at the site ([d1fc85c](https://github.com/tguisep/gh-spot-docker-runners/commit/d1fc85c2f928d3db0078a1e4184aa49ed29daea5))
+* replace docs/ with an Astro site, grouped by domain ([3629fb2](https://github.com/tguisep/gh-spot-docker-runners/commit/3629fb25f947d8574bc22910b579f03d8795e93f))
+* retire docs/ in favour of the site ([99ba9c1](https://github.com/tguisep/gh-spot-docker-runners/commit/99ba9c16c3dc06d4f90d11a91061fdf5632c8f7e))
+* **site:** build the documentation with Astro and Starlight ([4444668](https://github.com/tguisep/gh-spot-docker-runners/commit/444466821a380df34c4a4d797d3c0e5be88c3864))
+* **site:** group by domain, and cut the prose back ([6bc0146](https://github.com/tguisep/gh-spot-docker-runners/commit/6bc0146ce3e6979838976b65ccba476d077c0295))
+* **site:** stop, restart and reload are three different things ([3bdef01](https://github.com/tguisep/gh-spot-docker-runners/commit/3bdef010b08e85f6074fdd96f5cb016115af6524))
+* **site:** sub-pages for troubleshooting and architecture, and a schema page ([6b5ea01](https://github.com/tguisep/gh-spot-docker-runners/commit/6b5ea01f991716bc6003cac956eeb44627ba0972))
+* stop, restart and reload are three different things ([bda9938](https://github.com/tguisep/gh-spot-docker-runners/commit/bda99380b2057249fee284a03e5d183646fba489))
+* troubleshoot the unreadable credential and the missing dashboard ([6a3ac9e](https://github.com/tguisep/gh-spot-docker-runners/commit/6a3ac9e487f19050aaf0ae3927996f304da67ba1))
+
 ## [0.4.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.3.0...v0.4.0) (2026-08-29)
 
 

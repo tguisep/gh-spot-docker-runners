@@ -2,6 +2,9 @@
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now ghspot
 #
+#   sudo systemctl reload ghspot    # apply a config change, runners untouched
+#   sudo systemctl restart ghspot   # replace the fleet as well
+#
 # Runs as an unprivileged user that is a member of the 'docker' group. That group
 # membership is equivalent to root on this host, so the user should exist for this
 # purpose and nothing else.
@@ -45,10 +48,20 @@ EnvironmentFile=-/etc/ghspot/env
 Restart=always
 RestartSec=10s
 
-# Runners mid-job are somebody's CI run. On stop, the daemon finishes its current tick
-# and leaves busy containers alone; this is how long we wait before insisting.
+# On stop the daemon takes the fleet with it: the host is the master, and a runner outliving
+# the process that made it keeps taking jobs with nothing enforcing its timeouts. Jobs in
+# flight fail and have to be re-run — the deliberate trade, since a CI run can be replayed and
+# a fleet nobody owns cannot be reasoned about.
+#
+# The timeout covers finishing the current tick plus stopping every container. They are
+# stopped concurrently, so this is one container's grace period and not the sum of them.
 KillSignal=SIGTERM
 TimeoutStopSec=300
+
+# Reload is the one that does not touch runners: it re-reads the configuration and applies the
+# pools, labels and ceilings in place. Use it for a configuration change; use restart when you
+# mean to replace the fleet.
+ExecReload=/bin/kill -HUP $MAINPID
 
 StateDirectory=ghspot
 
