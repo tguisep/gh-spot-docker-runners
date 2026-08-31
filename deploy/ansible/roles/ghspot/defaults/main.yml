@@ -13,13 +13,13 @@ ghspot_install_docker: false
 
 # Runner images.
 #
-# There is no public registry for these, so they are built on the host from a checkout.
-# Building takes several minutes per variant, so the role skips any already present unless
+# There is no public registry for these, so they are built on the host — by `ghspot image
+# build`, from the sources the package installs, so no checkout is needed. Building takes
+# several minutes per variant, so the role skips any already present unless
 # ghspot_images_force is set.
 ghspot_build_images: true
 ghspot_images: [ubuntu-24.04]
 ghspot_images_force: false
-ghspot_checkout: /opt/ghspot/src
 
 # Credentials. Supply exactly one. Keep them in ansible-vault, not in a playbook.
 #

@@ -197,22 +197,13 @@
 
 # --- runner images -----------------------------------------------------------------------
 
+# The package carries the image sources, so there is no checkout here any more — and no
+# `git` installed on the host to make one. `ghspot image build` runs the same build.sh from
+# /usr/share/ghspot/images/runner, which also means the images match the installed version
+# rather than whatever the default branch happens to be.
 - name: Build the runner images
   when: ghspot_build_images | bool
   block:
-    - name: Install git
-      ansible.builtin.apt:
-        name: git
-        state: present
-
-    - name: Check out the source the images are built from
-      ansible.builtin.git:
-        repo: "https://github.com/{{ ghspot_repo }}.git"
-        dest: "{{ ghspot_checkout }}"
-        version: "{{ 'main' if ghspot_version == 'latest' else 'v' + ghspot_version }}"
-        depth: 1
-        force: true
-
     - name: Find out which images are already built
       ansible.builtin.command: docker image inspect ghspot/runner:{{ item }}
       loop: "{{ ghspot_images }}"
@@ -223,8 +214,7 @@
     # Several minutes each, so already-present images are left alone unless forced.
     - name: Build them
       ansible.builtin.command:
-        cmd: "{{ ghspot_checkout }}/images/runner/build.sh {{ item.item }}"
-        chdir: "{{ ghspot_checkout }}"
+        cmd: ghspot image build {{ item.item }}
       loop: "{{ ghspot_image_present.results }}"
       loop_control:
         label: "{{ item.item }}"

@@ -27,7 +27,8 @@ green run means the daemon can actually do its job, not merely that files were c
    usually has Docker already, and installing it under someone is rude.
 3. Installs the `.deb` from a GitHub release — or one you built, via `ghspot_deb_local`.
 4. Renders `/etc/ghspot/config.toml` and `/etc/ghspot/env` (`0640`, `root:ghspot`).
-5. Builds the runner images from a shallow checkout, skipping any already present.
+5. Builds the runner images with `ghspot image build`, from the sources the package
+   installs, skipping any already present.
 6. Enables and starts the service, then runs `ghspot doctor`.
 
 ## Variables worth knowing
