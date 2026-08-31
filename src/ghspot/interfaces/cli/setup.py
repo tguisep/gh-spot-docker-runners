@@ -29,7 +29,14 @@ from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.config.settings import ConfigError, host_cores
 from ghspot.infrastructure.config.settings import load as load_settings
 from ghspot.interfaces.cli.render import console, fail, hint
-from ghspot.paths import build_command
+from ghspot.interfaces.cli.scaffold import (
+    SYSTEM_DIRECTORY,
+    Substitution,
+    effective,
+    render,
+    replace_header,
+)
+from ghspot.paths import build_command, example_config
 
 IMAGES = ("ubuntu-24.04", "ubuntu-22.04", "rhel-9", "rhel-10")
 
@@ -76,7 +83,10 @@ def run(config_path: Path, *, force: bool = False) -> int:
 
     written = _write(config_path, answers)
     console.print()
-    console.print(Syntax(config_path.read_text(), "toml", theme="ansi_dark"))
+    console.print(Syntax(effective(config_path.read_text()), "toml", theme="ansi_dark"))
+    console.print(
+        "[dim]  every other setting is in the file too, commented out with what it does[/dim]"
+    )
     console.print(f"[green]written[/green] {config_path}")
     for extra in written:
         console.print(f"[green]written[/green] {extra}")
@@ -180,31 +190,83 @@ def _ask_count(question: str, *, default: int) -> int:
 # -- writing ---------------------------------------------------------------------------
 
 
+def _substitutions(
+    answers: Answers, credential: list[Substitution], system: bool
+) -> list[Substitution]:
+    """What the wizard asked about, as edits to the reference."""
+    edits = [
+        *credential,
+        Substitution("[[pool]]", "name", f'"{answers.pool}"'),
+        Substitution("[[pool]]", "repository", f'"{answers.repository}"'),
+        Substitution(
+            "[[pool]]",
+            "labels",
+            f'["self-hosted", "linux", "x64", "{answers.image}"]',
+        ),
+        Substitution("[[pool]]", "min_idle", "1"),
+        Substitution("[[pool]]", "max_runners", str(answers.max_runners)),
+        Substitution("[pool.container]", "image", f'"ghspot/runner:{answers.image}"'),
+        Substitution("[pool.container]", "docker_socket", str(answers.docker_socket).lower()),
+        # Unset these mean "no limit". Inheriting the reference's illustration would cap
+        # every job on this host at two cores and 4g, which nobody asked for.
+        Substitution("[pool.container]", "cpus", None),
+        Substitution("[pool.container]", "memory", None),
+    ]
+    if answers.api_bind:
+        edits.append(Substitution("[daemon]", "api_bind", f'"{answers.api_bind}"'))
+    if system:
+        # The reference writes into $HOME, which the ghspot service account does not have.
+        edits.append(Substitution("[daemon]", "state_db", '"/var/lib/ghspot/state.db"'))
+    return edits
+
+
 def _write(config_path: Path, answers: Answers) -> list[Path]:
     """Write the configuration, and the credential beside it. Returns the extra files."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
     extra: list[Path] = []
 
-    credential: list[str] = []
+    credential: list[Substitution] = []
     if answers.uses_app:
-        credential = [f'app_id = "{answers.app_id}"']
+        credential.append(Substitution("[github]", "token_file", None))
+        credential.append(Substitution("[github]", "app_id", f'"{answers.app_id}"'))
         if answers.private_key_path is not None:
-            credential.append(f'private_key_file = "{answers.private_key_path}"')
+            credential.append(
+                Substitution("[github]", "private_key_file", f'"{answers.private_key_path}"')
+            )
     else:
         token_file = config_path.parent / "token"
         _write_secret(token_file, answers.token)
         extra.append(token_file)
-        credential = [f'token_file = "{token_file}"']
+        credential.append(Substitution("[github]", "token_file", f'"{token_file}"'))
 
+    system = config_path.parent == SYSTEM_DIRECTORY
+    reference = example_config()
+    if reference is None:
+        # The reference is a documentation file, and a wizard that fails because one is
+        # missing is worse than one that writes the short form.
+        config_path.write_text(_minimal(answers, credential, system))
+        return extra
+
+    rendered = render(
+        reference.read_text(encoding="utf-8"), _substitutions(answers, credential, system)
+    )
+    config_path.write_text(replace_header(rendered))
+    return extra
+
+
+def _minimal(answers: Answers, credential: list[Substitution], system: bool) -> str:
+    """The short form, for when config.example.toml is not installed."""
     lines = [
         "# Written by `ghspot setup`. Edit freely — it is an ordinary configuration file.",
         "# Every setting, with what it means: config.example.toml",
         "",
         "[github]",
-        *credential,
+        *(f"{item.key} = {item.value}" for item in credential if item.value is not None),
         "",
         "[daemon]",
     ]
+    if system:
+        lines.append('state_db = "/var/lib/ghspot/state.db"')
     if answers.api_bind:
         lines.append(f'api_bind = "{answers.api_bind}"   # dashboard at /ui, on this host only')
     lines += [
@@ -221,8 +283,7 @@ def _write(config_path: Path, answers: Answers) -> list[Path]:
         f"docker_socket = {str(answers.docker_socket).lower()}",
         "",
     ]
-    config_path.write_text("\n".join(lines))
-    return extra
+    return "\n".join(lines)
 
 
 def _write_secret(path: Path, contents: str) -> None:
