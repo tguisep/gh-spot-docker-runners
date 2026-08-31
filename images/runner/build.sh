@@ -3,6 +3,11 @@
 #
 #   images/runner/build.sh                 # every variant
 #   images/runner/build.sh ubuntu-24.04    # just one
+#   images/runner/build.sh --list          # the variants and their base images
+#
+# On an installed host the same thing, without needing a clone:
+#
+#   ghspot image build ubuntu-24.04
 #
 # The variant name is also the image tag and the label a workflow targets, so the three
 # cannot drift apart:
@@ -114,6 +119,13 @@ build_one() {
 }
 
 wanted="${1:-}"
+
+# `ghspot image list` asks for this rather than parsing the table out of this file, so the
+# variants stay declared in exactly one place.
+case "${wanted}" in
+    -l|--list|list) list; exit 0 ;;
+esac
+
 found=0
 
 while IFS= read -r line; do
