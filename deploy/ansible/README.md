@@ -189,7 +189,7 @@ per pool, with the main file carrying only `include`. It also **removes** the fi
 you delete from the inventory — the include is a glob, so nothing else would.
 
 Files are merged, not overridden: two pools of one name is a fatal error naming both files.
-The same arrangement, and the same rules, as `php-fpm.d`.
+One pool per file, merged into whatever the main configuration defines.
 
 ## What it does not do
 

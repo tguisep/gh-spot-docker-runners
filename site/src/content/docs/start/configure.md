@@ -72,7 +72,7 @@ command that fixes them.
 ## Pools in their own files
 
 One growing `config.toml` stops being reviewable around the fourth pool. Pools can live one
-per file instead, the way php-fpm keeps them in `php-fpm.d`:
+per file in a directory instead:
 
 ```toml
 # /etc/ghspot/config.toml — above the first [section]

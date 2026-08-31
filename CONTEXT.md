@@ -805,3 +805,17 @@ and troubleshooting opens with a symptom/cause/fix table instead of fifteen bold
   it; the check that every relative `.md` link resolves on disk is what caught it.
 - `gpus.md` explained subset matching in full, which is now `pools/labels.md`'s job. Grouping by
   domain surfaces that kind of duplication — it was invisible while both were "a guide".
+
+## 2026-08-31 — the analogy comes out
+
+Every "the way php-fpm does it" is gone from the site, the configuration files, the Ansible
+role, the source docstrings and the tests. Thirty-odd of them.
+
+The analogy only ever helped readers who already knew php-fpm; for everyone else it explained
+one unfamiliar thing with another, and it made the design read as derivative rather than
+reasoned. Each one was replaced by what it was standing in for — `max_idle` is "an upper bound
+on the warm band", not "`max_spare_servers`" — which is what a reader needed either way.
+
+Left alone: the dated entries above, and `CHANGELOG.md`. One is a record of what was thought at
+the time and the other is generated from commit subjects. Editing either would be falsifying a
+log to match a later opinion.

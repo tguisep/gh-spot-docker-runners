@@ -71,7 +71,7 @@ ghspot_housekeeping:
   keep_build_cache: 10g        # cache below this is kept, or rebuilds start cold
 
 # Where the pools are written. Together in config.toml by default, or one file each in
-# /etc/ghspot/pools.d — the php-fpm arrangement — which keeps a host's pools reviewable one
+# /etc/ghspot/pools.d, which keeps a host's pools reviewable one
 # at a time rather than as a diff against a single growing file.
 ghspot_pools_in_directory: false
 ghspot_pools_directory: /etc/ghspot/pools.d
@@ -99,7 +99,7 @@ ghspot_capacity: {}
 #       memory: 4g
 #       docker_socket: true
 #
-# `pm` on a pool picks how its runners are kept, as php-fpm's: "dynamic" (a warm band between
+# `pm` on a pool picks how its runners are kept: "dynamic" (a warm band between
 # min_idle and max_idle, the default), "static" (exactly max_runners, never reaped) or
 # "ondemand" (nothing warm). A key that does not apply to the mode is refused at load.
 #

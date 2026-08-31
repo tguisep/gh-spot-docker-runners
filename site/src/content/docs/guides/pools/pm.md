@@ -4,8 +4,7 @@ description: "static, dynamic and ondemand, and when each is right."
 ---
 
 Three intentions, named rather than assembled by hand out of `min_idle` and `idle_timeout` —
-where the same intent can be written three ways and two of them are subtly wrong. The names
-and the semantics are php-fpm's.
+where the same intent can be written three ways and two of them are subtly wrong.
 
 ```toml
 [[pool]]
@@ -20,8 +19,7 @@ max_idle = 4
 | `static` | Exactly `max_runners`, always up, **never reaped**. The fastest possible first job, paid for continuously | `max_runners` only |
 | `ondemand` | Nothing warm. A runner starts when a job is queued and goes away after `idle_timeout`. Cheapest, and every job pays container boot | `idle_timeout` |
 
-**A key that does not apply to the mode is refused at load**, the way php-fpm refuses
-`pm.min_spare_servers` under `pm = static`:
+**A key that does not apply to the mode is refused at load** rather than silently ignored:
 
 ```
 error [[pool]] (gpu): 'min_idle' does nothing under pm = "ondemand".

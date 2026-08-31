@@ -15,8 +15,8 @@
 #
 # A fully commented reference lives at /usr/share/doc/ghspot/config.example.toml
 
-# Pools may live one per file in /etc/ghspot/pools.d, the way php-fpm keeps them in
-# php-fpm.d. The directory ships empty; drop a file in and uncomment this.
+# Pools may live one per file in /etc/ghspot/pools.d. The directory ships empty; drop a file
+# in and uncomment this.
 #
 # Files are merged, not overridden: every pool found runs, and two of one name is a fatal
 # error naming both files. An included file defines pools and nothing else.
@@ -68,7 +68,7 @@ labels = ["self-hosted", "linux", "x64"]
 # would land here.
 # requires_labels = ["gpu-a100"]
 
-# How runners are kept, as php-fpm's `pm`: "dynamic" (a warm band, the default), "static"
+# How runners are kept: "dynamic" (a warm band, the default), "static"
 # (exactly max_runners, never reaped) or "ondemand" (nothing warm). A key that does not apply
 # to the mode is refused rather than ignored.
 # pm = "dynamic"
