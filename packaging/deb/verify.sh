@@ -93,14 +93,22 @@ docker run --rm \
             || fail "reinstalling overwrote the edited config"
         echo "    ok: local edits survive reinstall"
 
+        # Files dpkg does not own, which is the state any host that ran the daemon is in:
+        # a single run leaves __pycache__ throughout the bundled interpreter, and dpkg
+        # reports every directory holding one as "not empty so not removed".
+        touch /opt/ghspot/.venv/lib/unowned-by-dpkg
+        touch /usr/share/ghspot/web/assets/unowned-by-dpkg.js
+
         # Removing must not take a token or an app key with it.
         apt-get remove -y -qq ghspot >/dev/null 2>&1
         [ -f /etc/ghspot/config.toml ] || fail "remove deleted the configuration"
         [ ! -e /opt/ghspot/.venv/bin/ghspot ] || fail "remove left the application behind"
+        [ ! -d /opt/ghspot ] || fail "remove left /opt/ghspot behind"
         echo "    ok: remove keeps config, drops the application"
 
         apt-get purge -y -qq ghspot >/dev/null 2>&1
         [ ! -e /etc/ghspot ] || fail "purge left the configuration behind"
+        [ ! -d /usr/share/ghspot ] || fail "purge left /usr/share/ghspot behind"
         getent passwd ghspot >/dev/null && fail "purge left the service account behind"
         echo "    ok: purge removes everything"
     '
