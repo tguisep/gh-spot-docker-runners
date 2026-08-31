@@ -1,4 +1,7 @@
-# 3. Poll the API for demand instead of receiving webhooks
+---
+title: "3. Poll the API for demand instead of receiving webhooks"
+description: "An architecture decision, with what was rejected."
+---
 
 **Status:** accepted · 2026-08-26
 

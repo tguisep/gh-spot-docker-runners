@@ -53,11 +53,11 @@ export function Setup({ health }: { health: Health }) {
                 Setting up a token or a GitHub App, with the exact permissions and why each one
                 is needed:{' '}
                 <a
-                    href="https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/authentication.md"
+                    href="https://tguisep.github.io/gh-spot-docker-runners/start/authentication/"
                     target="_blank"
                     rel="noreferrer"
                 >
-                    docs/authentication.md
+                    the authentication guide
                 </a>
             </p>
         </section>

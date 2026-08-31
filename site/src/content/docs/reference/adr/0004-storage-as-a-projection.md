@@ -1,4 +1,7 @@
-# 4. Treat storage as a projection, not the source of truth
+---
+title: "4. Treat storage as a projection, not the source of truth"
+description: "An architecture decision, with what was rejected."
+---
 
 **Status:** accepted · 2026-08-26
 

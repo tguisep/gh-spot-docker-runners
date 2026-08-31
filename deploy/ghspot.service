@@ -10,7 +10,8 @@
 # purpose and nothing else.
 #
 # ExecStart expects a virtualenv at /opt/ghspot/.venv, so the daemon does not depend on
-# any human's home directory — the ghspot user cannot read yours. See docs/operations.md
+# any human's home directory — the ghspot user cannot read yours. See
+# https://tguisep.github.io/gh-spot-docker-runners/start/install/
 # for the install steps. If you installed elsewhere, change the path below.
 
 [Unit]

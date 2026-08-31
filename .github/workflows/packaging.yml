@@ -3,7 +3,7 @@ name: Packaging
 # src/ and pyproject.toml are listed because the .deb embeds the application — a change to
 # either changes what the package contains.
 #
-# docs/operations.md is listed because verify-source-install.sh runs the commands that file
+# The install page is listed because verify-source-install.sh runs the commands that page
 # tells people to run. Editing them without running them is exactly how they were wrong
 # three times.
 
@@ -16,7 +16,7 @@ on:
       - "src/**"
       - "pyproject.toml"
       - "uv.lock"
-      - "docs/operations.md"
+      - "site/src/content/docs/start/install.md"
       - ".github/workflows/packaging.yml"
   pull_request:
     paths:
@@ -25,7 +25,7 @@ on:
       - "src/**"
       - "pyproject.toml"
       - "uv.lock"
-      - "docs/operations.md"
+      - "site/src/content/docs/start/install.md"
       - ".github/workflows/packaging.yml"
 
 concurrency:

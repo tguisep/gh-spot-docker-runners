@@ -1,6 +1,6 @@
 """`pm`: how many runners a pool keeps, and when.
 
-php-fpm's three shapes, and the reason for naming them rather than leaving an operator to
+The three shapes, and the reason for naming them rather than leaving an operator to
 assemble the same intent out of `min_idle` and `idle_timeout` — where two of the three ways
 to write it would be subtly wrong.
 """
@@ -66,7 +66,7 @@ def test_ondemand_starts_a_runner_when_a_job_is_queued() -> None:
 
 
 def test_ondemand_still_waits_out_the_idle_timeout() -> None:
-    """php-fpm's ondemand kills a child after process_idle_timeout, not the instant it goes
+    """`ondemand` reaps a runner after `idle_timeout`, not the instant it goes
     idle — a runner that just finished is the one most likely to be wanted next."""
     fresh = make_runner("r1", state=RunnerState.IDLE, since=at(seconds=-30))
 

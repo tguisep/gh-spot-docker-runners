@@ -20,9 +20,9 @@ _POOL_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$")
 class ProcessManager(StrEnum):
     """How many runners to keep, and when.
 
-    php-fpm's `pm`, and for the same reason: "keep four warm", "keep a band warm" and "start
-    one only when there is work" are three different intentions, and a pool that spells them
-    out is a pool whose behaviour you can predict from its configuration.
+    "Keep four warm", "keep a band warm" and "start one only when there is work" are three
+    different intentions, and a pool that spells out which it means is a pool whose behaviour
+    you can predict from its configuration.
     """
 
     STATIC = "static"
@@ -50,7 +50,7 @@ class PoolSpec:
     repository: RepositoryTarget
     labels: LabelSet
     pm: ProcessManager = ProcessManager.DYNAMIC
-    """How runners are kept, borrowed wholesale from php-fpm's `pm`.
+    """How runners are kept.
 
     The three shapes an operator actually wants, named rather than assembled by hand out of
     `min_idle` and `idle_timeout` — where the same intent could be written three ways and
@@ -58,8 +58,8 @@ class PoolSpec:
 
     min_idle: int = 0
     max_idle: int | None = None
-    """Warm runners above this are reaped without waiting for `idle_timeout`. php-fpm's
-    `pm.max_spare_servers`. ``None`` means only the timeout bounds them, which is what the
+    """Warm runners above this are reaped without waiting for `idle_timeout` — an upper bound
+    on the warm band. ``None`` means only the timeout bounds them, which is what the
     daemon did before this existed — a burst could leave the whole pool warm for the full
     timeout."""
 

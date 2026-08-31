@@ -76,7 +76,7 @@ ghspot is installed but not started — it needs a repository and a credential f
        GHSPOT_GITHUB_TOKEN=github_pat_...
     or GHSPOT_GITHUB_APP_ID=... and GHSPOT_GITHUB_APP_PRIVATE_KEY=...
 
-  Setting up either: https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/authentication.md
+  Setting up either: https://tguisep.github.io/gh-spot-docker-runners/start/authentication/
 
 NEXT
         ;;
