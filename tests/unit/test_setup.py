@@ -155,7 +155,10 @@ def test_the_build_hint_is_a_command_and_not_a_path(tmp_path: Path) -> None:
     ],
 )
 def test_only_a_system_configuration_is_checked_with_sudo(
-    directory: Path, expected: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    directory: Path,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """`/etc/ghspot/config.toml` is root:ghspot 0640 and the checks want the Docker socket,
     so step 2 needs the privilege step 3 always asked for — the wizard's own sudo is gone by
