@@ -8,7 +8,7 @@
       "include-component-in-tag": false,
       "include-v-in-tag": true,
       "bump-minor-pre-major": true,
-      "draft": true,
+      "draft": false,
       "prerelease": false,
       "extra-files": [
         "src/ghspot/__init__.py"
@@ -52,5 +52,5 @@
     }
   ],
   "pull-request-title-pattern": "chore: release v${version}",
-  "pull-request-header": ":package: Merging this pull request cuts the release: it creates the tag and a draft release, builds the amd64 and arm64 packages, attaches them, and publishes last. A published release is immutable, so the assets have to be on it before it goes out."
+  "pull-request-header": ":package: Merging this pull request cuts the release: it creates the tag, publishes the GitHub release, and attaches the amd64 and arm64 packages."
 }
