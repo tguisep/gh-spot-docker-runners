@@ -510,3 +510,28 @@ illustration would cap every job on the host at two cores.
   reference ends with as if it were real, and echoing a commented-out assignment back as its
   own trailing comment when switching it on.
 - `config.example.toml` was carrying a stale `images/runner/build.sh` of its own.
+
+## 2026-08-31 — the wizard offers to build the image
+
+"Build the runner image" has always been the wizard's first next-step, and it is the one step
+nothing works without: a pool whose image is missing starts no runners and says so only in the
+daemon's log. Now that `ghspot image build` exists, the wizard asks instead of instructing.
+
+Only when there is something to do. `_image_present` returns three answers rather than two —
+built, not built, and *Docker could not say* — because treating an unreachable daemon as "not
+built" would offer a build that cannot start, one step before `doctor` reports the real
+problem properly. No image sources, no offer either.
+
+Order matters: the configuration is validated first. Spending several minutes on an image for
+a file that was never going to load is the wrong order to find that out in.
+
+### Notes for later
+
+- `_verify` split into `_validate` and `_next_steps`, and the step list is built rather than
+  printed line by line — accepting the build drops the step that asks for it, and the rest
+  renumber.
+- A failed build keeps the step. Reporting it done because it was attempted would send the
+  operator to `doctor` hunting a different problem.
+- The unit tests now stub `_image_present` from an autouse fixture. Without it the suite asks
+  the machine running it whether the image exists, so the offer appears on a developer's box
+  and not in CI — the tests would have passed either way and covered different code.

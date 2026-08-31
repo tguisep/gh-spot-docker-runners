@@ -177,6 +177,14 @@ commented out.
 
 It prints back only the settings that are live. The rest is in the file.
 
+Then it offers to build the runner image you chose, because that is the one step nothing
+works without — a pool whose image is missing starts no runners and says so only in the
+daemon's log. The offer appears only when there is something to do: an image already present
+is reported and skipped, and if Docker is unreachable or the image sources are not installed
+the wizard says nothing and leaves `ghspot doctor` to report the real problem. Declining is
+free; the instruction stays in the list. Accepting takes several minutes and streams the
+build.
+
 If `config.example.toml` is not installed — it ships at `/usr/share/doc/ghspot/` — the wizard
 writes the short form instead rather than failing over a documentation file.
 
