@@ -35,7 +35,7 @@ export function Setup({ health }: { health: Health }) {
                 <li>
                     <strong>Build a runner image.</strong> A pool cannot start anything without
                     one:
-                    <pre>images/runner/build.sh ubuntu-24.04</pre>
+                    <pre>sudo ghspot image build ubuntu-24.04</pre>
                 </li>
                 <li>
                     <strong>Check it.</strong> Every failure here is one that would otherwise
