@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from ghspot import __version__
+from ghspot.application.queries.jobs import FindJobForRunner
 from ghspot.application.queries.resolve import ResolveRunner
 from ghspot.application.queries.stats import GatherStats
 from ghspot.application.queries.views import GetPoolStatus, ListRunners, to_view
@@ -216,12 +217,14 @@ def create_app(application: Application) -> FastAPI:
         which a just-in-time runner takes with it seconds later.
         """
         runner = await ResolveRunner(app.runners)(reference)
+        job_id = await FindJobForRunner(app.forge, app.runners)(runner)
+
         lines = None
-        if runner.current_job_id is not None:
-            lines = await app.forge.job_logs(runner.repository, runner.current_job_id, tail=tail)
+        if job_id is not None:
+            lines = await app.forge.job_logs(runner.repository, job_id, tail=tail)
         return JobLogsResponse(
             runner_id=str(runner.id),
-            job_id=runner.current_job_id,
+            job_id=job_id,
             available=lines is not None,
             lines=lines or "",
         )

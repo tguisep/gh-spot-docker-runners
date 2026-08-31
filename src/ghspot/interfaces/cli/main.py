@@ -388,7 +388,10 @@ def runner_logs(
 
     job_id, from_forge = _run(operations.job_logs(settings, runner_id, tail))
     if job_id is None:
-        console.print("[dim]this runner is not running a job[/dim]")
+        console.print(
+            "[dim]no job found for this runner — it may never have taken one, or its run "
+            "is older than the search reaches back[/dim]"
+        )
         return
     if from_forge is None:
         console.print(

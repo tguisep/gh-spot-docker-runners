@@ -88,6 +88,22 @@ class ForgeClient(Protocol):
         """
         ...
 
+    async def find_job_for_runner(
+        self, repository: RepositoryTarget, runner_name: str, limit: int = 30
+    ) -> int | None:
+        """Which job this runner ran, or ``None`` if it cannot be found.
+
+        The daemon does not learn this while a runner works: the runner list says *that* a
+        runner is busy without saying which job it took, and correlating the two during a tick
+        would cost requests on every tick for something only a human reading logs ever wants.
+
+        So it is asked for after the fact, and only when somebody asks. Searching backwards
+        through recent runs is not cheap, which is why callers are expected to remember the
+        answer rather than ask twice. ``limit`` bounds how far back to look: a job older than
+        that is not worth an unbounded walk of a busy repository's history.
+        """
+        ...
+
     async def rate_limit_reset_at(self) -> datetime | None:
         """When the current rate-limit window resets, if the forge reports one."""
         ...

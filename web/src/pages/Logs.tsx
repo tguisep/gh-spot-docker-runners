@@ -161,7 +161,7 @@ export function Logs() {
                         {forge.data && !forge.data.available ? (
                             <p className="notice dim">
                                 {forge.data.job_id === null
-                                    ? 'this runner is not running a job'
+                                    ? 'no job found for this runner — it may never have taken one, or its run is older than the search reaches back.'
                                     : `job ${forge.data.job_id} has not finished, so GitHub has no log for it yet — it appears here when it does. The container pane on the left is the live view.`}
                             </p>
                         ) : null}
