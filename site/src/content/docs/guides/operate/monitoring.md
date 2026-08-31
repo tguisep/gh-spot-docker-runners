@@ -86,6 +86,30 @@ host = "builders-01"
 With Ansible, `ghspot_host` — left empty the daemon falls back to the hostname rather than to
 an empty label.
 
+## Emptying the host
+
+```bash
+ghspot runner stop --all                  # every runner, busy ones refused
+ghspot runner stop --all --force          # busy ones too, failing their builds
+ghspot runner stop --all --pool builders  # one pool
+```
+
+**It empties the host; it does not keep it empty.** `min_idle` is a floor the daemon maintains,
+so a pool that keeps one warm has it back on the next tick. The command says how many are
+coming back rather than letting you run it twice and conclude it did not work.
+
+Three different intents, three different commands:
+
+| You want | |
+|---|---|
+| Recycle the fleet now | `ghspot runner stop --all` |
+| Quiet until you say otherwise | `sudo systemctl stop ghspot` — the daemon retires everything and stays down |
+| Quiet but still reconciling | `min_idle = 0`, then `sudo systemctl reload ghspot` |
+
+Busy runners are named rather than silently skipped, and each container is stopped
+concurrently — ten in sequence is minutes of waiting for something you ran to get the host
+back.
+
 ## Watching instead of re-running
 
 Every listing takes `--watch`, which repaints in place until interrupted:
