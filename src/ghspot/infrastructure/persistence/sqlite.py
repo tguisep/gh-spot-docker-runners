@@ -15,6 +15,7 @@ import asyncio
 import json
 import sqlite3
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import fields as dataclass_fields
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,6 +46,18 @@ CREATE TABLE IF NOT EXISTS runners (
 );
 CREATE INDEX IF NOT EXISTS runners_by_pool ON runners (pool);
 CREATE INDEX IF NOT EXISTS runners_by_state ON runners (state);
+
+-- A retired runner's container is gone, and with it its output. This keeps the tail.
+--
+-- Its own table rather than a column on `runners`: every listing does SELECT * on that one,
+-- and a log-sized TEXT beside twelve small columns would be read on every `ghspot runner
+-- list`. The cascade means the existing prune takes these with it and nothing else has to
+-- remember they exist.
+CREATE TABLE IF NOT EXISTS runner_logs (
+    runner_id   TEXT PRIMARY KEY REFERENCES runners (id) ON DELETE CASCADE,
+    captured_at TEXT NOT NULL,
+    lines       TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,6 +204,41 @@ class SqliteRunnerRepository(SqliteStore):
             return cursor.rowcount or 0
 
         result: int = await self._run(work)
+        return result
+
+
+class SqliteRunnerLogs(SqliteStore):
+    """A :class:`~ghspot.domain.ports.repository.RunnerLogArchive` on SQLite."""
+
+    MAX_BYTES = 256 * 1024
+    """Ceiling per runner. A job that prints a megabyte a minute must not be able to grow the
+    projection without bound, and the interesting part of a failure is the end anyway."""
+
+    async def store(self, runner_id: RunnerId, lines: str) -> None:
+        kept = lines.encode("utf-8")[-self.MAX_BYTES :].decode("utf-8", errors="ignore")
+        captured_at = datetime.now(UTC).isoformat()
+
+        def work(connection: sqlite3.Connection) -> None:
+            # The runner's row has to exist for the foreign key to hold. It does by the time
+            # anything retires it, but a caller that got the order wrong should not take the
+            # retirement down with it — losing the log is the smaller failure.
+            with suppress(sqlite3.IntegrityError):
+                connection.execute(
+                    "INSERT OR REPLACE INTO runner_logs (runner_id, captured_at, lines) "
+                    "VALUES (?, ?, ?)",
+                    (str(runner_id), captured_at, kept),
+                )
+
+        await self._run(work)
+
+    async def fetch(self, runner_id: RunnerId) -> str | None:
+        def work(connection: sqlite3.Connection) -> str | None:
+            row = connection.execute(
+                "SELECT lines FROM runner_logs WHERE runner_id = ?", (str(runner_id),)
+            ).fetchone()
+            return str(row["lines"]) if row is not None else None
+
+        result: str | None = await self._run(work)
         return result
 
 

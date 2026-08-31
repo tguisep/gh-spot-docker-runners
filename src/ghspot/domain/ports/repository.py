@@ -42,6 +42,25 @@ class RunnerRepository(Protocol):
         ...
 
 
+class RunnerLogArchive(Protocol):
+    """The last thing a runner's container said, kept after the container is gone.
+
+    Retiring a runner removes its container, and with it the only copy of its output. For a
+    runner that finished a job that is survivable — GitHub keeps the job log, and it outlives
+    the container by design. For one that *failed*, there is no job log and the container was
+    the only witness, so without this the record says a runner failed and nothing at all about
+    why.
+    """
+
+    async def store(self, runner_id: RunnerId, lines: str) -> None:
+        """Keep ``lines`` as this runner's final output, replacing anything already kept."""
+        ...
+
+    async def fetch(self, runner_id: RunnerId) -> str | None:
+        """What was kept, or ``None`` if nothing was."""
+        ...
+
+
 class EventLog(Protocol):
     """Append-only history, for `ghspot runner history` and post-mortems."""
 

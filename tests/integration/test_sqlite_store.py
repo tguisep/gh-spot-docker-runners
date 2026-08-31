@@ -17,6 +17,7 @@ from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.persistence.sqlite import (
     SqliteEventLog,
+    SqliteRunnerLogs,
     SqliteRunnerRepository,
 )
 
@@ -206,3 +207,39 @@ async def test_recent_is_capped(events: SqliteEventLog) -> None:
     )
 
     assert len(list(await events.recent(limit=5))) == 5
+
+
+@pytest.mark.anyio
+async def test_a_pruned_runner_takes_its_log_with_it(tmp_path: Path) -> None:
+    """The cascade is the retention policy. Without it the logs table outlives the records it
+    describes and grows forever, with nothing pointing at the rows to delete."""
+    path = tmp_path / "state.db"
+    runners = SqliteRunnerRepository(path)
+    logs = SqliteRunnerLogs(path)
+
+    runner = make_runner(state=RunnerState.RETIRED)
+    await runners.save(runner)
+    await logs.store(runner.id, "the last thing it said")
+    assert await logs.fetch(runner.id) == "the last thing it said"
+
+    await runners.delete(runner.id)
+
+    assert await logs.fetch(runner.id) is None
+
+
+@pytest.mark.anyio
+async def test_a_log_too_large_to_keep_is_kept_from_the_end(tmp_path: Path) -> None:
+    """A job printing a megabyte a minute must not grow the projection without bound, and the
+    interesting part of a failure is the end."""
+    path = tmp_path / "state.db"
+    runners = SqliteRunnerRepository(path)
+    logs = SqliteRunnerLogs(path)
+    runner = make_runner()
+    await runners.save(runner)
+
+    await logs.store(runner.id, "x" * (SqliteRunnerLogs.MAX_BYTES * 2) + "THE END")
+
+    kept = await logs.fetch(runner.id)
+    assert kept is not None
+    assert kept.endswith("THE END")
+    assert len(kept.encode("utf-8")) <= SqliteRunnerLogs.MAX_BYTES
