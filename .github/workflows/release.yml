@@ -75,11 +75,16 @@ jobs:
             runner: ubuntu-24.04-arm
 
     steps:
-      # A release builds the tag release-please just created, not the branch head, so the
-      # package cannot contain anything the release does not.
+      # The commit, not the tag. Now that release-please leaves a *draft*, the tag does not
+      # exist yet — it is created when the release is published, which is the last thing this
+      # workflow does. Checking out refs/tags/vX.Y.Z failed the build for both architectures
+      # on v0.5.1 and left an empty draft behind.
+      #
+      # github.sha is the commit release-please released from, so it is the same tree the tag
+      # will point at once it exists.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag || github.ref }}
+          ref: ${{ github.sha }}
 
       - name: Derive the version
         id: version
