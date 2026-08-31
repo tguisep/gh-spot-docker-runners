@@ -1,8 +1,16 @@
 """The daemon: run the reconciliation loop until told to stop.
 
-Shutdown is the interesting part. A runner mid-job represents someone's CI run, so the
-default is to stop starting new work, leave the busy runners alone, and let systemd's own
-timeout decide how long to wait. Killing them would fail builds that were about to pass.
+Shutdown is the interesting part, and the rule is that **the host is the master**: when the
+daemon stops, the fleet stops. Anything else leaves runners taking jobs on a machine with
+nothing watching them — no `idle_timeout`, no `max_job_duration`, no cleanup, and a
+registration on GitHub that outlives the process that made it.
+
+That costs the jobs in flight, which fail and have to be re-run. It is the deliberate trade:
+a CI run can be replayed, and a fleet nobody owns cannot be reasoned about at all.
+
+`SIGHUP` is the exception. Reloading re-reads the configuration and leaves every runner
+exactly where it is, which is what makes changing a label or a ceiling a routine act rather
+than something you schedule around the builds.
 """
 
 from __future__ import annotations
@@ -14,6 +22,8 @@ from collections.abc import Callable
 
 from ghspot.application.dto import TickReport
 from ghspot.composition import Application
+from ghspot.infrastructure.config.settings import ConfigError
+from ghspot.infrastructure.config.settings import load as load_settings
 from ghspot.infrastructure.logging.setup import get_logger
 
 log = get_logger("ghspot.daemon")
@@ -31,12 +41,20 @@ class Daemon:
         self._application = application
         self._interval = application.settings.daemon.poll_interval.total_seconds()
         self._stopping = asyncio.Event()
+        self._reloading = asyncio.Event()
+        self._stopping_sleep = asyncio.Event()
         self._on_tick = on_tick
         self.ticks = 0
+        self.reloads = 0
 
     def request_stop(self) -> None:
         """Ask the loop to finish the tick it is in and then return."""
         self._stopping.set()
+
+    def request_reload(self) -> None:
+        """Ask the loop to re-read the configuration before its next tick."""
+        self._reloading.set()
+        self._stopping_sleep.set()
 
     async def run(self, max_ticks: int | None = None) -> None:
         """Reconcile until asked to stop.
@@ -50,6 +68,9 @@ class Daemon:
         )
 
         while not self._stopping.is_set():
+            if self._reloading.is_set():
+                self._reload()
+
             await self._tick_once()
             self.ticks += 1
 
@@ -57,7 +78,8 @@ class Daemon:
                 break
             await self._sleep_or_stop()
 
-        log.info("daemon.stopped", ticks=self.ticks)
+        await self._retire_the_fleet()
+        log.info("daemon.stopped", ticks=self.ticks, reloads=self.reloads)
 
     async def _tick_once(self) -> None:
         try:
@@ -115,9 +137,69 @@ class Daemon:
             log.debug("tick.quiet", queued=report.queued_jobs)
 
     async def _sleep_or_stop(self) -> None:
-        """Wait out the interval, but wake immediately on a stop request."""
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(self._stopping.wait(), timeout=self._interval)
+        """Wait out the interval, but wake immediately on a stop or a reload."""
+        self._stopping_sleep.clear()
+        waiters = [
+            asyncio.create_task(self._stopping.wait()),
+            asyncio.create_task(self._stopping_sleep.wait()),
+        ]
+        try:
+            await asyncio.wait(waiters, timeout=self._interval, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for waiter in waiters:
+                waiter.cancel()
+
+    def _reload(self) -> None:
+        """Re-read the configuration and apply what can be applied without a restart.
+
+        Pools, labels and ceilings — the things an operator changes — are swapped into the
+        reconciler in place. Runners are not touched: a label change must not cost the builds
+        that are running, which is the whole reason reload exists separately from restart.
+
+        A file that no longer parses leaves the daemon on what it already had. Refusing to
+        reload is recoverable; exiting on a typo is a fleet down for as long as nobody notices.
+        """
+        self._reloading.clear()
+        source = self._application.settings.source
+        try:
+            fresh = load_settings(source) if source is not None else None
+        except (ConfigError, OSError) as error:
+            log.error("reload.rejected", error=str(error), source=str(source))
+            return
+
+        if fresh is None:
+            return
+
+        self._application.settings = fresh
+        self._application.reconciler.replace_pools(fresh.pools, fresh.capacity)
+        self._interval = fresh.daemon.poll_interval.total_seconds()
+        self.reloads += 1
+        log.info("reload.applied", pools=[pool.spec.name for pool in fresh.pools])
+
+    async def _retire_the_fleet(self) -> None:
+        """Take every runner down with the daemon.
+
+        The host is the master. A runner outliving the process that made it keeps taking work
+        with nothing enforcing its timeouts, nothing reaping it, and a registration on GitHub
+        that no longer corresponds to anything watching.
+
+        Concurrent, because each container is given its stop timeout to exit and doing that in
+        sequence would blow through systemd's `TimeoutStopSec` on any real fleet.
+        """
+        runners = [r for r in await self._application.runners.list_active() if not r.is_terminal]
+        if not runners:
+            return
+
+        log.info("daemon.retiring", count=len(runners))
+        results = await asyncio.gather(
+            *(self._application.retire(runner, reason="daemon stopping") for runner in runners),
+            return_exceptions=True,
+        )
+        failed = [r for r in results if isinstance(r, BaseException)]
+        if failed:
+            # Said out loud rather than raised: the daemon is on its way out, and a container
+            # that would not go is something to find in the journal, not a non-zero exit.
+            log.error("daemon.retire_failed", count=len(failed), first=str(failed[0]))
 
 
 async def run_forever(application: Application, max_ticks: int | None = None) -> int:
@@ -132,6 +214,9 @@ async def run_forever(application: Application, max_ticks: int | None = None) ->
     for signal_number in (signal.SIGINT, signal.SIGTERM):
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(signal_number, daemon.request_stop)
+
+    with contextlib.suppress(NotImplementedError):
+        loop.add_signal_handler(signal.SIGHUP, daemon.request_reload)
 
     api_task = _start_api(application, daemon)
 
