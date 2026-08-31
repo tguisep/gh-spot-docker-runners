@@ -50,7 +50,13 @@ KillSignal=SIGTERM
 TimeoutStopSec=300
 
 StateDirectory=ghspot
+
+# 0750, matching what the package creates. Left at systemd's 0755 default the two disagree,
+# and every start logs "ConfigurationDirectory 'ghspot' already exists but the mode is
+# different" — a line that says something is wrong about the directory holding the
+# credentials, on a unit that is working perfectly.
 ConfigurationDirectory=ghspot
+ConfigurationDirectoryMode=0750
 
 # The daemon needs the Docker socket and its own state. It needs nothing else.
 #

@@ -404,3 +404,44 @@ def test_pressing_enter_grants_nothing(tmp_path: Path) -> None:
     settings = load(config)
     assert settings.pools[0].template.mount_docker_socket is False
     assert settings.daemon.api_bind is None
+
+
+def test_a_system_credential_is_readable_by_the_service_account(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`sudo ghspot setup` writes as root and the unit runs as `ghspot`. Left at 0600
+    root:root the wizard's own next step fails on the wizard's own output, with
+    "could not read the token from /etc/ghspot/token: Permission denied"."""
+    shared: list[tuple[Path, int]] = []
+    monkeypatch.setattr(wizard, "SYSTEM_DIRECTORY", tmp_path)
+    monkeypatch.setattr(wizard, "_share_with_the_service", lambda path: shared.append((path, 0)))
+
+    runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS)
+
+    assert [path.name for path, _ in shared] == ["token", "config.toml"]
+
+
+def test_a_user_configuration_is_left_to_its_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Outside /etc there is no service account in play, and widening a file somebody wrote
+    under their own home would be the wizard giving away something nobody asked it to."""
+    monkeypatch.setattr(
+        wizard, "_share_with_the_service", lambda path: pytest.fail(f"widened {path}")
+    )
+
+    result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS)
+
+    assert result.exit_code == 0
+
+
+def test_sharing_does_nothing_when_not_running_as_root(tmp_path: Path) -> None:
+    """Only root can hand a file to another account, and only root writes under /etc. A
+    developer running the wizard in their own home must not have their token touched."""
+    token = tmp_path / "token"
+    token.write_text("ghp_pretend")
+    token.chmod(0o600)
+
+    wizard._share_with_the_service(token)
+
+    assert stat.S_IMODE(token.stat().st_mode) == 0o600
