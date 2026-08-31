@@ -582,3 +582,38 @@ scope to its own, which also makes ownership readable on github.com. It is delib
 this change: it alters what is registered on GitHub and what the sweep is allowed to delete,
 and registrations made before the change would no longer be reaped by it. That deserves its
 own review rather than riding along with a display change.
+## 2026-08-31 — a fresh apt install could not actually start
+
+Two defects, both on the path the package exists to serve, and both invisible to CI.
+
+**The dashboard was never in the released package.** `packaging/deb/build.sh` bundles it only
+`if command -v npm`, and the release builds inside a container that installs
+`ca-certificates curl xz-utils fakeroot dpkg-dev` — no node. So every release took the else
+branch, `/usr/share/ghspot/web` was never created, nothing mounted at `/ui`, and the API
+answered 404. The comment in `build.sh` claimed "CI has node, so released packages always
+carry it", which was true of the workflow and not of the container the build actually runs in.
+
+Node comes from the official tarball rather than apt: Ubuntu 24.04 ships node 18 and the
+dashboard builds with vite 8, so `apt install nodejs npm` would have produced exactly the same
+silent skip. The version is read out of `.mise.toml`, so the container and a developer machine
+cannot drift.
+
+And `verify.sh` no longer *reports* a missing dashboard, it fails on it. That note is the
+reason this shipped: the packaging job was green for every release that had the bug.
+
+**The wizard wrote a credential the daemon could not read.** `sudo ghspot setup` writes
+`/etc/ghspot/token` as root at 0600; the unit runs as `ghspot`. The sequence the wizard itself
+prints ended in `could not read the token from /etc/ghspot/token: [Errno 13] Permission
+denied`. It also rewrote `config.toml` to 0644 root:root, undoing the 0640 root:ghspot the
+package had set — widening the file every time it ran.
+
+### Notes for later
+
+- `ghspot doctor` passed while the service could not start, because `sudo ghspot doctor` reads
+  the token as root. It now checks that the *service account* can read the credential. "ready"
+  has to mean the daemon is ready, not that the person running it is.
+- An App's key is pointed at rather than copied, so the wizard warns instead of chowning
+  someone else's file.
+- `ConfigurationDirectoryMode=0750` in the unit. The package creates `/etc/ghspot` 0750 and
+  systemd's default is 0755, so every single start logged that the mode of the directory
+  holding the credentials was wrong, on a unit that was fine.

@@ -6,7 +6,9 @@ runner. Each check reports what it found and, when it fails, the command that fi
 
 from __future__ import annotations
 
+import pwd
 import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +27,7 @@ from ghspot.infrastructure.config.settings import ConfigError, Settings
 from ghspot.infrastructure.docker.backend import DOCKER_SOCKET, DockerRunnerBackend
 from ghspot.infrastructure.github.client import GitHubClient
 from ghspot.interfaces.cli.render import console
+from ghspot.interfaces.cli.scaffold import SYSTEM_DIRECTORY as SYSTEM_CONFIG_DIRECTORY
 from ghspot.paths import build_command
 
 
@@ -39,6 +42,7 @@ class Check:
 async def diagnose(settings: Settings) -> bool:
     """Run every check, print the results, and report whether all of them passed."""
     checks: list[Check] = [_configuration(settings)]
+    checks.extend(_service_account(settings))
     checks.extend(await _docker(settings))
     checks.extend(await _github(settings))
 
@@ -54,6 +58,58 @@ async def diagnose(settings: Settings) -> bool:
         "[green]ready[/green]" if passed else "[red]not ready[/red] — fix the above first"
     )
     return passed
+
+
+SERVICE_USER = "ghspot"
+
+
+def _service_account(settings: Settings) -> list[Check]:
+    """Whether the account the unit runs as can read the credential this check just read.
+
+    Run under sudo — which is how the wizard tells you to run it — every file check here
+    passes as root and the daemon still cannot start, because it runs as `ghspot`. This is
+    the check that made "ready" mean the daemon is ready rather than that root is.
+
+    Only for a system configuration. Anywhere else there is no service account in play and
+    the file is meant for whoever is running this.
+    """
+    if settings.source is None or Path(settings.source).parent != SYSTEM_CONFIG_DIRECTORY:
+        return []
+
+    credential = settings.github.token_file or settings.github.private_key_file
+    if credential is None:
+        return []  # the credential comes from the environment; systemd supplies its own
+
+    path = Path(credential).expanduser()
+    try:
+        entry = pwd.getpwnam(SERVICE_USER)
+    except KeyError:
+        return []  # not a packaged host, so nothing runs as anybody else
+
+    readable = _readable_by(path, uid=entry.pw_uid, gid=entry.pw_gid)
+    return [
+        Check(
+            name=f"credential readable by {SERVICE_USER}",
+            ok=readable,
+            detail=str(path) if readable else f"{path} cannot be read by {SERVICE_USER}",
+            remedy=(
+                f"the unit runs as {SERVICE_USER}, not as you: "
+                f"sudo chown root:{SERVICE_USER} {path} && sudo chmod 640 {path}"
+            ),
+        )
+    ]
+
+
+def _readable_by(path: Path, *, uid: int, gid: int) -> bool:
+    try:
+        info = path.stat()
+    except OSError:
+        return False  # a credential that cannot be stat'd cannot be read either
+    if info.st_mode & stat.S_IROTH:
+        return True
+    if info.st_uid == uid and info.st_mode & stat.S_IRUSR:
+        return True
+    return bool(info.st_gid == gid and info.st_mode & stat.S_IRGRP)
 
 
 def _configuration(settings: Settings) -> Check:

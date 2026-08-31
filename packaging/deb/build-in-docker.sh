@@ -31,5 +31,26 @@ docker run --rm \
         # /src is read-only so the build cannot alter the working tree.
         cp -a /src /build
         cd /build
+
+        # Node, for the dashboard. Not the apt package: Ubuntu 24.04 ships node 18 and
+        # the dashboard builds with vite 8, so apt would leave a container where
+        # build.sh silently packages without a dashboard — which is how every release so
+        # far shipped one that 404s at /ui.
+        #
+        # The version comes from .mise.toml, so the container and a developer machine build
+        # the dashboard with the same node rather than drifting apart quietly.
+        NODE_VERSION="$(sed -n "s/^node *= *\"\([0-9.]*\)\"/\1/p" .mise.toml)"
+        [ -n "${NODE_VERSION}" ] || { echo "no node version in .mise.toml" >&2; exit 1; }
+        case "$(dpkg --print-architecture)" in
+            amd64) NODE_ARCH=x64 ;;
+            arm64) NODE_ARCH=arm64 ;;
+            *) echo "no node build for $(dpkg --print-architecture)" >&2; exit 1 ;;
+        esac
+        NODE_DIR="node-v${NODE_VERSION}-linux-${NODE_ARCH}"
+        curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_DIR}.tar.xz" \
+            | tar -xJ -C /opt
+        export PATH="/opt/${NODE_DIR}/bin:${PATH}"
+        echo "==> node $(node --version), npm $(npm --version)"
+
         packaging/deb/build.sh
     '

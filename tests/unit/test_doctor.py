@@ -7,12 +7,14 @@ failure and hide the rest.
 
 from __future__ import annotations
 
+import pwd
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from ghspot.domain.errors import BackendError, ForgeAuthError
+from ghspot.infrastructure.config.settings import load
 from ghspot.interfaces.cli import doctor as doctor_module
 from ghspot.interfaces.cli.main import app
 
@@ -139,3 +141,47 @@ def test_doctor_exits_zero_only_when_everything_passes(
 
     assert result.exit_code == 0
     assert "ready" in result.output
+
+
+def test_a_credential_the_service_account_cannot_read_is_a_failure(
+    config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run under sudo — which is how the wizard says to run it — every file check passes as
+    root while the daemon, which runs as `ghspot`, cannot start at all. "ready" has to mean
+    the daemon is ready, not that root is."""
+    monkeypatch.setattr(doctor_module, "SYSTEM_CONFIG_DIRECTORY", config.parent)
+    monkeypatch.setattr(pwd, "getpwnam", lambda _: _Passwd(uid=61000, gid=61000))
+
+    settings = load(config)
+    checks = doctor_module._service_account(settings)
+
+    assert [check.ok for check in checks] == [False]
+    assert "cannot be read by ghspot" in checks[0].detail
+    assert "chown root:ghspot" in checks[0].remedy
+
+
+def test_a_credential_the_service_account_can_read_passes(
+    config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = config.parent / "token"
+    token.chmod(0o640)
+    monkeypatch.setattr(doctor_module, "SYSTEM_CONFIG_DIRECTORY", config.parent)
+    monkeypatch.setattr(pwd, "getpwnam", lambda _: _Passwd(uid=61000, gid=token.stat().st_gid))
+
+    checks = doctor_module._service_account(load(config))
+
+    assert [check.ok for check in checks] == [True]
+
+
+def test_a_configuration_outside_etc_has_no_service_account_to_check(config: Path) -> None:
+    """Anywhere else the file is meant for whoever is running this, and nothing runs as
+    anybody else."""
+    assert doctor_module._service_account(load(config)) == []
+
+
+class _Passwd:
+    """Enough of a pwd entry for the check, so the test does not need a real ghspot user."""
+
+    def __init__(self, *, uid: int, gid: int) -> None:
+        self.pw_uid = uid
+        self.pw_gid = gid
