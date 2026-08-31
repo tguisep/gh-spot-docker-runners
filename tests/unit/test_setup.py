@@ -389,3 +389,18 @@ def test_a_configuration_the_daemon_rejects_is_not_followed_by_a_build(
     result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=BUILD_ANSWERS)
 
     assert result.exit_code == 1
+
+
+def test_pressing_enter_grants_nothing(tmp_path: Path) -> None:
+    """The two questions that hand something away — root on the host, and an
+    unauthenticated API on it — both answer no by default. Neither is a thing to acquire by
+    pressing enter past a paragraph explaining why you might not want to."""
+    config = tmp_path / "config.toml"
+    accepted_defaults = "token\nghp_pretend\ntguisep/my-project\nbuilders\nubuntu-24.04\n3\n\n\n"
+
+    result = runner.invoke(app, ["setup", "-c", str(config)], input=accepted_defaults)
+
+    assert result.exit_code == 0
+    settings = load(config)
+    assert settings.pools[0].template.mount_docker_socket is False
+    assert settings.daemon.api_bind is None

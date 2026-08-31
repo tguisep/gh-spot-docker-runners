@@ -153,7 +153,11 @@ def _ask(config_path: Path) -> Answers:
         "  effective root on this host. Fine for repositories you control, unacceptable\n"
         "  for one that accepts pull requests from forks. See SECURITY.md.[/dim]"
     )
-    docker_socket = Confirm.ask("  let jobs use Docker", default=True, console=console)
+    # Both of these default to no. Saying yes hands a job root on the host, or puts an
+    # unauthenticated API on it — neither is something to acquire by pressing enter past a
+    # question, and the paragraph above each one is what somebody should be reading when
+    # they turn it on. Turning either on later costs one line in the configuration file.
+    docker_socket = Confirm.ask("  let jobs use Docker", default=False, console=console)
 
     console.print()
     console.print("[bold]4. The dashboard[/bold]")
@@ -161,7 +165,7 @@ def _ask(config_path: Path) -> Answers:
         "  [dim]Serves the API and the web dashboard on this host. No authentication,\n"
         "  so it binds to localhost; reach it over an SSH tunnel.[/dim]"
     )
-    api = Confirm.ask("  serve it", default=True, console=console)
+    api = Confirm.ask("  serve it", default=False, console=console)
 
     return Answers(
         repository=repository,
