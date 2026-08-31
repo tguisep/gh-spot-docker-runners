@@ -27,7 +27,7 @@ TEMPLATES = ROOT / "deploy/ansible/roles/ghspot/templates"
 VARS = Path(__file__).resolve().parent / "vars"
 
 sys.path.insert(0, str(ROOT / "src"))
-from ghspot.infrastructure.config.settings import Settings, load  # noqa: E402
+from ghspot.infrastructure.config.settings import Settings, host_cores, load  # noqa: E402
 
 failures: list[str] = []
 
@@ -71,7 +71,13 @@ def test_minimal() -> None:
     """Defaults the template fills in are the defaults the daemon would have chosen."""
     settings = settings_for(VARS / "minimal.yml")
 
-    check(settings.capacity.max_containers is None, "minimal: a capacity limit appeared")
+    # Not None: max_containers defaults to the machine's core count, so "the template added
+    # nothing" is now "the template left the daemon's own default alone" — an assertion that
+    # still fails if the role starts inventing a ceiling of its own.
+    check(
+        settings.capacity.max_containers == host_cores(),
+        "minimal: the template set a capacity limit of its own",
+    )
     check(len(settings.pools) == 1, "minimal: expected one pool")
     pool = settings.pools[0]
     check(pool.spec.name == "default", "minimal: pool name lost")
