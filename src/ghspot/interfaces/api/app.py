@@ -26,7 +26,7 @@ from ghspot.application.queries.stats import GatherStats
 from ghspot.application.queries.views import GetPoolStatus, ListRunners, to_view
 from ghspot.composition import Application
 from ghspot.domain.errors import GhSpotError, RunnerBusyError, RunnerNotFoundError
-from ghspot.domain.model.runner import RunnerState
+from ghspot.domain.model.runner import Runner, RunnerState
 from ghspot.infrastructure.config.settings import unconfigured
 from ghspot.interfaces.api import dashboard
 from ghspot.interfaces.api.schemas import (
@@ -39,6 +39,23 @@ from ghspot.interfaces.api.schemas import (
     StatsResponse,
     TickResponse,
 )
+
+
+def _why_no_logs(runner: Runner) -> str:
+    """Say which of the several reasons for an empty pane this one is.
+
+    They need different things from the reader: waiting, looking at GitHub instead, or
+    accepting that the evidence is gone. One blank box for all of them told nobody which.
+    """
+    if runner.is_terminal:
+        return (
+            "the container was removed when this runner retired, and nothing was kept — "
+            "runners retired before log retention existed have no archived output. "
+            "If it ran a job, GitHub still has that log."
+        )
+    if runner.container_id is None:
+        return "this runner has no container yet"
+    return "the container has not printed anything yet"
 
 
 def _wired(request: Request) -> Application:
@@ -166,12 +183,25 @@ def create_app(application: Application) -> FastAPI:
         tail: Annotated[int, Query(ge=1, le=10_000)] = 200,
     ) -> LogsResponse:
         runner = await ResolveRunner(app.runners)(reference)
-        lines = (
-            ""
-            if runner.container_id is None
-            else await app.backend.logs(runner.container_id, tail=tail)
+
+        live = ""
+        if runner.container_id is not None:
+            live = await app.backend.logs(runner.container_id, tail=tail)
+        if live.strip():
+            return LogsResponse(runner_id=str(runner.id), lines=live, source="container")
+
+        # The container is gone, or never said anything. Retiring a runner removes its
+        # container, so for anything terminal this is the only copy there is.
+        kept = await app.runner_logs.fetch(runner.id)
+        if kept is not None:
+            return LogsResponse(runner_id=str(runner.id), lines=kept, source="archive")
+
+        return LogsResponse(
+            runner_id=str(runner.id),
+            lines="",
+            source="none",
+            reason=_why_no_logs(runner),
         )
-        return LogsResponse(runner_id=str(runner.id), lines=lines)
 
     @api.get("/runners/{reference}/job-logs", response_model=JobLogsResponse, tags=["runners"])
     async def get_job_logs(

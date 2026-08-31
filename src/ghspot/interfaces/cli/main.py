@@ -380,7 +380,9 @@ def runner_logs(
     settings = _settings(config)
 
     if not job:
-        output = _run(operations.runner_logs(settings, runner_id, tail))
+        output, source = _run(operations.runner_logs(settings, runner_id, tail))
+        if source == "archive":
+            console.print("[dim]the container is gone; kept when this runner retired[/dim]")
         console.print(output or "[dim]no output[/dim]")
         return
 

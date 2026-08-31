@@ -12,14 +12,27 @@ from ghspot.domain.model.runner import RunnerState
 from ghspot.infrastructure.config.settings import Settings
 
 
-async def runner_logs(settings: Settings, reference: str, tail: int) -> str:
-    """Container output for a runner."""
+async def runner_logs(settings: Settings, reference: str, tail: int) -> tuple[str, str]:
+    """Container output for a runner, and where it came from.
+
+    Retiring a runner removes its container, so for anything terminal the archived tail is the
+    only copy there is. Returns ``(lines, source)`` where source is ``container``, ``archive``
+    or ``none`` — the caller says which, because "gone forever" and "nothing yet" want
+    different things from whoever is reading.
+    """
     application = build(settings)
     try:
         runner = await ResolveRunner(application.runners)(reference)
-        if runner.container_id is None:
-            return ""
-        return await application.backend.logs(runner.container_id, tail=tail)
+        live = ""
+        if runner.container_id is not None:
+            live = await application.backend.logs(runner.container_id, tail=tail)
+        if live.strip():
+            return live, "container"
+
+        kept = await application.runner_logs.fetch(runner.id)
+        if kept is not None:
+            return kept, "archive"
+        return "", "none"
     finally:
         await application.aclose()
 

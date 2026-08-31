@@ -617,3 +617,43 @@ package had set — widening the file every time it ran.
 - `ConfigurationDirectoryMode=0750` in the unit. The package creates `/etc/ghspot` 0750 and
   systemd's default is 0755, so every single start logged that the mode of the directory
   holding the credentials was wrong, on a unit that was fine.
+
+## 2026-08-31 — a retired runner's last words
+
+Retiring a runner removes its container, and Docker drops the output with it. Checked rather
+than assumed: the same `logs()` call returns `the-last-thing-it-said` while the container
+exists and `''` immediately after `remove()`. So the logs pane for anything retired was blank,
+and the API said so by returning an empty string — the same answer it gave for "not started
+yet" and "printed nothing", which is why nobody could tell which they were looking at.
+
+A runner that *finished a job* was survivable: GitHub keeps that log and it outlives the
+container by design, which is what the second pane is for. A runner that **failed** was not.
+There is no job log, the container was the only witness, and the record said a runner failed
+and nothing whatsoever about why.
+
+`RetireRunner` now copies the tail between stopping the container and removing it — the moment
+after it has said everything and before its output stops existing. Capped at 500 lines and
+256 KiB, keeping the end, because the interesting part of a failure is where it stopped.
+
+### Notes for later
+
+- Its own table, not a column on `runners`: every listing does `SELECT *` on that one, and a
+  log-sized TEXT beside twelve small columns would be read on every `ghspot runner list`.
+- `REFERENCES runners(id) ON DELETE CASCADE` makes the existing prune the retention policy.
+  Nothing else has to remember the archive exists, and it cannot outlive what it describes.
+  Foreign keys were already on, so this needed no migration — only a `CREATE TABLE IF NOT
+  EXISTS`, which existing databases pick up on the next `prepare()`.
+- Capturing is never fatal. Cleanup that fails because a *diagnostic* could not be saved leaves
+  a container running and a registration behind, which is far worse than the missing log.
+- `LogsResponse` gained `source` and `reason`. An empty string answered three different
+  questions identically; the reader needs to know whether to wait, look at GitHub, or accept
+  that the evidence is gone.
+- The dashboard stops polling once the source is `archive`. A frozen tail asked every two
+  seconds gives the same answer forever.
+- Runners retired before this shipped have nothing kept. There is no going back for it.
+
+### Also fixed
+
+`test_a_missing_image_says_how_to_build_it` still expected `build.sh` after the message became
+`ghspot image build`. It only runs where busybox is already pulled, so CI skipped it and the
+staleness sat there — found by pulling busybox to check the log behaviour above.

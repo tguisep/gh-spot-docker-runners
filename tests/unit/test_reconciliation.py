@@ -30,6 +30,7 @@ from tests.fakes.adapters import (
     FakeBackend,
     FakeClock,
     FakeForge,
+    InMemoryRunnerLogs,
     InMemoryRunnerRepository,
     RecordingPublisher,
     SequentialIds,
@@ -51,6 +52,8 @@ class Harness:
     clock: FakeClock
     events: RecordingPublisher
     spec: PoolSpec
+    retire: RetireRunner
+    runner_logs: InMemoryRunnerLogs
 
     def runner_states(self) -> dict[str, RunnerState]:
         return {str(r.id): r.state for r in self.repository.saved.values()}
@@ -66,7 +69,8 @@ def build(*specs: PoolSpec, capacity: CapacityLimits | None = None) -> Harness:
     ids = SequentialIds()
 
     provision = ProvisionRunner(forge, backend, repository, clock, ids, events)
-    retire = RetireRunner(forge, backend, repository, clock, events)
+    runner_logs = InMemoryRunnerLogs()
+    retire = RetireRunner(forge, backend, repository, clock, events, archive=runner_logs)
     service = ReconciliationService(
         pools=[PoolConfiguration(spec=s, template=TEMPLATE) for s in (specs or (spec,))],
         forge=forge,
@@ -78,7 +82,9 @@ def build(*specs: PoolSpec, capacity: CapacityLimits | None = None) -> Harness:
         retire=retire,
         capacity=capacity,
     )
-    return Harness(service, provision, forge, backend, repository, clock, events, spec)
+    return Harness(
+        service, provision, forge, backend, repository, clock, events, spec, retire, runner_logs
+    )
 
 
 @pytest.fixture
@@ -622,3 +628,32 @@ async def test_a_full_host_may_still_retire_so_it_can_recover() -> None:
     report = await harness.service.tick()
 
     assert report.retired == 1
+
+
+@pytest.mark.anyio
+async def test_retiring_keeps_the_container_s_last_words(harness: Harness) -> None:
+    """Removal is the moment a container's output stops existing, so the copy is taken
+    between stopping it and removing it — a runner that failed leaves no job log on GitHub,
+    and without this the record says it failed and nothing about why."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    assert runner.container_id is not None
+    harness.backend.logs_by_container[runner.container_id] = "boom\n"
+
+    await harness.retire(runner, reason="test")
+
+    assert await harness.runner_logs.fetch(runner.id) == "boom\n"
+
+
+@pytest.mark.anyio
+async def test_a_log_that_cannot_be_read_does_not_block_the_retirement(
+    harness: Harness,
+) -> None:
+    """Cleanup that fails because a diagnostic could not be saved leaves a container running
+    and a registration behind — much worse than the missing log it was trying to keep."""
+    runner = await harness.provision(harness.spec, TEMPLATE)
+    harness.backend.fail_on.add("logs")
+
+    await harness.retire(runner, reason="test")
+
+    assert runner.state is RunnerState.RETIRED
+    assert runner.container_id in harness.backend.removed

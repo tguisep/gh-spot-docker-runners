@@ -1076,6 +1076,18 @@ sudo mkdir -p /usr/share/ghspot/web && sudo cp -a dist/. /usr/share/ghspot/web/
 sudo systemctl restart ghspot
 ```
 
+**A retired runner's logs are empty.**
+Retiring removes the container, and Docker drops its output with it — proven, not assumed: the
+same `docker logs` call returns the output one moment and an empty string the next. The daemon
+now copies the last 500 lines into its state database between stopping the container and
+removing it, so `ghspot runner logs <id>` and the dashboard still answer for a runner that no
+longer exists. Both say when what you are reading is that kept copy rather than a live one.
+
+Two limits worth knowing. Runners retired before this existed have nothing kept — there is no
+copy to go back for. And the archive is pruned with the runner record it belongs to, so it
+lasts as long as the record does (the last 500 terminal runners). If the runner ran a job,
+GitHub's own log outlives both: `ghspot runner logs <id> --job`.
+
 **`ImageNotFoundError`.**
 The runner image is not built on this host. Run `ghspot image build <variant>`; `ghspot doctor`
 prints the exact command for the image the pool asks for.

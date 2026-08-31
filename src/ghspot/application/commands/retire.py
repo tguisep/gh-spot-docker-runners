@@ -8,8 +8,12 @@ from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.runner import Runner, RunnerState
 from ghspot.domain.ports.backend import RunnerBackend
 from ghspot.domain.ports.forge import ForgeClient
-from ghspot.domain.ports.repository import RunnerRepository
+from ghspot.domain.ports.repository import RunnerLogArchive, RunnerRepository
 from ghspot.domain.ports.system import Clock, EventPublisher
+
+FINAL_LOG_LINES = 500
+"""How much of a dying container to keep. Enough to hold a traceback and what led to it,
+short of keeping a whole job's output for every runner that ever ran."""
 
 
 class RetireRunner:
@@ -28,6 +32,7 @@ class RetireRunner:
         clock: Clock,
         events: EventPublisher,
         stop_timeout_seconds: int = 30,
+        archive: RunnerLogArchive | None = None,
     ) -> None:
         self._forge = forge
         self._backend = backend
@@ -35,6 +40,7 @@ class RetireRunner:
         self._clock = clock
         self._events = events
         self._stop_timeout = stop_timeout_seconds
+        self._archive = archive
 
     async def __call__(self, runner: Runner, reason: str, *, force: bool = False) -> None:
         """Retire ``runner``.
@@ -48,6 +54,13 @@ class RetireRunner:
                     await self._backend.kill(runner.container_id)
                 else:
                     await self._backend.stop(runner.container_id, self._stop_timeout)
+
+            # After stopping and before removing: the container has said everything it is
+            # going to, and removal is the moment its output stops existing. A runner that
+            # finished a job leaves its log on GitHub, but one that failed leaves nothing —
+            # and "failed" with no explanation is the record nobody can act on.
+            await self._keep_the_last_of_it(runner)
+
             with suppress(GhSpotError):
                 await self._backend.remove(runner.container_id)
 
@@ -65,3 +78,17 @@ class RetireRunner:
         events = runner.pull_events()
         if events:
             await self._events.publish(events)
+
+    async def _keep_the_last_of_it(self, runner: Runner) -> None:
+        """Copy the container's tail into the archive. Never fatal.
+
+        Retiring is cleanup, and cleanup that fails because a *diagnostic* could not be saved
+        leaves a container running and a registration behind — a far worse outcome than the
+        missing log it was trying to prevent.
+        """
+        if self._archive is None or runner.container_id is None:
+            return
+        with suppress(GhSpotError):
+            lines = await self._backend.logs(runner.container_id, tail=FINAL_LOG_LINES)
+            if lines.strip():
+                await self._archive.store(runner.id, lines)

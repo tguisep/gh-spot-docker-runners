@@ -49,11 +49,19 @@ export function Logs() {
 
     const runners = usePoll(() => api.runners({ includeTerminal: true }), 10_000);
     const live = Boolean(selected) && following;
+    // An archived tail is the container's last words, not a stream. Polling it every two
+    // seconds asks the daemon the same question forever and gets the same answer.
+    const [frozen, setFrozen] = useState(false);
+    useEffect(() => setFrozen(false), [selected]);
 
-    const container = usePoll(() => api.logs(selected, tail), 2000, live);
+    const container = usePoll(() => api.logs(selected, tail), 2000, live && !frozen);
     // Slower: this endpoint is a GitHub request, and until the job ends every one of them
     // is a 404 that costs rate limit to learn nothing.
     const forge = usePoll(() => api.jobLogs(selected, tail), 10_000, live);
+
+    useEffect(() => {
+        if (container.data?.source === 'archive') setFrozen(true);
+    }, [container.data?.source]);
 
     const left = useTailPane(container.data);
     const right = useTailPane(forge.data);
@@ -126,8 +134,23 @@ export function Logs() {
 
             {selected ? (
                 <div className="split">
-                    <Panel title="container — the job as it happens">
+                    <Panel
+                        title={
+                            container.data?.source === 'archive'
+                                ? 'container — kept when this runner retired'
+                                : 'container — the job as it happens'
+                        }
+                    >
                         <Status loading={container.loading} error={container.error} />
+                        {container.data?.source === 'archive' ? (
+                            <p className="notice dim">
+                                the container is gone; this is the tail kept when the runner
+                                retired, and it will not grow.
+                            </p>
+                        ) : null}
+                        {container.data?.source === 'none' ? (
+                            <p className="notice dim">{container.data.reason}</p>
+                        ) : null}
                         <pre className="logs" ref={left.pane} onScroll={left.onScroll}>
                             {container.data?.lines ?? ''}
                         </pre>

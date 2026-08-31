@@ -44,6 +44,7 @@ def build_daemon(reconciler: object, interval_seconds: float = 0.01) -> Daemon:
         backend=None,  # type: ignore[arg-type]
         runners=None,  # type: ignore[arg-type]
         events=None,  # type: ignore[arg-type]
+        runner_logs=None,  # type: ignore[arg-type]
         reconciler=reconciler,  # type: ignore[arg-type]
         housekeeping=ReclaimHostSpace(
             backend=FakeBackend(),

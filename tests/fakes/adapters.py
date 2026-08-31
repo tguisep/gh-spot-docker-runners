@@ -195,6 +195,9 @@ class FakeBackend:
     samples: dict[str, ContainerUsage] = field(default_factory=dict)
     """What `usage()` reports, keyed by container id."""
 
+    logs_by_container: dict[str, str] = field(default_factory=dict)
+    """What `logs()` returns, keyed by container id, for tests that care what was said."""
+
     now: datetime = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
     _next_id: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
 
@@ -264,6 +267,12 @@ class FakeBackend:
 
     async def logs(self, container_id: str, tail: int = 200) -> str:
         self._guard("logs")
+        # Removed containers answer with nothing, the way the real one does — that is the
+        # whole condition the archive exists to survive.
+        if container_id in self.removed:
+            return ""
+        if container_id in self.logs_by_container:
+            return self.logs_by_container[container_id]
         return f"logs for {container_id}"
 
     async def image_exists(self, image: str) -> bool:
@@ -289,3 +298,20 @@ class FakeBackend:
     def vanish(self, container_id: str) -> None:
         """Someone ran `docker rm -f` behind the daemon's back."""
         self.containers.pop(container_id, None)
+
+
+class InMemoryRunnerLogs:
+    """A :class:`~ghspot.domain.ports.repository.RunnerLogArchive` in a dict.
+
+    No foreign key, so unlike the SQLite one it will happily keep a log for a runner that was
+    never saved — which is what a test wants and what production must not do.
+    """
+
+    def __init__(self) -> None:
+        self.kept: dict[str, str] = {}
+
+    async def store(self, runner_id: str, lines: str) -> None:
+        self.kept[str(runner_id)] = lines
+
+    async def fetch(self, runner_id: str) -> str | None:
+        return self.kept.get(str(runner_id))
