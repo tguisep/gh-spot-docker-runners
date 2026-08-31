@@ -41,10 +41,46 @@ def main(root: Path) -> int:
             if path not in pages:
                 broken.add((str(html.relative_to(root)), href))
 
+    anchors = check_anchors(Path("site/src/content/docs"))
+
     for page, href in sorted(broken):
         print(f"  {page} -> {href}")
-    print(f"{checked} internal link(s) checked, {len(broken)} broken")
-    return 1 if broken else 0
+    for problem in anchors:
+        print(f"  {problem}")
+    print(
+        f"{checked} internal link(s) checked, {len(broken)} broken; "
+        f"{len(anchors)} dangling in-page anchor(s)"
+    )
+    return 1 if broken or anchors else 0
+
+
+def check_anchors(source: Path) -> list[str]:
+    """In-page `](#thing)` links, against the headings of the page they are on.
+
+    These render as `href="#thing"` with no path, so the check above never sees them — and
+    splitting one page into two is exactly what turns a working anchor into a dead one.
+    """
+    if not source.is_dir():
+        return []
+
+    def slugs(text: str) -> set[str]:
+        found = set()
+        for line in text.splitlines():
+            heading = re.match(r"^#{1,6} (.+)$", line)
+            if heading:
+                slug = re.sub(r"[`*_\[\]()]", "", heading.group(1).lower())
+                slug = re.sub(r"[^a-z0-9 -]", "", slug)
+                found.add(re.sub(r"\s+", "-", slug.strip()))
+        return found
+
+    dangling = []
+    for page in sorted(source.rglob("*.md")):
+        text = page.read_text()
+        here = slugs(text)
+        for anchor in re.findall(r"\]\((#[^)]+)\)", text):
+            if anchor[1:] not in here:
+                dangling.append(f"{page.relative_to(source)} -> {anchor}")
+    return dangling
 
 
 if __name__ == "__main__":

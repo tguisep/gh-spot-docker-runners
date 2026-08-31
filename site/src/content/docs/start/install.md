@@ -5,20 +5,16 @@ description: "From the .deb, with Ansible, or from source."
 
 ## From a .deb (recommended on Debian and Ubuntu)
 
-Download the package for your architecture from the
-[latest release](https://github.com/tguisep/gh-spot-docker-runners/releases/latest).
-Releases are cut automatically from the commit history, so `latest` always matches `main` as
-of its last release:
+Take the package for your architecture from the
+[latest release](https://github.com/tguisep/gh-spot-docker-runners/releases/latest) — cut
+automatically from the commit history, so `latest` matches `main` as of its last release.
 
 ```bash
 sudo apt install ./ghspot_0.1.0-1_amd64.deb
 ```
 
-It bundles its own Python, so it does not use — or care about — the system interpreter. The
-package works on any glibc distribution and cannot be broken by a distribution upgrade
-changing `python3`.
-
-What it installs:
+Bundles its own Python: it neither uses nor cares about the system interpreter, works on any
+glibc distribution, and cannot be broken by an upgrade changing `python3`.
 
 | Path | |
 |---|---|
@@ -29,8 +25,7 @@ What it installs:
 | `/var/lib/ghspot/` | State database |
 
 It creates a `ghspot` system user, adds it to the `docker` group, and **does not start the
-daemon** — it cannot work until a repository and a credential are configured. Continue at
-[Configure](#configure), then:
+daemon** — it cannot work until a repository and a credential are configured. Continue at [Configure](./configure.md), then:
 
 ```bash
 sudo ghspot doctor --config /etc/ghspot/config.toml
@@ -51,9 +46,9 @@ ansible-vault create inventory/group_vars/runners/vault.yml
 ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
 ```
 
-The role installs the package, renders the configuration and credential, builds the runner
-images, starts the service, and finishes by running `ghspot doctor` — so a green run means
-the daemon can actually work. See [`deploy/ansible/README.md`](https://github.com/tguisep/gh-spot-docker-runners/blob/main/deploy/ansible/README.md).
+Installs the package, renders configuration and credential, builds the images, starts the
+service, and finishes with `ghspot doctor` — a green run means the daemon can actually work.
+See [`deploy/ansible/README.md`](https://github.com/tguisep/gh-spot-docker-runners/blob/main/deploy/ansible/README.md).
 
 ## From source
 
@@ -100,11 +95,15 @@ Then build the runner image, which both install methods need:
 ghspot image build ubuntu-24.04     # `ghspot image list` names the variants
 ```
 
-The image sources ship inside the package, so this works on a host with no clone. It runs
-`images/runner/build.sh` from wherever they are installed — `/usr/share/ghspot/images/runner`
-from the `.deb`, the checkout when you are in one — which is what keeps the packaged build and
-the development build the same build. `--sources` overrides the search, as does
-`GHSPOT_RUNNER_IMAGES`.
+The image sources ship in the package, so this needs no clone. It runs
+`images/runner/build.sh` from wherever they are installed — which is what keeps the packaged
+build and the development build the same build.
+
+| Searched | |
+|---|---|
+| 1 | A checkout, when you are running from one |
+| 2 | `/usr/share/ghspot/images/runner`, from the `.deb` |
+| Override | `--sources`, or `GHSPOT_RUNNER_IMAGES` |
 
 `DOCKER_GID` must match the host's `docker` group, or the unprivileged `runner` user inside
 the container cannot use the mounted socket. The script detects it; you do not pass it.

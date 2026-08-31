@@ -54,10 +54,11 @@ CI queues rather than failing: a job with no matching runner waits, and GitHub f
 
 ## Which jobs cannot move
 
-Jobs that run `docker run -v "${PWD}:/src"` stay on GitHub-hosted. Inside a runner container
-the Docker client talks to the *host's* daemon, so a workspace path is resolved on the host,
-where it does not exist — Docker mounts an empty directory and the job fails confusingly.
-`docker build` is unaffected, because it streams its context from the client.
+Jobs running `docker run -v "${PWD}:/src"` stay on GitHub-hosted.
+
+Inside a runner container the Docker client talks to the **host's** daemon, so a workspace
+path resolves on the host, where it does not exist — Docker mounts an empty directory and the
+job fails confusingly. `docker build` is unaffected: it streams its context from the client.
 
 Moving them would require the runner's work directory to be a host bind mount at an identical
 path inside the container. That is a change to the runner image, not to the workflow.

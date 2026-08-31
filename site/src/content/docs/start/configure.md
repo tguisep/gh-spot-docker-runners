@@ -9,48 +9,51 @@ description: "Writing the first configuration, by wizard or by hand."
 sudo ghspot setup
 ```
 
-It asks the handful of things that cannot be guessed — token or GitHub App, which repository,
-what the pool is called, whether jobs may use Docker — writes an ordinary configuration file,
-and tells you the three commands that come next. The `.deb` prints the same invitation after
-install.
+Asks the four things that cannot be guessed — credential, repository, pool name, whether jobs
+may use Docker — then writes the file and says what to run next.
 
-Nothing it writes is special: the output is a file you could have written by hand, and it
-says where it put it. A token goes into a file of its own, created `0600` *before* anything is
-written to it. A GitHub App's private key is pointed at, never copied.
+| | |
+|---|---|
+| Writes to | `/etc/ghspot/config.toml` as root, `~/.config/ghspot/config.toml` otherwise |
+| Existing file | Refused without `--force` |
+| Token | Its own file, created `0600` **before** anything is written to it |
+| App private key | Pointed at, never copied |
+| System install | Credentials chowned `root:ghspot 0640`, because the unit runs as `ghspot` |
 
-What it writes is `config.example.toml` with your answers filled into it — the whole
-commented reference, not the four lines you were asked for. Everything the wizard did not
-ask about is left commented out at the value the daemon would have used anyway, so the file
-you end up editing later already explains itself and there is nothing to go and look up. The
-two exceptions are `cpus` and `memory`: the reference sets them to illustrate them, and
-inheriting that would cap every job on the host at limits nobody chose, so those are
-commented out.
+### What lands in the file
 
-It prints back only the settings that are live. The rest is in the file.
+`config.example.toml` with your answers substituted in — the whole commented reference, not
+the four lines you were asked for. Settings you were not asked about keep the reference's
+value, which is the daemon's own default.
 
-Then it offers to build the runner image you chose, because that is the one step nothing
-works without — a pool whose image is missing starts no runners and says so only in the
-daemon's log. The offer appears only when there is something to do: an image already present
-is reported and skipped, and if Docker is unreachable or the image sources are not installed
-the wizard says nothing and leaves `ghspot doctor` to report the real problem. Declining is
-free; the instruction stays in the list. Accepting takes several minutes and streams the
-build.
+Two exceptions, commented out instead: `cpus` and `memory`. The reference sets them to
+illustrate them, and inheriting that would cap every job on the host at limits nobody chose.
 
-If `config.example.toml` is not installed — it ships at `/usr/share/doc/ghspot/` — the wizard
-writes the short form instead rather than failing over a documentation file.
+If `config.example.toml` is missing — it ships at `/usr/share/doc/ghspot/` — the wizard writes
+the short form rather than failing over a documentation file. Only live settings are echoed
+back; the rest is in the file.
 
-Run as root it writes `/etc/ghspot/config.toml`; as anyone else, `~/.config/ghspot/config.toml`.
-It refuses to overwrite an existing file without `--force`.
+### Defaults that grant nothing
 
-The two questions that hand something away answer **no** by default: letting jobs use Docker
-gives a job effective root on the host, and serving the dashboard puts an unauthenticated API
-on it. Neither is a thing to acquire by pressing enter past the paragraph explaining it.
-Turning either on later is one line in the file — `docker_socket` under `[pool.container]`,
-`api_bind` under `[daemon]`.
+Both answer **no** unless you say otherwise:
 
-If the daemon is already running with the packaged configuration, its dashboard says the same
-thing at `/ui` — a fresh install shows a setup screen rather than an empty and unexplained
-fleet.
+- `let jobs use Docker` — a job with the socket has effective root on this host.
+- `serve it` (the dashboard) — an unauthenticated API on this host.
+
+Turning either on later is one line: `docker_socket` under `[pool.container]`, `api_bind`
+under `[daemon]`.
+
+### The build offer
+
+The wizard then offers to build the image you chose — the one step nothing works without, since
+a pool with no image starts no runners and says so only in the log.
+
+| Condition | What happens |
+|---|---|
+| Image already present | Reported, no offer |
+| Docker unreachable, or no image sources | Silent; `ghspot doctor` reports the real problem |
+| Declined | Instruction stays in the next-steps list |
+| Accepted | Streams the build, several minutes |
 
 ## By hand
 
@@ -58,26 +61,21 @@ fleet.
 cp config.example.toml config.toml
 $EDITOR config.toml
 ghspot config validate
-```
-
-Then, before running anything:
-
-```bash
 ghspot doctor
 ```
 
-Every check `doctor` performs is a failure that would otherwise appear as a pool quietly
-never starting a runner. It verifies the config parses, Docker answers, the runner image
-exists, the socket is present, the token resolves, and each repository is reachable with the
-permissions the daemon needs. Failures print the command that fixes them.
+`doctor` checks the config parses, Docker answers, the image exists, the socket is present, the
+token resolves, and each repository is reachable with the permissions needed. Each is a failure
+that would otherwise show up as a pool quietly never starting a runner. Failures print the
+command that fixes them.
 
 ## Pools in their own files
 
-One growing `config.toml` stops being reviewable somewhere around the fourth pool. Pools can
-live one per file instead, the way php-fpm keeps them in `php-fpm.d`:
+One growing `config.toml` stops being reviewable around the fourth pool. Pools can live one
+per file instead, the way php-fpm keeps them in `php-fpm.d`:
 
 ```toml
-# /etc/ghspot/config.toml — above the first [section], see below
+# /etc/ghspot/config.toml — above the first [section]
 include = "/etc/ghspot/pools.d/*.toml"
 ```
 
@@ -92,23 +90,24 @@ labels = ["self-hosted", "linux", "x64"]
 image = "ghspot/runner:ubuntu-24.04"
 ```
 
-The `.deb` creates `/etc/ghspot/pools.d` and ships the `include` commented out in the
-conffile. The Ansible role writes a file per pool when `ghspot_pools_in_directory: true`, and
-removes the file of a pool you delete from the inventory — nothing else would, since the
-include is a glob.
+The `.deb` creates `/etc/ghspot/pools.d` and ships the `include` commented out. The Ansible
+role writes a file per pool when `ghspot_pools_in_directory: true`, and deletes the file of a
+pool removed from the inventory — nothing else would, since the include is a glob.
 
-**How files are merged**, which is where the surprises would otherwise be:
+### How files are merged
 
 | | |
 |---|---|
-| Order | The glob is expanded and **sorted**, so the fleet a host ends up with does not depend on the order a directory happens to return |
-| Merging | Files are **merged, never overridden**. Every pool found is a pool that runs — there is no last-one-wins, because a pool silently replaced by a file later in the alphabet is not something you would debug quickly |
-| Duplicates | **Fatal**, naming both files. The same as `php-fpm` refusing to start rather than picking one |
-| Scope | An included file defines **pools and nothing else**. `[github]`, `[daemon]` and the rest stay in the main file, and putting one in a pool file is an error rather than a question about which wins |
-| Nothing matched | Not an error by itself — an empty `pools.d` on a host still being set up is normal. "At least one pool" still applies overall |
+| Order | Glob expanded and **sorted** — the fleet does not depend on directory order |
+| Merging | **Merged, never overridden.** Every pool found runs; no last-one-wins |
+| Duplicates | **Fatal**, naming both files |
+| Scope | Pools and nothing else. `[github]`, `[daemon]` etc. stay in the main file |
+| Nothing matched | Not an error. "At least one pool" still applies overall |
 
-Pools defined in `config.toml` and pools in `pools.d` coexist; they are one set.
+Pools in `config.toml` and pools in `pools.d` coexist as one set.
 
-> **`include` has to sit above the first `[section]`.** In TOML a bare key belongs to
-> whichever table precedes it, so written lower down it becomes `github.include` and does
-> nothing. `ghspot config validate` refuses that rather than starting with no pools.
+:::caution[`include` must sit above the first `[section]`]
+In TOML a bare key belongs to the table above it, so written lower down it becomes
+`github.include` and does nothing. `ghspot config validate` refuses that rather than starting
+with no pools.
+:::

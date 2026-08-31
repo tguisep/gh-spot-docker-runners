@@ -772,3 +772,36 @@ drift `CLAUDE.md` warns about, and the one nobody edits is the one everybody fin
   blob URL; nothing can be done about the ones already out.
 - Frontmatter values are quoted. "How runners are kept: `pm`" contains a colon, and an
   unquoted YAML title fails the build with a message about indentation.
+
+## 2026-08-31 — the site, reorganised by domain and cut back
+
+Two passes over the site from the previous entry.
+
+**Grouped by domain rather than by document.** The first cut mirrored `operations.md`'s
+headings, which is the order things were written in, not the order anybody needs them. Pages
+now sit under the thing they are about: `guides/pools/`, `guides/host/`, `guides/operate/`. A
+setting belongs to whichever owns it — `max_runners` bounds one pool, `max_containers` bounds
+the machine, and they were on the same page.
+
+Three pages split along that line:
+
+- `images.md` → labels and routing (a pool concern) and building images (a host one).
+- `capacity.md` → host ceilings, and `priority`, which is a pool's share of them.
+- `day-to-day.md` → monitoring, the dashboard, and the API. At 1419 words it was the largest
+  page on the site and covered three unrelated jobs.
+
+**Cut back.** Paragraphs of 4+ lines went from 32 to 8, of which 3 are ADRs — decision records
+argue, and that is what they are for. Enumerations became bullets, comparisons became tables,
+and troubleshooting opens with a symptom/cause/fix table instead of fifteen bold headings.
+
+### Notes for later
+
+- Splitting pages breaks in-page anchors silently: `install.md` linked `[Configure](#configure)`
+  from when both lived in one file, which renders as `href="#configure"` and so slips past the
+  link checker, which only follows `href="/gh-spot-docker-runners..."`. Anchors are now checked
+  against the headings of the page they are on.
+- Moving a page deeper breaks its own outbound `../` links, and the first repair pass left them
+  because the resolved path did not exist so it declined to guess. Resolving by filename fixed
+  it; the check that every relative `.md` link resolves on disk is what caught it.
+- `gpus.md` explained subset matching in full, which is now `pools/labels.md`'s job. Grouping by
+  domain surfaces that kind of duplication — it was invisible while both were "a guide".

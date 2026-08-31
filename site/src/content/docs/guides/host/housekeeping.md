@@ -16,7 +16,7 @@ is yours afterwards:
 | `docker build` layers | **Still in the build cache** |
 
 That is inherent to sharing the daemon, and it is the trade recorded in
-[ADR 5](../reference/adr/0005-docker-socket-over-dind.md).
+[ADR 5](../../reference/adr/0005-docker-socket-over-dind.md).
 
 ## Housekeeping bounds it
 
@@ -32,10 +32,12 @@ build_cache_older_than = "24h"
 keep_build_cache = "10g"
 ```
 
-Every age is a floor, so a running job cannot have something it is using removed underneath
-it. Runner images carry `io.ghspot.image=runner` and are **never** reclaimed — without that
-the daemon would eventually delete the images it starts runners from. Named volumes are left
-alone, since a named volume is something somebody chose to create.
+Three rules keep this from eating something that matters:
+
+- Every age is a **floor**, so a running job cannot have what it is using removed underneath it.
+- Runner images carry `io.ghspot.image=runner` and are **never** reclaimed — otherwise the
+  daemon would eventually delete the images it starts runners from.
+- Named volumes are left alone; a named volume is something somebody chose to create.
 
 Set any age to `"never"` to disable that sweep, or `enabled = false` for all of it.
 
@@ -48,11 +50,12 @@ Two things it deliberately will not do:
 - **Nothing is removed immediately.** Residue is bounded by the interval and the age floors,
   not eliminated.
 
-A real guarantee that a job leaves nothing needs each runner to have its own Docker daemon,
-so there is no shared state to leave anything in. That means Docker-in-Docker, and costs the
-shared layer cache: every job re-pulls what it needs. `RunnerBackend.create()` takes a
-`ContainerSpec`, so it is a new spec rather than a change to any calling code, but it is a
-real architectural change and not currently implemented.
+A real guarantee needs each runner to have its own Docker daemon — Docker-in-Docker — so there
+is no shared state to leave anything in.
+
+- Costs the shared layer cache: every job re-pulls what it needs.
+- `RunnerBackend.create()` takes a `ContainerSpec`, so it is a new spec rather than a change to
+  calling code — but it is an architectural change, and not currently implemented.
 
 The narrow case is easy, though: a pool with `docker_socket = false` leaves nothing at all,
 because the job never reaches the host daemon in the first place.

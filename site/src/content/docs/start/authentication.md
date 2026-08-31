@@ -120,9 +120,10 @@ Or set `GHSPOT_GITHUB_TOKEN` instead and omit `token_file` entirely.
 
 ### A note on classic tokens
 
-Classic tokens work — the endpoints accept the `repo` scope — but `repo` grants read and
-write access to **every repository you can reach**, including code, issues and settings. A
-fine-grained token limited to two repositories is strictly better. Use classic only if
+Classic tokens work — the endpoints accept the `repo` scope — but `repo` grants read and write
+to **every repository you can reach**, including code, issues and settings.
+
+A fine-grained token limited to two repositories is strictly better. Use classic only if
 fine-grained tokens are unavailable to you.
 
 ---
@@ -139,10 +140,9 @@ Go to **Settings → Developer settings → GitHub Apps → New GitHub App**.
 | Homepage URL | Anything — your repository URL is fine |
 | **Webhook → Active** | **Uncheck it** |
 
-Unchecking *Active* matters: this project polls the API and needs no inbound endpoint, which
-is what lets it run behind NAT on a home server. Leaving webhooks on would make GitHub try to
-deliver events to a URL that does not exist. See
-[ADR 3](../reference/adr/0003-polling-over-webhooks.md).
+Unchecking *Active* matters. This project polls the API and needs no inbound endpoint — which
+is what lets it run behind NAT — so leaving webhooks on would have GitHub deliver events to a
+URL that does not exist. See [ADR 3](../reference/adr/0003-polling-over-webhooks.md).
 
 Under **Repository permissions**:
 
@@ -292,7 +292,7 @@ and the reason is an unapproved request sitting in your inbox. If `doctor` still
 
 ## See also
 
-- [`operations.md`](../guides/day-to-day.md) — installing, running and tuning the daemon
+- [`operations.md`](../guides/operate/monitoring.md) — installing, running and tuning the daemon
 - [`SECURITY.md`](https://github.com/tguisep/gh-spot-docker-runners/blob/main/SECURITY.md) — threat model and hardening checklist
 - [ADR 1](../reference/adr/0001-just-in-time-registration.md) — why no credential enters a container
 - [ADR 6](../reference/adr/0006-github-app-alongside-pat.md) — why both modes are supported

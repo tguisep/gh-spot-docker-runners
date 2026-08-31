@@ -30,16 +30,30 @@ export default defineConfig({
                     ],
                 },
                 {
-                    label: 'Running it',
+                    label: 'Pools',
                     items: [
-                        { slug: 'guides/day-to-day' },
-                        { slug: 'guides/images' },
-                        { slug: 'guides/pm' },
-                        { slug: 'guides/capacity' },
-                        { slug: 'guides/housekeeping' },
-                        { slug: 'guides/gpus' },
-                        { slug: 'guides/tuning' },
-                        { slug: 'guides/own-ci' },
+                        { slug: 'guides/pools/labels' },
+                        { slug: 'guides/pools/pm' },
+                        { slug: 'guides/pools/priority' },
+                        { slug: 'guides/pools/gpus' },
+                    ],
+                },
+                {
+                    label: 'The host',
+                    items: [
+                        { slug: 'guides/host/capacity' },
+                        { slug: 'guides/host/images' },
+                        { slug: 'guides/host/housekeeping' },
+                        { slug: 'guides/host/tuning' },
+                    ],
+                },
+                {
+                    label: 'Operating it',
+                    items: [
+                        { slug: 'guides/operate/monitoring' },
+                        { slug: 'guides/operate/dashboard' },
+                        { slug: 'guides/operate/api' },
+                        { slug: 'guides/operate/own-ci' },
                     ],
                 },
                 {

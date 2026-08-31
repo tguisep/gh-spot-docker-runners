@@ -54,12 +54,9 @@ nothing about a missing toolkit.
 
 ## Stop the GPU taking CPU work
 
-Label matching is a **subset** rule: a runner serves a job when it carries every label the
-job asked for. Extra labels on the runner are ignored. So a pool labelled
-`self-hosted, linux, x64, gpu-a100` will accept a job asking for only
-`self-hosted, linux, x64`, and the GPU then runs work that never needed one.
-
-`requires_labels` inverts the rule for the labels you name: the job must have asked for them.
+Matching is a subset rule, so a pool labelled `gpu-a100` also serves jobs that never asked for
+a GPU — see [Labels and routing](./labels.md). `requires_labels` inverts it for the labels you
+name: the job must have asked for them.
 
 ```toml
 labels = ["self-hosted", "linux", "x64", "gpu-a100"]
@@ -87,10 +84,9 @@ run, and both are slower than either alone.
 wastes a GPU: without it, a queue of CPU jobs makes the daemon start GPU runners to serve
 them.
 
-It does not govern which runner GitHub hands a job to. GitHub also applies its own labels to
+It does **not** govern which runner GitHub hands a job to. GitHub applies its own labels to
 every self-hosted runner — `self-hosted`, the OS, the architecture — and those cannot be
-removed. So a GPU runner that is *already up and idle* can still be handed a plain CPU job
-by GitHub before it is reaped.
+removed, so an idle GPU runner can still be handed a plain CPU job before it is reaped.
 
 Two things shrink that window to almost nothing:
 

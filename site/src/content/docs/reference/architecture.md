@@ -25,10 +25,9 @@ So the design starts from the drift rather than from the happy path.
 
 ### 1. The credential never enters the container
 
-Runners are registered through GitHub's just-in-time configuration API. The daemon calls
-`POST /repos/{owner}/{repo}/actions/runners/generate-jitconfig` and receives an
-`encoded_jit_config` blob scoped to exactly one runner. That blob — not a token — is what
-goes into the container.
+Runners register through GitHub's just-in-time configuration API:
+`POST /repos/{owner}/{repo}/actions/runners/generate-jitconfig` returns an `encoded_jit_config`
+blob scoped to exactly one runner. **That blob, not a token, is what enters the container.**
 
 ```
 daemon ──generate-jitconfig──▶ GitHub
@@ -62,10 +61,12 @@ flowchart TD
     act -.->|next interval| observe
 ```
 
-Nothing is carried between ticks. A tick that raises is logged and dropped, because the next
-one re-derives everything from scratch. That is also why the SQLite database is a
-*projection*: wipe it and the next tick adopts the running containers back from their own
-labels. It costs history, never correctness — there is a test that asserts exactly this.
+Nothing is carried between ticks: one that raises is logged and dropped, because the next
+re-derives everything from scratch.
+
+That is why the SQLite database is a *projection*. Wipe it and the next tick adopts the running
+containers back from their own labels — it costs history, never correctness, and a test asserts
+exactly that.
 
 ## Layers
 
@@ -85,9 +86,10 @@ infrastructure  GitHub client · Docker backend · SQLite · config · logging
 ```
 
 The rule everything rests on: **`domain` and `application` depend on nothing concrete.**
-`interfaces` may reach `infrastructure` because an entry point has to name a concrete
-adapter or nothing would ever be constructed. `tests/unit/test_architecture.py` parses every
-module and enforces this, so it cannot decay into a convention.
+
+`interfaces` may reach `infrastructure`, because an entry point has to name a concrete adapter
+or nothing would ever be constructed. `tests/unit/test_architecture.py` parses every module and
+enforces this, so it cannot decay into a convention.
 
 So the entire reconciliation loop, including crash recovery and every drift case, is tested
 against in-memory fakes, with no Docker daemon and no network.
@@ -193,5 +195,5 @@ Correlation survives a daemon restart because it lives on the containers themsel
 
 ## Further reading
 
-- [`operations.md`](../guides/day-to-day.md) — installing and running it
+- [`operations.md`](../guides/operate/monitoring.md) — installing and running it
 - [`adr/`](adr/index.md) — the decisions, with the alternatives that were rejected

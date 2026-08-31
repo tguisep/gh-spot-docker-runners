@@ -10,10 +10,30 @@ npm run dev      # http://localhost:4321/gh-spot-docker-runners/
 npm run build    # into site/dist
 ```
 
-Pages live in `src/content/docs/`, one Markdown file each, grouped the way the sidebar in
-`astro.config.mjs` groups them. Adding a page means adding the file *and* a `slug` entry in
-that sidebar — Starlight does not autogenerate these groups, deliberately: the order of a
-"start here" section is an editorial decision and alphabetical is the wrong answer.
+Pages live in `src/content/docs/`, grouped by **domain** rather than by document:
+
+| Group | Directory | Covers |
+|---|---|---|
+| Start here | `start/` | Requirements through to a running service |
+| Pools | `guides/pools/` | Labels and routing, `pm`, priority, GPUs |
+| The host | `guides/host/` | Capacity, images, housekeeping, tuning |
+| Operating it | `guides/operate/` | Monitoring, dashboard, API, this repo's own CI |
+| Reference | `reference/` | Troubleshooting, backups, architecture, decisions |
+
+A setting belongs to whichever of those *owns* it: `max_runners` bounds one pool, so it is a
+pool page; `max_containers` bounds the machine, so it is a host page.
+
+Adding a page means adding the file **and** a `slug` entry in `astro.config.mjs`. Starlight
+does not autogenerate these groups deliberately — the order of a "start here" section is an
+editorial decision, and alphabetical is the wrong answer.
+
+## House style
+
+- Paragraphs of a few lines. Anything longer is usually a list or a table that has not been
+  written as one yet.
+- Enumerations become bullets; comparisons and option sets become tables.
+- Say the mechanism, not the feeling about it. Keep the *why* where it is load-bearing —
+  a default that looks arbitrary until you know what it prevents needs its sentence.
 
 ## Linking between pages
 
