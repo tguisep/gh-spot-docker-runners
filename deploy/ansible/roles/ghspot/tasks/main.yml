@@ -136,7 +136,7 @@
     owner: root
     group: ghspot
     mode: "0640"
-  notify: Restart ghspot
+  notify: Reload ghspot
 
 # One file per pool, when asked for. The main file then carries only `include`, and each
 # pool is reviewable on its own rather than as a diff against one growing file.
@@ -164,7 +164,7 @@
         label: "{{ pool.name }}"
       vars:
         item: "{{ pool }}"
-      notify: Restart ghspot
+      notify: Reload ghspot
 
     # A pool removed from the inventory must lose its file, or the daemon keeps serving it:
     # the include is a glob, and nothing else would ever delete it.
@@ -182,7 +182,7 @@
       loop_control:
         label: "{{ item.path | basename }}"
       when: (item.path | basename | splitext | first) not in (ghspot_pools | map(attribute='name') | list)
-      notify: Restart ghspot
+      notify: Reload ghspot
 
 # Written with no_log, because the whole point of this file is that it holds a credential.
 - name: Write the credential
@@ -193,7 +193,7 @@
     group: ghspot
     mode: "0640"
   no_log: true
-  notify: Restart ghspot
+  notify: Reload ghspot
 
 # --- runner images -----------------------------------------------------------------------
 

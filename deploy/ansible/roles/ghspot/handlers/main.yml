@@ -1,8 +1,23 @@
 ---
+# Two handlers, and which one a task notifies is a decision about the fleet.
+#
+# `reload` re-reads the configuration and leaves every runner where it is. `restart` takes the
+# fleet with it — the daemon retires every runner on stop, so a build in flight fails and has
+# to be re-run.
+#
+# A configuration change reloads. Only a new binary restarts, because the running process is
+# the thing being replaced.
+
+- name: Reload ghspot
+  ansible.builtin.systemd:
+    name: ghspot
+    state: reloaded
+  # Nothing to reload if the operator asked for the service to stay stopped.
+  when: ghspot_service_enabled | bool
+
 - name: Restart ghspot
   ansible.builtin.systemd:
     name: ghspot
     state: restarted
     daemon_reload: true
-  # Nothing to restart if the operator asked for the service to stay stopped.
   when: ghspot_service_enabled | bool

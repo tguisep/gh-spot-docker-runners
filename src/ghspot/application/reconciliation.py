@@ -89,6 +89,18 @@ class ReconciliationService:
         self._retire_runner = retire
         self._capacity = capacity or CapacityLimits()
 
+    def replace_pools(
+        self, pools: Sequence[PoolConfiguration], capacity: CapacityLimits | None = None
+    ) -> None:
+        """Swap in a freshly read configuration, between ticks.
+
+        Only what a tick re-derives anyway. Runners are untouched: a pool removed here stops
+        being reconciled, and the runners it left behind are adopted or reaped by the next
+        tick from their own container labels — the same path a restart takes.
+        """
+        self._pools = list(pools)
+        self._capacity = capacity or CapacityLimits()
+
     async def tick(self) -> TickReport:
         """One reconciliation pass over every configured pool.
 
