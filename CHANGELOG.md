@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.5.0...v0.5.1) (2026-08-31)
+
+
+### Fixes
+
+* **ci:** attach the packages before the release is sealed ([c2e367e](https://github.com/tguisep/gh-spot-docker-runners/commit/c2e367efa8d60fd71e0276633af29a2b3e895ccf))
+* **ci:** attach the packages before the release is sealed ([e0fa535](https://github.com/tguisep/gh-spot-docker-runners/commit/e0fa5354c1017f9d5a7653f4035943e29a7d0104))
+
 ## [0.5.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.4.0...v0.5.0) (2026-08-31)
 
 
