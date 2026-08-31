@@ -404,7 +404,12 @@ def runner_logs(
 
 @runner_app.command("stop")
 def runner_stop(
-    runner_id: Annotated[str, typer.Argument(help="Runner id.")],
+    runner_id: Annotated[str | None, typer.Argument(help="Runner id. Omit with --all.")] = None,
+    all_of_them: Annotated[
+        bool,
+        typer.Option("--all", help="Every runner, or every runner in --pool."),
+    ] = False,
+    pool: Annotated[str | None, typer.Option("--pool", help="Limit --all to one pool.")] = None,
     force: Annotated[
         bool, typer.Option("--force", help="Kill it even if it is running a job.")
     ] = False,
@@ -413,10 +418,55 @@ def runner_stop(
     """Retire a runner, removing its container and its registration.
 
     Without ``--force`` a busy runner is refused: stopping it fails somebody's build.
+
+    ``--all`` empties the host. It does not keep it empty — a pool with ``min_idle`` gets its
+    warm runners back on the next tick, which is what the daemon is for. To keep the host
+    quiet, stop the daemon, or set ``min_idle = 0`` and ``systemctl reload ghspot``.
     """
     settings = _settings(config)
+
+    if all_of_them:
+        if runner_id is not None:
+            fail("give a runner id or --all, not both")
+            raise typer.Exit(code=2)
+        _stop_everything(settings, pool=pool, force=force)
+        return
+
+    if runner_id is None:
+        fail("which runner? Give an id, or --all")
+        raise typer.Exit(code=2)
+    if pool is not None:
+        fail("--pool only means something with --all")
+        raise typer.Exit(code=2)
+
     _run(operations.stop_runner(settings, runner_id, force=force))
     console.print(f"retired [bold]{runner_id}[/bold]")
+
+
+def _stop_everything(settings: Settings, *, pool: str | None, force: bool) -> None:
+    retired, refused, coming_back = _run(
+        operations.stop_every_runner(settings, force=force, pool=pool)
+    )
+
+    if not retired and not refused:
+        console.print("[dim]nothing to stop[/dim]")
+        return
+
+    for name in retired:
+        console.print(f"retired [bold]{name}[/bold]")
+    if refused:
+        console.print()
+        for name in refused:
+            console.print(f"[yellow]left alone[/yellow] {name} — running a job")
+        hint("--force stops those too, failing the builds they are running")
+
+    if coming_back and retired:
+        console.print()
+        console.print(
+            f"[dim]the daemon will start {coming_back} again within a tick to satisfy "
+            "min_idle — stop the daemon, or set min_idle = 0 and reload, to keep the host "
+            "quiet[/dim]"
+        )
 
 
 # ---------------------------------------------------------------- config

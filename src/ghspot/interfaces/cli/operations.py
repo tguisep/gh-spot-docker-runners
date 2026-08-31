@@ -5,6 +5,8 @@ Each resolves a reference to a runner, then calls one use case. Nothing is decid
 
 from __future__ import annotations
 
+import asyncio
+
 from ghspot.application.queries.jobs import FindJobForRunner
 from ghspot.application.queries.resolve import ResolveRunner
 from ghspot.composition import build
@@ -71,5 +73,48 @@ async def stop_runner(settings: Settings, reference: str, *, force: bool) -> Non
                 "Pass --force to stop it anyway."
             )
         await application.retire(runner, reason="stopped by the operator", force=force)
+    finally:
+        await application.aclose()
+
+
+async def stop_every_runner(
+    settings: Settings, *, force: bool, pool: str | None = None
+) -> tuple[list[str], list[str], int]:
+    """Retire every runner, or every runner in one pool.
+
+    Returns the names retired, the names refused for being busy, and how many the daemon will
+    start again to satisfy `min_idle`. That last number is the point: this command empties the
+    host, it does not keep it empty, and an operator who does not know that will run it twice
+    and conclude it did not work.
+
+    Concurrent, for the same reason shutdown is: each container is given its stop timeout, and
+    a fleet of ten done in sequence is minutes of waiting.
+    """
+    application = build(settings)
+    try:
+        runners = [
+            runner
+            for runner in await application.runners.list_active()
+            if not runner.is_terminal and (pool is None or runner.pool == pool)
+        ]
+        busy = {RunnerState.BUSY, RunnerState.DRAINING}
+        refused = [r.name for r in runners if r.state in busy and not force]
+        doomed = [r for r in runners if r.state not in busy or force]
+
+        await asyncio.gather(
+            *(
+                application.retire(runner, reason="stopped by the operator", force=force)
+                for runner in doomed
+            )
+        )
+
+        # What the next tick will put back. min_idle is a floor the daemon maintains, so
+        # emptying a pool that asks for one warm runner lasts exactly one poll interval.
+        coming_back = sum(
+            configured.spec.min_idle
+            for configured in settings.pools
+            if pool is None or configured.spec.name == pool
+        )
+        return [r.name for r in doomed], refused, coming_back
     finally:
         await application.aclose()

@@ -743,3 +743,23 @@ said so, so adding a label looked identical to writing it wrong. `/health` now r
   worse than no check. Only a process holding settings from earlier can answer it.
 - Reporting staleness is not reloading. The daemon still needs a restart; it now says so
   instead of leaving the operator to guess.
+
+## 2026-08-31 — `ghspot runner stop --all`
+
+One runner at a time was the only way to empty a host, which is not a thing anybody does by
+hand for a fleet of ten. `--all` retires every runner, `--pool` narrows it, `--force` takes the
+busy ones as well.
+
+The interesting part is what it prints afterwards. `min_idle` is a floor the daemon maintains,
+so emptying a pool that keeps one warm lasts exactly one poll interval. Without saying so the
+command looks broken: you run it, the runners come back, you run it again. It reports how many
+are returning and what to do instead — stop the daemon, or set `min_idle = 0` and reload.
+
+### Notes for later
+
+- Concurrent, like shutdown. Each container gets its stop timeout, and ten in sequence is
+  minutes of waiting for something an operator ran to get their host back.
+- Busy runners are **named**, not silently skipped. A count of "retired 8" that quietly meant
+  nine is how somebody concludes the command is unreliable.
+- `--pool` without `--all` is refused rather than ignored. It would silently do nothing, which
+  is the worst possible answer to a command about stopping things.
