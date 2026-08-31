@@ -956,3 +956,32 @@ something that already existed.
   Thirteen checks on a clean Ubuntu 26.04, including the dashboard and the runner sources.
 - v0.5.0 stays as it is: published, immutable, and empty. It cannot be repaired, and v0.5.1
   supersedes it.
+
+## 2026-08-31 — the draft experiment, reverted
+
+Making the release a draft to escape immutability was the wrong fix, and it did more damage
+than the problem it solved.
+
+release-please anchors each run on the **tag** it created last time. A draft release has no
+tag — the tag appears at publish, which the draft ordering made the last step. So the next run
+found no anchor and regenerated the changelog from the entire history. #76 proposed v0.6.0
+containing every commit ever made; merged, that put 240 lines into a section whose real content
+was one fix. #78 then did it again, proposing 247 lines for a release with **zero** commits.
+
+The timing says it plainly: #78 was generated at 16:13:49Z, and v0.6.0's tag appeared at
+16:15:44Z. Two minutes too late, every time.
+
+So: back to the flow that shipped v0.2.0 through v0.4.0 with three assets each — release-please
+publishes and tags atomically, then the packages upload. Immutable releases is turned off in
+the repository settings, which is what made that flow fail at v0.5.0 in the first place.
+
+### Notes for later
+
+- The lesson is not "drafts are bad". It is that release-please's state lives in the tag, and
+  anything that defers tag creation breaks the *next* run rather than the current one — a
+  failure that appears one release later than its cause, which is why it was not obvious.
+- Two releases are permanently wrong and cannot be repaired: v0.5.0 has no assets, and v0.6.0's
+  release notes carry the whole history. Both are published and immutable. The CHANGELOG in the
+  repository is corrected; the release pages are not.
+- v0.5.1 and v0.6.0 both have their three assets, so the packages are fine throughout. Only the
+  notes and one release's assets are wrong.

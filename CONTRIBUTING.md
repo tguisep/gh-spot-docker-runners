@@ -171,14 +171,9 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 the commit messages. There is nothing to tag by hand.
 
 **Every merge to `main`** updates an open pull request titled `chore: release vX.Y.Z`, which
-accumulates the changelog and the version bump. **Merging that pull request** is what cuts the
-release: it creates the tag and a **draft** release, builds the amd64 and arm64 `.deb`
-packages, attaches them, and publishes last.
-
-Draft first, published last, because a published release is immutable — assets cannot be added
-to one afterwards. Publishing before the packages were built is how v0.5.0 shipped with none.
-A build that fails now leaves a draft, which is recoverable, rather than a published release
-nobody can install.
+accumulates the changelog and the version bump. **Merging that pull request** is what cuts
+the release: it creates the tag, publishes the GitHub release, and attaches the amd64 and
+arm64 `.deb` packages.
 
 So a release is two steps, not one. Merging a feature does not publish anything; it queues
 the change for the next release.
