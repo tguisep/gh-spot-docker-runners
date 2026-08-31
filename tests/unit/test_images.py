@@ -72,7 +72,7 @@ def test_an_explicit_location_is_the_whole_answer(
 
 
 def test_build_runs_the_script_with_the_variant(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capfd: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capfd: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(paths, "PACKAGED", _sources(tmp_path / "share"))
     monkeypatch.setattr(paths, "IN_TREE", tmp_path / "nowhere")
@@ -84,7 +84,7 @@ def test_build_runs_the_script_with_the_variant(
 
 
 def test_build_without_a_variant_builds_everything(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capfd: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capfd: pytest.CaptureFixture[str]
 ) -> None:
     """`build.sh` with no argument means every variant, and the CLI must not invent one."""
     monkeypatch.setattr(paths, "PACKAGED", _sources(tmp_path / "share"))
@@ -97,7 +97,7 @@ def test_build_without_a_variant_builds_everything(
 
 
 def test_list_asks_the_script_rather_than_restating_the_variants(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capfd: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capfd: pytest.CaptureFixture[str]
 ) -> None:
     """The variant table lives in build.sh. Parsing a copy of it here is how the two drift."""
     monkeypatch.setattr(paths, "PACKAGED", _sources(tmp_path / "share"))
@@ -121,7 +121,7 @@ def test_missing_sources_say_so_instead_of_failing_obscurely(
     assert "runner image sources are not installed" in result.output
 
 
-def test_the_real_variants_are_buildable_names(capfd: pytest.CaptureFixture) -> None:
+def test_the_real_variants_are_buildable_names(capfd: pytest.CaptureFixture[str]) -> None:
     """The wizard offers a fixed list of images; every one has to be a variant build.sh
     knows, or setup writes a configuration whose image can never be built."""
     result = runner.invoke(app, ["image", "list"])

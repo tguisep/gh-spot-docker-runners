@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.config.settings import load
+from ghspot.interfaces.cli import images
 from ghspot.interfaces.cli import setup as wizard
 from ghspot.interfaces.cli.main import app
 
@@ -169,7 +170,7 @@ def test_the_build_hint_is_a_command_and_not_a_path(tmp_path: Path) -> None:
 def test_only_a_system_configuration_is_checked_with_sudo(
     directory: Path,
     expected: str,
-    capsys: pytest.CaptureFixture,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """`/etc/ghspot/config.toml` is root:ghspot 0640 and the checks want the Docker socket,
     so that step needs the privilege the systemctl one always asked for — the wizard's own
@@ -284,8 +285,13 @@ def test_a_missing_image_is_offered_and_built(
     works without — a pool whose image is missing starts no runners and says so only in the
     daemon's log."""
     built: list[str | None] = []
+
+    def record(variant: str | None, *, sources: str | None = None) -> int:
+        built.append(variant)
+        return 0
+
     monkeypatch.setattr(wizard, "_image_present", lambda _: False)
-    monkeypatch.setattr(wizard.images, "build", lambda variant: built.append(variant) or 0)
+    monkeypatch.setattr(images, "build", record)
 
     result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=BUILD_ANSWERS)
 
@@ -297,7 +303,7 @@ def test_a_built_image_drops_the_step_that_asks_for_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(wizard, "_image_present", lambda _: False)
-    monkeypatch.setattr(wizard.images, "build", lambda _: 0)
+    monkeypatch.setattr(images, "build", lambda _: 0)
 
     result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=BUILD_ANSWERS)
 
@@ -311,7 +317,7 @@ def test_declining_leaves_the_instruction_where_it_was(
     """It is minutes of work on a machine somebody may not want busy yet. Saying no has to
     put them back exactly where the wizard used to leave everyone."""
     monkeypatch.setattr(wizard, "_image_present", lambda _: False)
-    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+    monkeypatch.setattr(images, "build", lambda _: pytest.fail("should not have built"))
 
     result = runner.invoke(
         app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS + "n\n"
@@ -325,7 +331,7 @@ def test_a_failed_build_keeps_the_step(tmp_path: Path, monkeypatch: pytest.Monke
     """Reporting it as done because it was attempted would send the operator to `doctor`
     looking for a different problem."""
     monkeypatch.setattr(wizard, "_image_present", lambda _: False)
-    monkeypatch.setattr(wizard.images, "build", lambda _: 1)
+    monkeypatch.setattr(images, "build", lambda _: 1)
 
     result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=BUILD_ANSWERS)
 
@@ -336,7 +342,7 @@ def test_an_image_that_is_already_there_is_not_offered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(wizard, "_image_present", lambda _: True)
-    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+    monkeypatch.setattr(images, "build", lambda _: pytest.fail("should not have built"))
 
     result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS)
 
@@ -350,7 +356,7 @@ def test_unreachable_docker_is_not_an_unbuilt_image(
     """Offering a build that cannot start is worse than not offering: `doctor`, one step
     later, reports the real problem properly."""
     monkeypatch.setattr(wizard, "_image_present", lambda _: None)
-    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+    monkeypatch.setattr(images, "build", lambda _: pytest.fail("should not have built"))
 
     result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS)
 
@@ -363,7 +369,7 @@ def test_nothing_is_offered_without_sources_to_build_from(
 ) -> None:
     monkeypatch.setattr(wizard, "_image_present", lambda _: False)
     monkeypatch.setattr(wizard, "runner_sources", lambda: None)
-    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+    monkeypatch.setattr(images, "build", lambda _: pytest.fail("should not have built"))
 
     result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=TOKEN_ANSWERS)
 
@@ -377,7 +383,7 @@ def test_a_configuration_the_daemon_rejects_is_not_followed_by_a_build(
     """Validation comes first. Spending several minutes on an image for a configuration that
     was never going to load is the wrong order to find that out in."""
     monkeypatch.setattr(wizard, "_image_present", lambda _: False)
-    monkeypatch.setattr(wizard.images, "build", lambda _: pytest.fail("should not have built"))
+    monkeypatch.setattr(images, "build", lambda _: pytest.fail("should not have built"))
     monkeypatch.setattr(wizard, "_validate", lambda _: False)
 
     result = runner.invoke(app, ["setup", "-c", str(tmp_path / "config.toml")], input=BUILD_ANSWERS)

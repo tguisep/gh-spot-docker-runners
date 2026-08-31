@@ -82,11 +82,6 @@ MSG
     return 0
 }
 
-# The mounted Docker socket is only usable by the unprivileged runner user if the group id
-# inside the image matches the host's. Detected here so nobody has to remember the flag.
-DOCKER_GID="${DOCKER_GID:-$(getent group docker | cut -d: -f3)}"
-DOCKER_GID="${DOCKER_GID:-999}"
-
 variants() {
     echo "${VARIANTS}" | grep -v '^$'
 }
@@ -97,6 +92,23 @@ list() {
         printf '  %-14s  %s\n' "${line%%:*}" "$(echo "${line}" | cut -d: -f3-)"
     done
 }
+
+# `ghspot image list` asks for this rather than parsing the table out of this file, so the
+# variants stay declared in exactly one place. Answered before anything reaches for a
+# docker group: naming the variants needs no daemon and no privileges, and `verify.sh` asks
+# a freshly installed package for exactly this while it has neither.
+case "${1:-}" in
+    -l|--list|list) list; exit 0 ;;
+esac
+
+# The mounted Docker socket is only usable by the unprivileged runner user if the group id
+# inside the image matches the host's. Detected here so nobody has to remember the flag.
+#
+# `|| true` because `getent` exits non-zero when there is no docker group, and under `set -e`
+# a failing command substitution inside an assignment takes the whole script with it — the
+# fallback on the next line never got the chance to be the fallback.
+DOCKER_GID="${DOCKER_GID:-$(getent group docker | cut -d: -f3 || true)}"
+DOCKER_GID="${DOCKER_GID:-999}"
 
 build_one() {
     local name="$1" dockerfile="$2" base="$3"
@@ -119,13 +131,6 @@ build_one() {
 }
 
 wanted="${1:-}"
-
-# `ghspot image list` asks for this rather than parsing the table out of this file, so the
-# variants stay declared in exactly one place.
-case "${wanted}" in
-    -l|--list|list) list; exit 0 ;;
-esac
-
 found=0
 
 while IFS= read -r line; do
