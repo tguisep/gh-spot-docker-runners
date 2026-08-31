@@ -15,6 +15,7 @@ output is a file an operator could have written, and it says where it put it.
 from __future__ import annotations
 
 import asyncio
+import grp
 import os
 import stat
 from dataclasses import dataclass
@@ -42,6 +43,9 @@ from ghspot.interfaces.cli.scaffold import (
 from ghspot.paths import build_command, example_config, runner_sources
 
 IMAGES = ("ubuntu-24.04", "ubuntu-22.04", "rhel-9", "rhel-10")
+
+SERVICE_GROUP = "ghspot"
+"""The account the systemd unit runs as, and so the one that has to read what is written."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +240,7 @@ def _write(config_path: Path, answers: Answers) -> list[Path]:
     """Write the configuration, and the credential beside it. Returns the extra files."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
     extra: list[Path] = []
+    system = config_path.parent == SYSTEM_DIRECTORY
 
     credential: list[Substitution] = []
     if answers.uses_app:
@@ -245,25 +250,79 @@ def _write(config_path: Path, answers: Answers) -> list[Path]:
             credential.append(
                 Substitution("[github]", "private_key_file", f'"{answers.private_key_path}"')
             )
+            if system:
+                _warn_if_the_service_cannot_read(answers.private_key_path)
     else:
         token_file = config_path.parent / "token"
         _write_secret(token_file, answers.token)
+        if system:
+            _share_with_the_service(token_file)
         extra.append(token_file)
         credential.append(Substitution("[github]", "token_file", f'"{token_file}"'))
 
-    system = config_path.parent == SYSTEM_DIRECTORY
     reference = example_config()
     if reference is None:
         # The reference is a documentation file, and a wizard that fails because one is
         # missing is worse than one that writes the short form.
         config_path.write_text(_minimal(answers, credential, system))
-        return extra
+    else:
+        rendered = render(
+            reference.read_text(encoding="utf-8"), _substitutions(answers, credential, system)
+        )
+        config_path.write_text(replace_header(rendered))
 
-    rendered = render(
-        reference.read_text(encoding="utf-8"), _substitutions(answers, credential, system)
-    )
-    config_path.write_text(replace_header(rendered))
+    if system:
+        # write_text creates 0644 root:root, undoing the 0640 root:ghspot the package set on
+        # the file it shipped — so the wizard was widening the configuration every time.
+        _share_with_the_service(config_path)
     return extra
+
+
+def _share_with_the_service(path: Path) -> None:
+    """Give the daemon's account read access to what the wizard just wrote as root.
+
+    `sudo ghspot setup` writes as root; the unit runs as `ghspot`. Without this the sequence
+    the wizard itself prints — setup, then `systemctl enable --now` — ends in
+
+        could not read the token from /etc/ghspot/token: [Errno 13] Permission denied
+
+    which is the wizard's own next step failing on the wizard's own output. The package
+    already keeps /etc/ghspot/env and the shipped configuration at root:ghspot 0640; these
+    are the files created after it ran.
+    """
+    if os.geteuid() != 0:
+        return
+    try:
+        group = grp.getgrnam(SERVICE_GROUP).gr_gid
+    except KeyError:
+        return  # not a packaged host: there is no service account to share with
+    try:
+        os.chown(path, 0, group)
+        path.chmod(0o640)
+    except OSError as error:
+        hint(f"could not let {SERVICE_GROUP} read {path}: {error}")
+        hint(f"the daemon runs as {SERVICE_GROUP}: chown root:{SERVICE_GROUP} {path}")
+
+
+def _warn_if_the_service_cannot_read(path: Path) -> None:
+    """Say so when the daemon will not be able to open a file it was pointed at.
+
+    An App's private key is pointed at, never copied, so its permissions are not ours to
+    change — but the daemon failing on it looks exactly like the token failure, three
+    commands later and with nothing connecting the two.
+    """
+    try:
+        info = path.expanduser().stat()
+        group = grp.getgrnam(SERVICE_GROUP).gr_gid
+    except (OSError, KeyError):
+        return
+
+    readable = bool(info.st_mode & stat.S_IROTH) or (
+        info.st_gid == group and bool(info.st_mode & stat.S_IRGRP)
+    )
+    if not readable:
+        hint(f"{path} is not readable by {SERVICE_GROUP}, which the daemon runs as")
+        hint(f"fix with: sudo chown root:{SERVICE_GROUP} {path} && sudo chmod 640 {path}")
 
 
 def _minimal(answers: Answers, credential: list[Substitution], system: bool) -> str:
