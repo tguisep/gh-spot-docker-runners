@@ -1033,6 +1033,31 @@ Leave it. The next tick either adopts it or deletes it. If it persists past a fe
 for `tick.error` lines — the daemon only deletes runners whose name starts with `ghspot-`
 and which are offline, so a hand-registered runner is never touched.
 
+**`could not read the token from /etc/ghspot/token: Permission denied`, and the unit will
+not start.**
+The daemon runs as `ghspot`, not as the root you ran the wizard with. Wizards from before
+this was fixed left the credential `0600 root:root`:
+
+```bash
+sudo chown root:ghspot /etc/ghspot/token && sudo chmod 640 /etc/ghspot/token
+sudo systemctl start ghspot
+```
+
+`ghspot setup` now does this for anything it writes under `/etc/ghspot`, and `ghspot doctor`
+checks it — the check exists because running `doctor` under `sudo` otherwise passes every
+file test as root while the service cannot start at all.
+
+**`/ui` returns 404 but the API answers.**
+The dashboard is not installed. `ls /usr/share/ghspot/web` — if it is missing, the package was
+built without a usable node. Packages released before this was fixed all were. Build it from a
+checkout as a stopgap:
+
+```bash
+cd web && npm ci && npm run build
+sudo mkdir -p /usr/share/ghspot/web && sudo cp -a dist/. /usr/share/ghspot/web/
+sudo systemctl restart ghspot
+```
+
 **`ImageNotFoundError`.**
 The runner image is not built on this host. Run `ghspot image build <variant>`; `ghspot doctor`
 prints the exact command for the image the pool asks for.
