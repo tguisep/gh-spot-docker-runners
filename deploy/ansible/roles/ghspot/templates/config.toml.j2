@@ -20,6 +20,11 @@ log_format = "json"
 {% if ghspot_api_bind | length > 0 %}
 api_bind = "{{ ghspot_api_bind }}"
 {% endif %}
+{# Left out when unset, so the daemon falls back to the system hostname rather than to an
+   empty string that would leave every report unlabelled. #}
+{% if ghspot_host | length > 0 %}
+host = "{{ ghspot_host }}"
+{% endif %}
 
 [housekeeping]
 enabled = {{ ghspot_housekeeping.enabled | bool | lower }}

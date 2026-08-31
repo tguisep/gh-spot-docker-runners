@@ -16,6 +16,7 @@ Needs `ansible` on PATH and `ghspot` importable.
 
 from __future__ import annotations
 
+import socket
 import subprocess
 import sys
 import tempfile
@@ -65,6 +66,13 @@ def settings_for(variables: Path) -> Settings:
         rendered = Path(directory) / "config.toml"
         render("config.toml.j2", variables, rendered)
         return load(rendered)
+
+
+def test_the_host_is_named_when_set_and_left_to_the_system_when_not() -> None:
+    """Empty must mean "use the system hostname", not "call this machine nothing" — every
+    report is about one box, and an unlabelled one cannot be put beside another."""
+    assert settings_for(VARS / "full.yml").daemon.host == "builders-01"
+    assert settings_for(VARS / "minimal.yml").daemon.host == socket.gethostname()
 
 
 def test_minimal() -> None:
@@ -289,6 +297,7 @@ def main() -> int:
         test_the_credential_file_takes_both_forms,
         test_pools_can_be_rendered_one_file_each,
         test_the_dashboard_location_is_only_written_when_set,
+        test_the_host_is_named_when_set_and_left_to_the_system_when_not,
     ):
         test()
         print(f"  {'FAIL' if failures else 'ok  '}  {test.__name__}")

@@ -5,6 +5,7 @@ ghspot_poll_interval: 30s
 ghspot_state_db: /srv/ghspot/state.db
 ghspot_log_level: DEBUG
 ghspot_api_bind: "127.0.0.1:8770"
+ghspot_host: "builders-01"
 ghspot_housekeeping:
   enabled: true
   every: 6h
