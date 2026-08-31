@@ -14,6 +14,7 @@ output is a file an operator could have written, and it says where it put it.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import stat
 from dataclasses import dataclass
@@ -28,7 +29,17 @@ from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.config.settings import ConfigError, host_cores
 from ghspot.infrastructure.config.settings import load as load_settings
+from ghspot.infrastructure.docker.backend import DockerRunnerBackend
+from ghspot.interfaces.cli import images
 from ghspot.interfaces.cli.render import console, fail, hint
+from ghspot.interfaces.cli.scaffold import (
+    SYSTEM_DIRECTORY,
+    Substitution,
+    effective,
+    render,
+    replace_header,
+)
+from ghspot.paths import build_command, example_config, runner_sources
 
 IMAGES = ("ubuntu-24.04", "ubuntu-22.04", "rhel-9", "rhel-10")
 
@@ -75,12 +86,20 @@ def run(config_path: Path, *, force: bool = False) -> int:
 
     written = _write(config_path, answers)
     console.print()
-    console.print(Syntax(config_path.read_text(), "toml", theme="ansi_dark"))
+    console.print(Syntax(effective(config_path.read_text()), "toml", theme="ansi_dark"))
+    console.print(
+        "[dim]  every other setting is in the file too, commented out with what it does[/dim]"
+    )
     console.print(f"[green]written[/green] {config_path}")
     for extra in written:
         console.print(f"[green]written[/green] {extra}")
 
-    return _verify(config_path, answers)
+    if not _validate(config_path):
+        return 1
+
+    built = _offer_build(answers)
+    _next_steps(config_path, answers, built=built)
+    return 0
 
 
 # -- asking ----------------------------------------------------------------------------
@@ -134,7 +153,11 @@ def _ask(config_path: Path) -> Answers:
         "  effective root on this host. Fine for repositories you control, unacceptable\n"
         "  for one that accepts pull requests from forks. See SECURITY.md.[/dim]"
     )
-    docker_socket = Confirm.ask("  let jobs use Docker", default=True, console=console)
+    # Both of these default to no. Saying yes hands a job root on the host, or puts an
+    # unauthenticated API on it — neither is something to acquire by pressing enter past a
+    # question, and the paragraph above each one is what somebody should be reading when
+    # they turn it on. Turning either on later costs one line in the configuration file.
+    docker_socket = Confirm.ask("  let jobs use Docker", default=False, console=console)
 
     console.print()
     console.print("[bold]4. The dashboard[/bold]")
@@ -142,7 +165,7 @@ def _ask(config_path: Path) -> Answers:
         "  [dim]Serves the API and the web dashboard on this host. No authentication,\n"
         "  so it binds to localhost; reach it over an SSH tunnel.[/dim]"
     )
-    api = Confirm.ask("  serve it", default=True, console=console)
+    api = Confirm.ask("  serve it", default=False, console=console)
 
     return Answers(
         repository=repository,
@@ -179,31 +202,83 @@ def _ask_count(question: str, *, default: int) -> int:
 # -- writing ---------------------------------------------------------------------------
 
 
+def _substitutions(
+    answers: Answers, credential: list[Substitution], system: bool
+) -> list[Substitution]:
+    """What the wizard asked about, as edits to the reference."""
+    edits = [
+        *credential,
+        Substitution("[[pool]]", "name", f'"{answers.pool}"'),
+        Substitution("[[pool]]", "repository", f'"{answers.repository}"'),
+        Substitution(
+            "[[pool]]",
+            "labels",
+            f'["self-hosted", "linux", "x64", "{answers.image}"]',
+        ),
+        Substitution("[[pool]]", "min_idle", "1"),
+        Substitution("[[pool]]", "max_runners", str(answers.max_runners)),
+        Substitution("[pool.container]", "image", f'"ghspot/runner:{answers.image}"'),
+        Substitution("[pool.container]", "docker_socket", str(answers.docker_socket).lower()),
+        # Unset these mean "no limit". Inheriting the reference's illustration would cap
+        # every job on this host at two cores and 4g, which nobody asked for.
+        Substitution("[pool.container]", "cpus", None),
+        Substitution("[pool.container]", "memory", None),
+    ]
+    if answers.api_bind:
+        edits.append(Substitution("[daemon]", "api_bind", f'"{answers.api_bind}"'))
+    if system:
+        # The reference writes into $HOME, which the ghspot service account does not have.
+        edits.append(Substitution("[daemon]", "state_db", '"/var/lib/ghspot/state.db"'))
+    return edits
+
+
 def _write(config_path: Path, answers: Answers) -> list[Path]:
     """Write the configuration, and the credential beside it. Returns the extra files."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
     extra: list[Path] = []
 
-    credential: list[str] = []
+    credential: list[Substitution] = []
     if answers.uses_app:
-        credential = [f'app_id = "{answers.app_id}"']
+        credential.append(Substitution("[github]", "token_file", None))
+        credential.append(Substitution("[github]", "app_id", f'"{answers.app_id}"'))
         if answers.private_key_path is not None:
-            credential.append(f'private_key_file = "{answers.private_key_path}"')
+            credential.append(
+                Substitution("[github]", "private_key_file", f'"{answers.private_key_path}"')
+            )
     else:
         token_file = config_path.parent / "token"
         _write_secret(token_file, answers.token)
         extra.append(token_file)
-        credential = [f'token_file = "{token_file}"']
+        credential.append(Substitution("[github]", "token_file", f'"{token_file}"'))
 
+    system = config_path.parent == SYSTEM_DIRECTORY
+    reference = example_config()
+    if reference is None:
+        # The reference is a documentation file, and a wizard that fails because one is
+        # missing is worse than one that writes the short form.
+        config_path.write_text(_minimal(answers, credential, system))
+        return extra
+
+    rendered = render(
+        reference.read_text(encoding="utf-8"), _substitutions(answers, credential, system)
+    )
+    config_path.write_text(replace_header(rendered))
+    return extra
+
+
+def _minimal(answers: Answers, credential: list[Substitution], system: bool) -> str:
+    """The short form, for when config.example.toml is not installed."""
     lines = [
         "# Written by `ghspot setup`. Edit freely — it is an ordinary configuration file.",
         "# Every setting, with what it means: config.example.toml",
         "",
         "[github]",
-        *credential,
+        *(f"{item.key} = {item.value}" for item in credential if item.value is not None),
         "",
         "[daemon]",
     ]
+    if system:
+        lines.append('state_db = "/var/lib/ghspot/state.db"')
     if answers.api_bind:
         lines.append(f'api_bind = "{answers.api_bind}"   # dashboard at /ui, on this host only')
     lines += [
@@ -220,8 +295,7 @@ def _write(config_path: Path, answers: Answers) -> list[Path]:
         f"docker_socket = {str(answers.docker_socket).lower()}",
         "",
     ]
-    config_path.write_text("\n".join(lines))
-    return extra
+    return "\n".join(lines)
 
 
 def _write_secret(path: Path, contents: str) -> None:
@@ -239,28 +313,98 @@ def _write_secret(path: Path, contents: str) -> None:
 # -- checking --------------------------------------------------------------------------
 
 
-def _verify(config_path: Path, answers: Answers) -> int:
+def _image_present(image: str) -> bool | None:
+    """Whether the runner image is already built, or ``None`` when Docker cannot say.
+
+    Three answers, not two. "Docker is not reachable" must not read as "not built", because
+    the wizard would then offer a build that cannot start — and `doctor`, one step later,
+    reports the real problem properly.
+    """
+
+    async def ask() -> bool:
+        backend = DockerRunnerBackend()
+        await backend.ping()
+        return await backend.image_exists(image)
+
+    try:
+        return asyncio.run(ask())
+    except GhSpotError:
+        return None
+
+
+def _offer_build(answers: Answers) -> bool:
+    """Offer to build the runner image now. Returns whether it is there afterwards.
+
+    "Build the runner image" has always been the first thing the wizard tells somebody to do
+    next, and it is the one step nothing works without: a pool whose image is missing starts
+    no runners and says so only in the daemon's log. Now that ghspot can build it, asking is
+    better than instructing.
+
+    Only ever an offer. It is minutes of work on a machine the operator may not want busy
+    yet, and declining leaves the instruction in the list exactly as before.
+    """
+    image = f"ghspot/runner:{answers.image}"
+    present = _image_present(image)
+
+    if present:
+        console.print(f"\n[green]have[/green] {image} — already built")
+        return True
+    if present is None or runner_sources() is None:
+        return False
+
+    console.print()
+    try:
+        wanted = Confirm.ask(f"Build {image} now? A few minutes", default=True, console=console)
+    except (KeyboardInterrupt, EOFError):
+        console.print()
+        return False
+
+    if not wanted:
+        return False
+
+    console.print()
+    return images.build(answers.image) == 0
+
+
+def _validate(config_path: Path) -> bool:
+    """Whether the daemon accepts what was just written."""
     try:
         load_settings(config_path)
     except ConfigError as error:
         fail(str(error))
         hint("the file is on disk; fix it and run: ghspot config validate")
-        return 1
+        return False
+    return True
+
+
+def _next_steps(config_path: Path, answers: Answers, *, built: bool) -> None:
+    # A configuration under /etc is root:ghspot 0640 and the checks want the Docker socket,
+    # so the next command an operator types — in a shell where the wizard's sudo has already
+    # expired — needs its own.
+    system = config_path.parent == SYSTEM_DIRECTORY
+
+    steps: list[tuple[str, str]] = []
+    if not built:
+        steps.append(("build the runner image", build_command(answers.image)))
+    steps.append(("check everything", f"{'sudo ' if system else ''}ghspot doctor -c {config_path}"))
+    steps.append(
+        (
+            "start it",
+            "sudo systemctl enable --now ghspot" if system else "ghspot daemon",
+        )
+    )
+    if answers.api_bind:
+        steps.append(("the dashboard", f"http://{answers.api_bind}/ui"))
 
     console.print()
     console.print("[bold]Next[/bold]")
-    console.print(f"  1. build the runner image   images/runner/build.sh {answers.image}")
-    console.print(f"  2. check everything         ghspot doctor -c {config_path}")
-    console.print(
-        "  3. start it                 ghspot daemon"
-        if config_path.parent != Path("/etc/ghspot")
-        else "  3. start it                 sudo systemctl enable --now ghspot"
-    )
-    if answers.api_bind:
-        console.print(f"  4. the dashboard            http://{answers.api_bind}/ui")
+    if built:
+        console.print(f"  [green]done[/green]  the runner image ghspot/runner:{answers.image}")
+    for number, (label, command) in enumerate(steps, start=1):
+        console.print(f"  {number}. {label:<25}{command}")
+
     console.print()
     labels = escape(f'runs-on: [self-hosted, linux, x64, "{answers.image}"]'.replace('"', ""))
     # Escaped: a label list is square brackets, which Rich reads as a style tag — and the
     # one line telling somebody what to paste into their workflow is the line that vanishes.
     console.print(f"  [dim]Point a workflow at:  {labels}[/dim]")
-    return 0

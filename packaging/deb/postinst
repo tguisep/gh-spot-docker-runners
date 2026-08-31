@@ -65,10 +65,10 @@ ghspot is installed but not started — it needs a repository and a credential f
 
   1. Edit /etc/ghspot/config.toml            (repository, labels, image)
   2. Add a credential to /etc/ghspot/env     (chmod 600; see below)
-  3. Build a runner image, from a clone of the repository:
-       images/runner/build.sh ubuntu-24.04
-     Variants: ubuntu-24.04, ubuntu-22.04, rhel-9, rhel-10 — the tag is also
-     the label a workflow asks for.
+  3. Build a runner image — the sources ship with the package:
+       sudo ghspot image build ubuntu-24.04
+     `ghspot image list` names the variants; the tag is also the label a
+     workflow asks for.
   4. sudo ghspot doctor --config /etc/ghspot/config.toml
   5. sudo systemctl enable --now ghspot
 

@@ -84,7 +84,8 @@ uv tool install .          # then `uv tool update-shell` if ghspot isn't found
 
 ```bash
 # Build the runner image with the host's docker group, so jobs can use the socket.
-images/runner/build.sh ubuntu-24.04
+# The sources ship with ghspot, so this needs no clone. `ghspot image list` names the rest.
+ghspot image build ubuntu-24.04
 
 ghspot setup       # or edit it yourself: cp config.example.toml config.toml
 

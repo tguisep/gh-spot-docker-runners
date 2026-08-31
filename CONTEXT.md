@@ -437,3 +437,112 @@ Cores is not a measurement of anything — it is a defensible number the box can
 itself, and it is wrong in the safe direction. `max_containers = "unlimited"` lifts it on
 purpose, spelled out the way `[housekeeping]` spells `"never"` rather than by writing a zero
 and hoping.
+
+## 2026-08-31 — the runner build comes with the daemon
+
+Every "build the runner image" hint printed `images/runner/build.sh` verbatim: the wizard's
+first next-step, `doctor`'s remedy, the `ImageNotFoundError` message, the postinst, the
+dashboard's setup screen, the README quick start. That path is real only for somebody
+standing in a clone, and the `.deb` shipped the daemon without `images/` — so on exactly the
+host the package exists to serve, the instruction named a file that could not be there.
+
+Two halves. The package now installs the sources to `/usr/share/ghspot/images/runner`, and
+`ghspot image build <variant>` finds them — packaged location first, then the checkout, with
+`GHSPOT_RUNNER_IMAGES` overriding both, the same shape `dashboard.find_root` already used for
+`web/dist`. Every hint says `ghspot image build`, which is the one instruction true in both
+places.
+
+The CLI does not reimplement the build. It locates `build.sh` and runs it with stdio
+inherited, so a `docker build`'s minutes of layer progress stay visible. `build.sh` grew a
+`--list`, which is what `ghspot image list` calls — the variant table stays declared once.
+
+`doctor`'s remedy used to be a hand-written `docker build` restating the `DOCKER_GID`
+build-arg. It is now the same `ghspot image build` line; a remedy that drifts from the real
+build is worse than no remedy.
+
+### The wizard also had a sudo bug
+
+Step 2 printed `ghspot doctor -c /etc/ghspot/config.toml` with no `sudo`, while step 3 knew
+to ask for it. The file is `root:ghspot 0640` and the checks want the Docker socket, and the
+operator reads that list in a shell where the wizard's own sudo has long expired.
+
+### Notes for later
+
+- The Ansible role lost its shallow checkout and the `git` it installed to make one, along
+  with `ghspot_checkout`. It builds through `ghspot image build` now, which has the side
+  effect of pinning the images to the installed version rather than to whatever `main` held.
+- `subprocess` output does not reach Click's `CliRunner` buffer, because it goes to the real
+  file descriptor. The tests use `capfd`, and a test that reached for `result.output` passed
+  its exit-code assertion while silently checking an empty string.
+- `from ... import setup as setup_module` in a test module collides with pytest's own xunit
+  hook name and every test in the file errors before it runs.
+
+## 2026-08-31 — `ghspot setup` fills in the reference
+
+The wizard wrote eighteen lines: the four answers it asked for and nothing else. It parsed,
+it ran, and it said nothing about the thirty settings it had not mentioned — the capacity
+ceilings, the housekeeping, the pool modes. The file that arrives after `apt install` is the
+one an operator is least equipped to go and research, and it arrived empty.
+
+It now writes `config.example.toml` with the answers substituted into it. There is no second
+copy of the prose to fall behind: the explanation beside a setting is the shipped one, and a
+setting added to the reference turns up in the next configuration the wizard writes without
+anybody remembering to add it in two places.
+
+Only what was asked is substituted. Everything else keeps the reference's value — which for
+`idle_timeout`, `max_job_duration` and `max_launch_per_tick` *is* the code's default, so the
+file says out loud what the daemon would have done in silence. `cpus` and `memory` are the
+exception and get commented out: unset they mean no limit, and inheriting the reference's
+illustration would cap every job on the host at two cores.
+
+### Notes for later
+
+- The reference is found the same way the runner sources are, and both now prefer the
+  checkout over the packaged copy. `IN_TREE` resolves only when the running code *is* the
+  checkout's — from the installed `/usr/bin/ghspot` it points inside the virtualenv — so its
+  existence already means "you are working in the tree", and quietly using the installed
+  version instead is the surprise.
+- The wizard echoes the file back after writing it. At eighteen lines that was a
+  confirmation; at two hundred it buried the four next steps, which are the point of the
+  ending. It prints the live settings only.
+- Line surgery on a documentation file has three ways to go wrong and the tests name all
+  three: matching a key in the wrong section, matching the commented-out `[[pool]]` the
+  reference ends with as if it were real, and echoing a commented-out assignment back as its
+  own trailing comment when switching it on.
+- `config.example.toml` was carrying a stale `images/runner/build.sh` of its own.
+
+## 2026-08-31 — the wizard offers to build the image
+
+"Build the runner image" has always been the wizard's first next-step, and it is the one step
+nothing works without: a pool whose image is missing starts no runners and says so only in the
+daemon's log. Now that `ghspot image build` exists, the wizard asks instead of instructing.
+
+Only when there is something to do. `_image_present` returns three answers rather than two —
+built, not built, and *Docker could not say* — because treating an unreachable daemon as "not
+built" would offer a build that cannot start, one step before `doctor` reports the real
+problem properly. No image sources, no offer either.
+
+Order matters: the configuration is validated first. Spending several minutes on an image for
+a file that was never going to load is the wrong order to find that out in.
+
+### Notes for later
+
+- `_verify` split into `_validate` and `_next_steps`, and the step list is built rather than
+  printed line by line — accepting the build drops the step that asks for it, and the rest
+  renumber.
+- A failed build keeps the step. Reporting it done because it was attempted would send the
+  operator to `doctor` hunting a different problem.
+- The unit tests now stub `_image_present` from an autouse fixture. Without it the suite asks
+  the machine running it whether the image exists, so the offer appears on a developer's box
+  and not in CI — the tests would have passed either way and covered different code.
+
+## 2026-08-31 — the wizard stops granting things by default
+
+`let jobs use Docker` and `serve it` both defaulted to yes, directly under the paragraphs
+explaining that the first hands a job effective root on the host and the second puts an
+unauthenticated API on it. The prompt argued one way and the default went the other, and
+pressing enter through the wizard was enough to take both.
+
+Both default to no now. Turning either on later is one line in a file the wizard hands over
+fully commented, which is a much better place to make that decision than a `[y/n]` at the end
+of a questionnaire.
