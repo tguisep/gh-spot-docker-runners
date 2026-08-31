@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import socket
 import tomllib
+import warnings
 from datetime import timedelta
 from pathlib import Path
 
@@ -190,7 +192,41 @@ def test_a_world_readable_token_file_warns(tmp_path: Path, monkeypatch: pytest.M
     token_file.chmod(0o644)
     settings = parse(MINIMAL.replace("/tmp/token", str(token_file)))
 
-    with pytest.warns(UserWarning, match="chmod 600"):
+    with pytest.warns(UserWarning, match="readable by everybody"):
+        assert settings.github.resolve_token() == "ghp_secret"  # type: ignore[attr-defined]
+
+
+def test_the_packaged_credential_layout_does_not_warn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The package installs credentials 0640 root:ghspot on purpose, because the daemon runs
+    as `ghspot` and a file only root can read stops it starting. Warning about that told the
+    operator to `chmod 600` — breaking the very service the check protects."""
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    monkeypatch.setattr(settings_module, "_is_service_group", lambda _: True)
+    token_file = tmp_path / "token"
+    token_file.write_text("ghp_secret")
+    token_file.chmod(0o640)
+    settings = parse(MINIMAL.replace("/tmp/token", str(token_file)))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert settings.github.resolve_token() == "ghp_secret"  # type: ignore[attr-defined]
+
+
+def test_group_readable_by_the_wrong_group_still_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """0640 is only safe because of *which* group it is. Any other one is a wider audience
+    than the credential needs."""
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    monkeypatch.setattr(settings_module, "_is_service_group", lambda _: False)
+    token_file = tmp_path / "token"
+    token_file.write_text("ghp_secret")
+    token_file.chmod(0o640)
+    settings = parse(MINIMAL.replace("/tmp/token", str(token_file)))
+
+    with pytest.warns(UserWarning, match="group other than the daemon"):
         assert settings.github.resolve_token() == "ghp_secret"  # type: ignore[attr-defined]
 
 
@@ -792,3 +828,38 @@ def test_an_empty_host_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError, match=r"daemon\.host"):
         load(config)
+
+
+def test_an_edited_file_is_noticed(tmp_path: Path) -> None:
+    """The daemon reads settings once, at startup. Nothing said so, and an operator adding a
+    label watched the dashboard keep showing the old one with no way to tell a stale process
+    from a bad file."""
+    config = tmp_path / "config.toml"
+    config.write_text(MINIMAL)
+    settings = load(config)
+    assert not settings_module.changed_on_disk(settings)
+
+    os.utime(config, (settings.loaded_mtime + 10, settings.loaded_mtime + 10))
+
+    assert settings_module.changed_on_disk(settings)
+
+
+def test_an_edited_pool_file_is_noticed_too(tmp_path: Path) -> None:
+    """Pools may live one per file, and a change to one of those is exactly as invisible as a
+    change to the main configuration."""
+    pools = tmp_path / "pools.d"
+    pools.mkdir()
+    extra = pools / "extra.toml"
+    extra.write_text(
+        '[[pool]]\nname = "extra"\nrepository = "tguisep/other"\n'
+        'labels = ["self-hosted"]\n[pool.container]\nimage = "ghspot/runner:ubuntu-24.04"\n'
+    )
+    config = tmp_path / "config.toml"
+    config.write_text(f'include = "{pools}/*.toml"\n' + MINIMAL)
+
+    settings = load(config)
+    assert not settings_module.changed_on_disk(settings)
+
+    os.utime(extra, (settings.loaded_mtime + 10, settings.loaded_mtime + 10))
+
+    assert settings_module.changed_on_disk(settings)
