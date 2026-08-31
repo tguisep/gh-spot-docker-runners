@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import tomllib
 from datetime import timedelta
 from pathlib import Path
@@ -763,3 +764,31 @@ def test_the_ceiling_can_be_lifted_on_purpose(monkeypatch: pytest.MonkeyPatch) -
 def test_a_machine_that_will_not_say_how_many_cores_it_has_still_gets_one() -> None:
     """os.cpu_count() can return None, and a ceiling of zero would start nothing at all."""
     assert settings_module.host_cores() >= 1
+
+
+def test_the_host_defaults_to_this_machine(tmp_path: Path) -> None:
+    """Every number a daemon reports is about its own box, so the report is always labelled —
+    naming it in the file is an override, not a requirement."""
+    config = tmp_path / "config.toml"
+    config.write_text(MINIMAL)
+
+    assert load(config).daemon.host == socket.gethostname()
+
+
+def test_the_host_can_be_named(tmp_path: Path) -> None:
+    """A hostname is often a cloud instance id or a container's, and the name an operator
+    uses for a machine is the one they want to read in a report."""
+    config = tmp_path / "config.toml"
+    config.write_text(MINIMAL + '\n[daemon]\nhost = "builders-01"\n')
+
+    assert load(config).daemon.host == "builders-01"
+
+
+def test_an_empty_host_is_refused(tmp_path: Path) -> None:
+    """A mistake, not a choice: it would leave every report unlabelled, which is the one
+    thing naming the host exists to prevent."""
+    config = tmp_path / "config.toml"
+    config.write_text(MINIMAL + '\n[daemon]\nhost = "   "\n')
+
+    with pytest.raises(ConfigError, match=r"daemon\.host"):
+        load(config)
