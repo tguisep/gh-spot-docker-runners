@@ -657,3 +657,40 @@ after it has said everything and before its output stops existing. Capped at 500
 `test_a_missing_image_says_how_to_build_it` still expected `build.sh` after the message became
 `ghspot image build`. It only runs where busybox is already pulled, so CI skipped it and the
 staleness sat there — found by pulling busybox to check the log behaviour above.
+
+## 2026-08-31 — which job did this runner run?
+
+The dashboard's GitHub pane said "this runner is not running a job" for every runner that had
+just finished one. The cause was not the message. In production code `assign_job` is called
+exactly once:
+
+    reconciliation.py:316   runner.assign_job(None, at=now)
+
+Always `None`. So `current_job_id` was never once a real id, `/runners/{ref}/job-logs` gates on
+it being set, and **the whole GitHub half of the logs page could never fire** — nor could
+`ghspot runner logs --job`. Every call passing a real job id is in a test, which is precisely
+why this stayed green for as long as it did: the tests build a state the production code never
+reaches.
+
+The reasoning in `assign_job`'s docstring was sound and is still true — the runner list says a
+runner is busy without saying which job it took, and correlating on every tick buys the
+reconciler nothing. The mistake was leaving a read path depending on a value that reasoning
+guaranteed would be absent.
+
+So it is asked for on demand: `find_job_for_runner` walks the last 30 runs newest-first for a
+job whose `runner_name` matches, and stops at the first hit. Chosen over correlating during
+ticks because it works for runners that retired before any of this existed — the ones somebody
+is looking at when they go hunting for a log.
+
+### Notes for later
+
+- The answer is written back to the record. The logs page polls every ten seconds; a search
+  per poll would spend the hourly budget on one open tab. `remember_job` exists for that and
+  does not move the runner's state — `assign_job` would have claimed a retired runner was BUSY.
+- A runner with no `github_runner_id` is never searched for. It cannot have been handed a job,
+  so the walk could only prove what the record already says.
+- Bounded at 30 runs. A run older than that is not found, and that is the honest trade: the
+  alternative is an unbounded walk of a busy repository's history from a page nobody is
+  necessarily watching.
+- The old message blamed the runner ("is not running a job") for what was really the daemon
+  not knowing. Both the CLI and the dashboard now say what actually happened.
