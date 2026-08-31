@@ -41,6 +41,12 @@ ghspot_state_db: /var/lib/ghspot/state.db
 # There is no authentication on either. "127.0.0.1:8770" keeps it on the host, reachable
 # over an SSH tunnel:  ssh -L 8770:localhost:8770 the-host
 ghspot_api_bind: ""
+
+# What this machine is called in reports. Empty means the daemon uses the system hostname,
+# which is right until the hostname is a cloud instance id nobody recognises. Several hosts
+# can serve one repository and each daemon counts only its own runners, so this is what makes
+# two reports comparable.
+ghspot_host: ""
 ghspot_log_level: INFO
 
 # Where the daemon looks for the built dashboard. Empty means the packaged location, which

@@ -98,6 +98,7 @@ def create_app(application: Application) -> FastAPI:
         return HealthResponse(
             status="ok" if docker_ok else "degraded",
             version=__version__,
+            host=app.settings.daemon.host,
             pools=len(app.settings.pools),
             docker=docker_ok,
             configured=pending is None,
@@ -233,7 +234,7 @@ def create_app(application: Application) -> FastAPI:
         start = None
         if since_seconds is not None:
             start = app.clock.now() - timedelta(seconds=since_seconds)
-        query = GatherStats(app.events, app.runners, app.clock)
+        query = GatherStats(app.events, app.runners, app.clock, app.settings.daemon.host)
         return StatsResponse.of(await query(start))
 
     @api.post("/reconcile", response_model=TickResponse, tags=["status"])

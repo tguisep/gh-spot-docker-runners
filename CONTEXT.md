@@ -547,6 +547,41 @@ Both default to no now. Turning either on later is one line in a file the wizard
 fully commented, which is a much better place to make that decision than a `[y/n]` at the end
 of a questionnaire.
 
+## 2026-08-31 — every report says which machine it is about
+
+Several hosts can serve one repository. Each daemon has its own state database and sees only
+the runners it started, so every number `ghspot stats` prints is about one box — and an
+unlabelled report is one you cannot put beside another. Three dashboards open in three tabs
+were indistinguishable.
+
+`[daemon].host` defaults to the system hostname and is settable, because a hostname is often
+either meaningless (a cloud instance id) or not unique (a container's), and the name an
+operator uses for a machine is the one they want to read in a report. Empty is refused rather
+than accepted: it would leave every report unlabelled, which is the one thing this exists to
+prevent.
+
+It surfaces in `ghspot stats`, `ghspot doctor`, `/health`, `/stats`, the dashboard header on
+every page, and the overview's facts.
+
+### Notes for later
+
+- The header, not just the overview. The failure this prevents is misreading a second tab, and
+  a label that only appears on one page does not prevent it.
+- The API test harness now pins a host rather than letting `/health` answer with whatever
+  machine ran the suite.
+
+### Not fixed here: two daemons on one repository delete each other's runners
+
+`_delete_stray_registrations` deletes any runner GitHub lists whose name starts with
+`ghspot-`, that is offline, and that this daemon has no record of. Another host's runners
+match all three. Host A reaps host B's registrations, B re-registers, and the two fight for as
+long as both are up.
+
+The fix is for the name to carry the host — `ghspot-{host}-{pool}-{id}` — so the sweep can
+scope to its own, which also makes ownership readable on github.com. It is deliberately not in
+this change: it alters what is registered on GitHub and what the sweep is allowed to delete,
+and registrations made before the change would no longer be reaped by it. That deserves its
+own review rather than riding along with a display change.
 ## 2026-08-31 — a fresh apt install could not actually start
 
 Two defects, both on the path the package exists to serve, and both invisible to CI.

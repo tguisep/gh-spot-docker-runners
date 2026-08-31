@@ -47,11 +47,14 @@ class Harness:
             self.forge, self.backend, self.repository, self.clock, SequentialIds(), self.events
         )
         retire = RetireRunner(self.forge, self.backend, self.repository, self.clock, self.events)
+        # A fixed host, so the API's answers do not vary with whatever machine runs the
+        # suite — and so a test can assert on the name the daemon reports for itself.
         settings = Settings(
             github=GitHubSettings(),
-            daemon=DaemonSettings(poll_interval=timedelta(seconds=15)),
+            daemon=DaemonSettings(poll_interval=timedelta(seconds=15), host="builders-01"),
             pools=(PoolConfiguration(spec=self.spec, template=TEMPLATE),),
         )
+        self.settings = settings
         self.application = Application(
             settings=settings,
             forge=self.forge,  # type: ignore[arg-type]
@@ -439,3 +442,10 @@ def test_being_unconfigured_is_not_the_same_as_being_unhealthy(client: TestClien
 
     assert body["status"] == "ok"
     assert body["configured"] is False
+
+
+def test_health_and_stats_both_name_the_host(client: TestClient) -> None:
+    """Several hosts can serve one repository, and each daemon answers only for its own. A
+    client polling three of them cannot otherwise tell their answers apart."""
+    assert client.get("/health").json()["host"] == "builders-01"
+    assert client.get("/stats").json()["host"] == "builders-01"

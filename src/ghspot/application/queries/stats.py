@@ -144,10 +144,13 @@ def _ranked(groups: dict[str, _Tally]) -> list[UsageStats]:
 class GatherStats:
     """`ghspot stats`: what the fleet did, and what it cost."""
 
-    def __init__(self, events: EventLog, runners: RunnerRepository, clock: Clock) -> None:
+    def __init__(
+        self, events: EventLog, runners: RunnerRepository, clock: Clock, host: str = ""
+    ) -> None:
         self._events = events
         self._runners = runners
         self._clock = clock
+        self._host = host
 
     async def __call__(self, since: datetime | None = None) -> StatsView:
         recorded = await self._events.since(since)
@@ -170,6 +173,7 @@ class GatherStats:
             by_pool.setdefault(runner.pool, _Tally()).live += 1
 
         return StatsView(
+            host=self._host,
             since=since,
             until=self._clock.now(),
             total=total.finish(""),

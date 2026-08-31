@@ -15,6 +15,7 @@ import type { Health, Pool, Stats } from './types';
 const HEALTH: Health = {
     status: 'ok',
     version: '0.4.0',
+    host: 'runner-box-2',
     pools: 1,
     docker: true,
     configured: true,
@@ -37,6 +38,7 @@ const POOL: Pool = {
 };
 
 const EMPTY_STATS: Stats = {
+    host: 'runner-box-2',
     since: null,
     until: '2026-08-28T12:00:00Z',
     events_read: 0,
@@ -166,5 +168,19 @@ describe('the dashboard', () => {
         await waitFor(() => {
             expect(screen.getAllByText(/the daemon is not answering/)).toHaveLength(2);
         });
+    });
+});
+
+describe('the host', () => {
+    it('is named in the header on every page', async () => {
+        render(
+            <MemoryRouter initialEntries={['/runners']}>
+                <App />
+            </MemoryRouter>,
+        );
+
+        // Not only on the overview: several hosts can serve one repository, and two tabs
+        // open on two of them are indistinguishable without this.
+        await waitFor(() => expect(screen.getByText('runner-box-2')).toBeTruthy());
     });
 });

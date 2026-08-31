@@ -140,6 +140,15 @@ class StatsView:
 
     until: datetime
     total: UsageStats
+
+    host: str = ""
+    """The machine these numbers are about.
+
+    Several hosts can serve one repository and each daemon sees only its own runners, so
+    every figure here is about one box. A report that does not say which is a report you
+    cannot put beside another.
+    """
+
     by_repository: list[UsageStats] = field(default_factory=list)
     by_pool: list[UsageStats] = field(default_factory=list)
     failures: list[tuple[str, int]] = field(default_factory=list)

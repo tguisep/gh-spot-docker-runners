@@ -5,6 +5,7 @@ ghspot_poll_interval: 15s
 ghspot_state_db: /var/lib/ghspot/state.db
 ghspot_log_level: INFO
 ghspot_api_bind: ""
+ghspot_host: ""
 ghspot_housekeeping:
   enabled: true
   every: 1h

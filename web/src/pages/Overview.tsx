@@ -51,6 +51,10 @@ export function Overview() {
                             </dd>
                         </div>
                         <div>
+                            <dt>host</dt>
+                            <dd>{health.data.host || '—'}</dd>
+                        </div>
+                        <div>
                             <dt>version</dt>
                             <dd>{health.data.version}</dd>
                         </div>

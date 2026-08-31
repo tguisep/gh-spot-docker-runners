@@ -49,6 +49,8 @@ export interface Pool {
 export interface Health {
     status: string;
     version: string;
+    /** The machine this daemon runs on. Several hosts can serve one repository. */
+    host: string;
     pools: number;
     docker: boolean;
     /** False on a fresh install: the daemon is up and nobody has finished the configuration. */
@@ -98,6 +100,8 @@ export interface Usage {
 }
 
 export interface Stats {
+    /** The machine these numbers are about — each daemon counts only its own runners. */
+    host: string;
     since: string | null;
     until: string;
     events_read: number;

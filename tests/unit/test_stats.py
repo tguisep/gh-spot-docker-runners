@@ -10,12 +10,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import pytest
+from rich.text import Text
 
+from ghspot.application.dto import StatsView, UsageStats
 from ghspot.application.queries.stats import UNKNOWN, GatherStats, stories
 from ghspot.domain.model import events as domain_events
 from ghspot.domain.model.events import DomainEvent
 from ghspot.domain.model.runner import Runner
 from ghspot.domain.model.target import RepositoryTarget
+from ghspot.interfaces.cli.render import stats_tables
 
 from .conftest import REPO, at, make_runner
 
@@ -277,3 +280,14 @@ async def test_the_window_is_reported_back_so_a_reader_knows_what_it_covers() ->
 
     assert view.since == at(minutes=30)
     assert view.until == at(hours=2)
+
+
+def test_the_report_says_which_machine_it_is_about() -> None:
+    """Several hosts can serve one repository and each daemon counts only its own runners, so
+    an unlabelled report is one you cannot put beside another."""
+    view = StatsView(since=None, until=at(), total=UsageStats(key=""), host="builders-01")
+
+    heading = stats_tables(view)[0]
+
+    assert isinstance(heading, Text)
+    assert "builders-01" in heading.plain

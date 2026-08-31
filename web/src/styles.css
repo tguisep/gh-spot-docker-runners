@@ -76,6 +76,15 @@ pre,
     margin: 0;
     font-size: 16px;
     letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+/* Lighter than the product name it follows: which box you are looking at matters, but not
+   more than the heading it qualifies. */
+.top h1 .host {
+    font-weight: 400;
+    font-size: 13px;
+    letter-spacing: 0;
 }
 
 .top nav {

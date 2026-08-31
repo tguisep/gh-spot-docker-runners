@@ -52,6 +52,16 @@ token_file = "~/.config/ghspot/token"
 poll_interval = "15s"
 state_db = "~/.local/state/ghspot/state.db"
 
+# What to call this machine in reports.
+#
+# Several hosts can serve one repository, and each daemon only ever sees its own runners — so
+# every number `ghspot stats` prints is about this box alone. Naming it is what lets you put
+# two of those reports side by side.
+#
+# Defaults to the system hostname. Set it when that is meaningless (a cloud instance id) or
+# not unique (a container's).
+# host = "builders-01"
+
 # Serve the REST API. Bind to localhost unless you have put auth in front of it.
 # api_bind = "127.0.0.1:8770"
 

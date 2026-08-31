@@ -1,15 +1,28 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 
+import { api } from './api';
+
 import { Logs } from './pages/Logs';
 import { Overview } from './pages/Overview';
 import { Runners } from './pages/Runners';
 import { Stats } from './pages/Stats';
+import { usePoll } from './usePoll';
 
 export function App() {
+    // On every page, not just the overview: several hosts can serve one repository, and a
+    // dashboard that does not say which one you have open is a dashboard you can misread in
+    // a second tab.
+    const health = usePoll(() => api.health(), 30_000);
+
     return (
         <>
             <header className="top">
-                <h1>ghspot</h1>
+                <h1>
+                    ghspot
+                    {health.data?.host ? (
+                        <span className="dim host"> {health.data.host}</span>
+                    ) : null}
+                </h1>
                 <nav>
                     <NavLink to="/" end>
                         overview

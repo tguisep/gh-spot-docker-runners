@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -59,6 +60,18 @@ class DaemonSettings:
     state_db: Path = Path("~/.local/state/ghspot/state.db")
     api_bind: str | None = None
     """``host:port`` to serve the REST API on, or ``None`` to run without it."""
+
+    host: str = field(default_factory=socket.gethostname)
+    """What to call this machine when reporting.
+
+    Several hosts can serve one repository, and each daemon only ever sees its own runners —
+    so every number this daemon reports is a number about *this* box, and a report that does
+    not say which box that was is a report you cannot compare with the next one.
+
+    Defaults to the system hostname. Settable because a hostname is often either meaningless
+    (a cloud instance id) or not unique (a container's), and the name an operator uses for a
+    machine is the one they want to read in a report.
+    """
 
     stop_timeout: timedelta = timedelta(seconds=30)
     log_level: str = "INFO"
@@ -389,6 +402,12 @@ def _daemon(table: dict[str, Any]) -> DaemonSettings:
     if log_format not in {"auto", "console", "json"}:
         raise ConfigError("daemon.log_format must be 'auto', 'console' or 'json'")
 
+    # An empty string is a mistake, not a choice: it would leave every report unlabelled,
+    # which is the exact thing naming the host is for.
+    host = str(table.get("host") or socket.gethostname()).strip()
+    if not host:
+        raise ConfigError("daemon.host cannot be empty")
+
     return DaemonSettings(
         poll_interval=parse_duration(table.get("poll_interval", "15s"), "daemon.poll_interval"),
         state_db=Path(str(table.get("state_db", "~/.local/state/ghspot/state.db"))).expanduser(),
@@ -396,6 +415,7 @@ def _daemon(table: dict[str, Any]) -> DaemonSettings:
         stop_timeout=parse_duration(table.get("stop_timeout", "30s"), "daemon.stop_timeout"),
         log_level=str(table.get("log_level", "INFO")).upper(),
         log_format=log_format,
+        host=host,
     )
 
 
