@@ -535,3 +535,14 @@ a file that was never going to load is the wrong order to find that out in.
 - The unit tests now stub `_image_present` from an autouse fixture. Without it the suite asks
   the machine running it whether the image exists, so the offer appears on a developer's box
   and not in CI — the tests would have passed either way and covered different code.
+
+## 2026-08-31 — the wizard stops granting things by default
+
+`let jobs use Docker` and `serve it` both defaulted to yes, directly under the paragraphs
+explaining that the first hands a job effective root on the host and the second puts an
+unauthenticated API on it. The prompt argued one way and the default went the other, and
+pressing enter through the wizard was enough to take both.
+
+Both default to no now. Turning either on later is one line in a file the wizard hands over
+fully commented, which is a much better place to make that decision than a `[y/n]` at the end
+of a questionnaire.

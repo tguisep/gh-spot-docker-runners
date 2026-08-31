@@ -191,6 +191,12 @@ writes the short form instead rather than failing over a documentation file.
 Run as root it writes `/etc/ghspot/config.toml`; as anyone else, `~/.config/ghspot/config.toml`.
 It refuses to overwrite an existing file without `--force`.
 
+The two questions that hand something away answer **no** by default: letting jobs use Docker
+gives a job effective root on the host, and serving the dashboard puts an unauthenticated API
+on it. Neither is a thing to acquire by pressing enter past the paragraph explaining it.
+Turning either on later is one line in the file — `docker_socket` under `[pool.container]`,
+`api_bind` under `[daemon]`.
+
 If the daemon is already running with the packaged configuration, its dashboard says the same
 thing at `/ui` — a fresh install shows a setup screen rather than an empty and unexplained
 fleet.
