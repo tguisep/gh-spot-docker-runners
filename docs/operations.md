@@ -383,7 +383,7 @@ ghspot stats --since 7d       # a window: 24h, 7d, 30m
 ```
 
 ```
-usage — since 2026-08-21 09:00 UTC, 812 event(s) read
+usage on builders-01 — since 2026-08-21 09:00 UTC, 812 event(s) read
  repository                       runners  jobs  fail  fail%     busy  avg job  avg wait  used  live
  tguisep/gh-spot-docker-runners        58    54     1     2%    6h12m    6m53s       22s   91%     2
  tguisep/other-project                 11     9     0     0%      47m    5m13s     1m40s   78%     -
@@ -423,6 +423,24 @@ curl -s 'localhost:8770/stats?since_seconds=604800' | jq '.by_repository'
 
 Nothing prunes the event log, so a busy fleet grows it slowly and the report stays honest
 about the whole period.
+
+#### Which host these numbers are about
+
+Several hosts can serve one repository. Each daemon has its own state database and only ever
+sees the runners it started itself, so **every figure here is about one machine** — the report
+is not a fleet total, and adding two of them together is the only way to get one.
+
+The report says which machine, and so do `/health`, `/stats`, `ghspot doctor` and the
+dashboard header. It defaults to the system hostname; name it when that is a cloud instance id
+or a container's:
+
+```toml
+[daemon]
+host = "builders-01"
+```
+
+With Ansible, `ghspot_host` — left empty the daemon falls back to the hostname rather than to
+an empty label.
 
 ### Watching instead of re-running
 
