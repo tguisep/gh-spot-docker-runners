@@ -159,6 +159,9 @@ class FailureCount(BaseModel):
 
 
 class StatsResponse(BaseModel):
+    host: str = ""
+    """The machine these numbers are about — each daemon counts only its own runners."""
+
     since: datetime | None
     until: datetime
     events_read: int
@@ -170,6 +173,7 @@ class StatsResponse(BaseModel):
     @classmethod
     def of(cls, view: StatsView) -> StatsResponse:
         return cls(
+            host=view.host,
             since=view.since,
             until=view.until,
             events_read=view.events_read,
@@ -183,6 +187,13 @@ class StatsResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+    host: str = ""
+    """The machine this daemon runs on.
+
+    Several hosts can serve one repository, and each daemon answers only for its own. Without
+    this a client polling three of them cannot tell their answers apart.
+    """
+
     pools: int
     docker: bool
     """Whether the Docker daemon answered a ping."""
