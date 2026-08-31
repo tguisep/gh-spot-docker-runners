@@ -30,6 +30,7 @@ from ghspot.domain.ports.backend import (
     PruneReport,
     PruneRequest,
 )
+from ghspot.paths import build_command
 
 DOCKER_SOCKET = "/var/run/docker.sock"
 
@@ -47,7 +48,7 @@ class DockerRunnerBackend:
             except ImageNotFound as error:
                 raise ImageNotFoundError(
                     f"the runner image {spec.image!r} is not present. "
-                    f"Build it with: images/runner/build.sh {spec.image.rpartition(':')[2]}"
+                    f"Build it with: {build_command(spec.image.rpartition(':')[2])}"
                 ) from error
             except (APIError, DockerException) as error:
                 raise BackendError(f"could not start {spec.name!r}: {error}") from error
