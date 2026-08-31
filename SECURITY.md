@@ -35,7 +35,7 @@ secret on disk is the private key, which is never transmitted — only signature
 are. The installation tokens it produces live about an hour and are refreshed automatically,
 so a leaked one expires without intervention. This is why an App is preferred over a personal
 access token for anything long-running; see
-[ADR 6](docs/adr/0006-github-app-alongside-pat.md).
+[ADR 6](https://tguisep.github.io/gh-spot-docker-runners/reference/adr/0006-github-app-alongside-pat/).
 
 **The runner tarball is verified.** It is the only artefact in the image not coming from a
 signed apt repository, so it is SHA256-checked against the digest GitHub publishes, on both
@@ -52,7 +52,7 @@ With `docker_socket = true`, a job can reach `/var/run/docker.sock`. Anything th
 that socket can start a privileged container mounting the host filesystem. **That is
 equivalent to root on the machine.** There is no partial version of this.
 
-This is a deliberate trade (see [ADR 5](docs/adr/0005-docker-socket-over-dind.md)) and it is
+This is a deliberate trade (see [ADR 5](https://tguisep.github.io/gh-spot-docker-runners/reference/adr/0005-docker-socket-over-dind/)) and it is
 sound for repositories whose code you control — a job runs code you would have run anyway.
 
 **It is not sound for a repository that accepts workflow runs from forked pull requests.**
@@ -83,7 +83,7 @@ escapes regardless of what the socket is doing.
 ## Hardening checklist
 
 - [ ] A GitHub App, or a fine-grained token scoped to exactly the repositories in
-      `config.toml` — see [docs/authentication.md](docs/authentication.md)
+      `config.toml` — see [the authentication guide](https://tguisep.github.io/gh-spot-docker-runners/start/authentication/)
 - [ ] Token file or app private key `chmod 600`, owned by the daemon user
 - [ ] Daemon runs as a dedicated system user, not your login account
 - [ ] `api_bind` on `127.0.0.1`, or absent

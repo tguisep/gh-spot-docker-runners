@@ -163,8 +163,8 @@ jobs:
           credential first. `sudo ghspot doctor --config /etc/ghspot/config.toml`
           tells you what is missing.
 
-          - [Setting up a token or a GitHub App](https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/authentication.md)
-          - [Operations guide](https://github.com/tguisep/gh-spot-docker-runners/blob/main/docs/operations.md)
+          - [Setting up a token or a GitHub App](https://tguisep.github.io/gh-spot-docker-runners/start/authentication/)
+          - [Documentation](https://tguisep.github.io/gh-spot-docker-runners/)
 
           Verify a download against `SHA256SUMS`.
           BODY

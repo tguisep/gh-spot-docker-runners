@@ -1,4 +1,7 @@
-# 2. Converge continuously instead of acting once
+---
+title: "2. Converge continuously instead of acting once"
+description: "An architecture decision, with what was rejected."
+---
 
 **Status:** accepted · 2026-08-26
 

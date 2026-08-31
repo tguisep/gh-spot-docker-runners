@@ -1,4 +1,7 @@
-# 1. Register runners with just-in-time configurations
+---
+title: "1. Register runners with just-in-time configurations"
+description: "An architecture decision, with what was rejected."
+---
 
 **Status:** accepted · 2026-08-26
 

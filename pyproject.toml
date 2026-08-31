@@ -90,6 +90,7 @@ ignore = [
 "tests/**" = ["S101"]
 "src/ghspot/interfaces/cli/**" = ["T20"]
 "deploy/ansible/test/**" = ["T20"]   # a test script: its report is its output
+"scripts/**" = ["T20"]              # likewise: a CI check whose output is the point
 
 [tool.ruff.lint.isort]
 known-first-party = ["ghspot"]

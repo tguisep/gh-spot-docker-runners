@@ -1,0 +1,38 @@
+---
+title: ghspot
+description: Self-hosted GitHub Actions runners as ephemeral Docker containers, on a machine you own.
+template: splash
+hero:
+    tagline: |
+        Self-hosted GitHub Actions runners as ephemeral Docker containers. One container per
+        job, destroyed when it finishes, on a machine you already pay for.
+    actions:
+        - text: Install it
+          link: start/requirements/
+          icon: right-arrow
+        - text: On GitHub
+          link: https://github.com/tguisep/gh-spot-docker-runners
+          icon: external
+          variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+    <Card title="Nothing durable on the runner" icon="approve-check">
+        Containers get a single-use just-in-time registration and nothing else. No token ever
+        reaches a job, in either credential mode.
+    </Card>
+    <Card title="A reconciler, not a queue" icon="random">
+        Every tick compares what should exist with what does, and moves one towards the other.
+        A crash mid-flight is repaired on the next tick rather than replayed.
+    </Card>
+    <Card title="One binary, one file" icon="setting">
+        A `.deb` that bundles its own Python, a `config.toml`, and a systemd unit. No agent, no
+        control plane, no account anywhere.
+    </Card>
+    <Card title="It tells you what it did" icon="open-book">
+        A CLI, a REST API and a dashboard over the same projection — including what a runner
+        printed, kept after the container it printed from is gone.
+    </Card>
+</CardGrid>

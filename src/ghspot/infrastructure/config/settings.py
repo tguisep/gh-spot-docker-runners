@@ -198,9 +198,9 @@ class Settings:
         return list(seen)
 
 
-#: Top-level keys a pool file may not carry. Global configuration belongs in the main file,
-#: the way php-fpm keeps [global] out of php-fpm.d — otherwise which file wins becomes a
-#: question, and the answer is never obvious from either of them.
+#: Top-level keys a pool file may not carry. Global configuration belongs in the main file:
+#: otherwise which file wins becomes a question, and the answer is never obvious from either
+#: of them.
 GLOBAL_SECTIONS = ("github", "daemon", "housekeeping", "include")
 
 
@@ -320,11 +320,11 @@ def _read(path: Path) -> dict[str, Any]:
 
 
 def _include(raw: dict[str, Any], source: Path) -> list[tuple[dict[str, Any], Path]]:
-    """Expand ``include``, the way php-fpm expands its own.
+    """Expand ``include`` into the pools its glob matches.
 
         include = "pools.d/*.toml"
 
-    Four rules, all of them php-fpm's:
+    Four rules:
 
     * The glob is expanded and the matches are **sorted**, so the fleet a host ends up with
       does not depend on the order a directory happens to return.
@@ -653,10 +653,9 @@ def _template(container: dict[str, Any], where: str, name: str) -> RunnerTemplat
 def _process_manager(table: dict[str, Any], where: str, name: str) -> dict[str, Any]:
     """Read `pm` and the knobs that belong to it.
 
-    Knobs that do not apply to the chosen mode are refused rather than ignored, the way
-    php-fpm refuses `pm.min_spare_servers` under `pm = static`. A setting that is quietly
-    doing nothing is worse than one that will not load: the pool behaves unlike its
-    configuration and nothing says so.
+    Knobs that do not apply to the chosen mode are refused rather than ignored. A setting
+    that is quietly doing nothing is worse than one that will not load: the pool behaves
+    unlike its configuration and nothing says so.
     """
     written = table.get("pm")
     if written in (None, ""):
@@ -808,8 +807,8 @@ def _reject_duplicate_names(
 ) -> None:
     """Two pools of one name is fatal, and the message names both files.
 
-    php-fpm refuses to start on this rather than picking one, and so does this: which
-    definition won would be invisible in the running fleet.
+    Refusing to start beats picking one: which definition won would be invisible in the
+    running fleet.
     """
     if origins and len(origins) == len(pools):
         first: dict[str, Path] = {}

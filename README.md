@@ -19,7 +19,7 @@ sides, when the job finishes.
   declared configuration, and converges both ways. Runners stuck `Offline` after a hard kill, and
   containers orphaned by a daemon crash, are repaired on the next tick. There is no cleanup
   script to run.
-- **`pm`, as php-fpm means it.** A pool declares whether it keeps runners `static`, `dynamic`
+- **Named keeping modes.** A pool declares whether it keeps runners `static`, `dynamic`
   or `ondemand`, and a setting that does not apply to its mode is refused rather than
   silently ignored.
 - **Demand-driven.** The daemon polls for queued jobs and scales the pool to match, within the
@@ -139,7 +139,7 @@ GPUs, because without it every runner in that pool fails to start, and the error
 mention the toolkit.
 
 Full detail, including what `requires_labels` cannot prevent:
-[`docs/operations.md`](docs/operations.md#gpus).
+[the GPU guide](https://tguisep.github.io/gh-spot-docker-runners/guides/gpus/).
 
 ## Requirements
 
@@ -147,7 +147,7 @@ Full detail, including what `requires_labels` cannot prevent:
 - Python 3.12+
 - Credentials with **Administration: read & write** (to register runners) and **Actions:
   read** (to see queued jobs) — either a fine-grained personal access token or a GitHub App.
-  [`docs/authentication.md`](docs/authentication.md) sets up both, and explains why each
+  [the authentication guide](https://tguisep.github.io/gh-spot-docker-runners/start/authentication/) sets up both, and explains why each
   permission is needed
 
 ## Commands
@@ -169,7 +169,7 @@ Every listing takes `--watch 2` to repaint in place, and `runner list` takes `--
 CPU and memory per container.
 
 A REST API is served alongside the daemon when `api_bind` is set, with a web dashboard at
-`/ui` covering the same ground as the CLI — see [`docs/operations.md`](docs/operations.md).
+`/ui` covering the same ground as the CLI — see [the documentation](https://tguisep.github.io/gh-spot-docker-runners/).
 
 ## Security
 
@@ -179,11 +179,11 @@ repositories you control and unacceptable for one that accepts fork pull request
 
 ## Documentation
 
-- [`docs/authentication.md`](docs/authentication.md) — setting up a token or a GitHub App,
+- [the authentication guide](https://tguisep.github.io/gh-spot-docker-runners/start/authentication/) — setting up a token or a GitHub App,
   and the exact permissions
-- [`docs/architecture.md`](docs/architecture.md) — how the pieces fit together, and why
-- [`docs/operations.md`](docs/operations.md) — install, configure, run, tune, troubleshoot
-- [`docs/adr/`](docs/adr/) — the decisions, with the alternatives that were rejected
+- [Architecture](https://tguisep.github.io/gh-spot-docker-runners/reference/architecture/) — how the pieces fit together, and why
+- [Documentation](https://tguisep.github.io/gh-spot-docker-runners/) — install, configure, run, tune, troubleshoot
+- [Decisions](https://tguisep.github.io/gh-spot-docker-runners/reference/adr/) — the decisions, with the alternatives that were rejected
 - [`SECURITY.md`](SECURITY.md) — threat model and hardening checklist
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — layout rules and how to work on it
 - [`CONTEXT.md`](CONTEXT.md) — project history
