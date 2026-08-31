@@ -929,3 +929,30 @@ releases — rather than a published release nobody can install.
 - v0.5.0 itself cannot be repaired in place, for the same reason it broke: assets cannot be
   added to a published immutable release. It needs deleting and recreating from its tag, or
   superseding.
+
+## 2026-08-31 — the draft has no tag
+
+Making the release a draft fixed the immutability failure and broke the build in a new way: a
+**draft release does not create its tag**. The tag appears when the release is published, which
+is now the last thing the workflow does — so the build job's `ref: refs/tags/v0.5.1` had
+nothing to check out, and both architectures failed.
+
+The fix is `ref: ${{ github.sha }}`. That is the commit release-please released from, so it is
+the same tree the tag will point at once it exists. The original comment — "a release builds
+the tag, not the branch head, so the package cannot contain anything the release does not" —
+still holds; the commit is simply the earlier name for the same thing.
+
+The new ordering proved itself in the failure: v0.5.1 was left as an **empty draft**, invisible
+to anyone browsing releases, rather than the published-and-useless state v0.5.0 ended in. That
+is exactly what the draft was for, and it made the recovery a matter of attaching packages to
+something that already existed.
+
+### Notes for later
+
+- v0.5.1 was completed by hand: `workflow_dispatch` at `version=0.5.1` built both packages
+  (dispatch skips release-please, so it checks out `github.ref` and never touched the tag),
+  then upload, notes, `--draft=false --latest`. Publishing created the tag.
+- The published `.deb` was run through `packaging/deb/verify.sh` before this was called done.
+  Thirteen checks on a clean Ubuntu 26.04, including the dashboard and the runner sources.
+- v0.5.0 stays as it is: published, immutable, and empty. It cannot be repaired, and v0.5.1
+  supersedes it.
