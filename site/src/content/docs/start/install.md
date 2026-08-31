@@ -25,7 +25,7 @@ glibc distribution, and cannot be broken by an upgrade changing `python3`.
 | `/var/lib/ghspot/` | State database |
 
 It creates a `ghspot` system user, adds it to the `docker` group, and **does not start the
-daemon** — it cannot work until a repository and a credential are configured. Continue at [Configure](./configure.md), then:
+daemon** — it cannot work until a repository and a credential are configured. Continue at [Configure](../configure/), then:
 
 ```bash
 sudo ghspot doctor --config /etc/ghspot/config.toml

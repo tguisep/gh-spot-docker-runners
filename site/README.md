@@ -37,16 +37,24 @@ editorial decision, and alphabetical is the wrong answer.
 
 ## Linking between pages
 
-Write links as relative paths to the other **`.md` file**, not to its URL:
+Write links as **relative URLs**, resolved from the linking page's own URL — not from where its
+file sits, and not as a `.md` path:
 
 ```markdown
-See [the GPU guide](../guides/gpus.md).
+See [GPUs](../pools/gpus/).
 ```
 
-Astro resolves those at build time, which is what makes them survive the `/gh-spot-docker-runners`
-base path. A hand-written `/guides/gpus/` works locally and 404s in production.
+Two traps, both of which have already bitten:
 
-`scripts/check-site-links.py` checks every internal link in the built output against the pages
-that were actually generated, and CI runs it after every build. The build itself does not fail
-on a bad link — from its point of view nothing is wrong — so a rename would otherwise break
-inbound links silently.
+- **`.md` links are not rewritten.** `[GPUs](../pools/gpus.md)` is emitted verbatim and 404s in
+  production. Starlight rewrites its own sidebar, not your prose.
+- **A page is served one level deeper than its file.** `start/install.md` is served at
+  `/start/install/`, so its sibling is `../configure/`, not `./configure/`. Only `index.md`
+  pages have a URL matching their directory.
+
+A root-absolute `/guides/...` is always wrong here: it works on the dev server and 404s under
+the base path.
+
+`scripts/check-site-links.py` catches all three, plus in-page `](#anchor)` links whose heading
+has moved to another page. **CI runs it after every build, and it is the only thing that will
+tell you** — Astro's build is perfectly happy with a link to nowhere.

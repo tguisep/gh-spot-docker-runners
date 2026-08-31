@@ -59,9 +59,26 @@ export default defineConfig({
                 {
                     label: 'Reference',
                     items: [
-                        { slug: 'reference/troubleshooting' },
+                        {
+                            label: 'Troubleshooting',
+                            items: [
+                                { slug: 'reference/troubleshooting', label: 'Start here' },
+                                { slug: 'reference/troubleshooting/credentials' },
+                                { slug: 'reference/troubleshooting/service' },
+                                { slug: 'reference/troubleshooting/logs' },
+                            ],
+                        },
                         { slug: 'reference/backups' },
-                        { slug: 'reference/architecture' },
+                        {
+                            label: 'Architecture',
+                            items: [
+                                { slug: 'reference/architecture', label: 'Overview' },
+                                { slug: 'reference/architecture/layers' },
+                                { slug: 'reference/architecture/lifecycle' },
+                                { slug: 'reference/architecture/scaling' },
+                                { slug: 'reference/architecture/schema' },
+                            ],
+                        },
                         {
                             label: 'Decisions',
                             items: [{ autogenerate: { directory: 'reference/adr' } }],

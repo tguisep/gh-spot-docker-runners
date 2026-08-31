@@ -5,11 +5,20 @@ Astro resolves relative links between content files at build time, which means a
 moved page turns its inbound links into 404s *silently* — the build stays green, because from
 its point of view nothing is wrong. This is the check that turns that into a red one.
 
+Three kinds, because each hides differently:
+
+* `/gh-spot-docker-runners/...` — resolved against the built tree.
+* `../somewhere/` — resolved against the page it sits on. A link written by hand to a
+  directory rather than a `.md` file is never rewritten by Astro, so nothing else sees it.
+* A bare `/somewhere/` — always wrong here. It works on a dev server and 404s under the base
+  path in production, which is the worst way for a link to be broken.
+
     python3 scripts/check-site-links.py site/dist
 """
 
 from __future__ import annotations
 
+import posixpath
 import re
 import sys
 from pathlib import Path
@@ -30,11 +39,25 @@ def main(root: Path) -> int:
     broken: set[tuple[str, str]] = set()
     checked = 0
     for html in root.rglob("*.html"):
-        for href in re.findall(rf'href="({re.escape(BASE)}[^"#?]*)"', html.read_text()):
+        page = "/" + str(html.parent.relative_to(root)).strip(".").strip("/")
+        page = (page + "/").replace("//", "/")
+        for href in re.findall(r'href="([^"]+)"', html.read_text()):
+            if href.startswith(("http://", "https://", "mailto:", "#", "//", "data:")):
+                continue
             checked += 1
-            path = href[len(BASE) :] or "/"
+            # Relative hrefs are resolved against the page they sit on. Absolute ones carry
+            # the base path, which is not part of the directory tree on disk.
+            if href.startswith(BASE):
+                path = href[len(BASE) :] or "/"
+            elif href.startswith("/"):
+                broken.add((str(html.relative_to(root)), href))
+                continue
+            else:
+                path = posixpath.normpath(posixpath.join(page, href))
+                if href.endswith("/") and not path.endswith("/"):
+                    path += "/"
+            path = path.split("#")[0].split("?")[0]
             if not path.endswith("/"):
-                # An asset rather than a page: it either exists on disk or it does not.
                 if (root / path.lstrip("/")).exists():
                     continue
                 path += "/"

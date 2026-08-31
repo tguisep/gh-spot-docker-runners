@@ -16,7 +16,7 @@ is yours afterwards:
 | `docker build` layers | **Still in the build cache** |
 
 That is inherent to sharing the daemon, and it is the trade recorded in
-[ADR 5](../../reference/adr/0005-docker-socket-over-dind.md).
+[ADR 5](../../../reference/adr/0005-docker-socket-over-dind/).
 
 ## Housekeeping bounds it
 

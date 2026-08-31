@@ -53,7 +53,7 @@ The choice is made from configuration: an `app_id` means App mode, otherwise tok
 
 Neither credential ever enters a runner container. Containers receive a just-in-time config
 blob and nothing else, in both modes. Nothing about
-[ADR 1](0001-just-in-time-registration.md) changes.
+[ADR 1](../0001-just-in-time-registration/) changes.
 
 ## Alternatives rejected
 

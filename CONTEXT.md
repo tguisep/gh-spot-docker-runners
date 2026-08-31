@@ -819,3 +819,35 @@ on the warm band", not "`max_spare_servers`" — which is what a reader needed e
 Left alone: the dated entries above, and `CHANGELOG.md`. One is a record of what was thought at
 the time and the other is generated from commit subjects. Editing either would be falsifying a
 log to match a later opinion.
+
+## 2026-08-31 — the link checker was checking the wrong links
+
+Splitting troubleshooting and architecture into sub-pages meant extending the link checker to
+follow relative hrefs, and that immediately reported **22 broken links** on a site that had
+been reporting zero.
+
+The zero was true and useless. The checker only followed `href="/gh-spot-docker-runners/..."`,
+which is what Starlight generates for its own sidebar and breadcrumbs — never what a page's
+prose contains. Every content link had been invisible to it since the site was created.
+
+What it found, once it could see them:
+
+- **Astro does not rewrite `.md` links in prose.** `[Layers](./layers.md)` is emitted verbatim
+  and 404s in production. Starlight rewrites its sidebar; it does not touch your paragraphs.
+  `site/README.md` had been confidently telling the next person to write links that way.
+- **A page is served one level deeper than its file.** `start/install.md` is at
+  `/start/install/`, so its sibling is `../configure/` and not `./configure/`. Only `index.md`
+  pages have a URL that matches their directory, which is why the index pages happened to work
+  and nothing else did.
+- A root-absolute `/guides/...` is always wrong under a base path — it works on the dev server
+  and 404s in production, which is the worst way for a link to break.
+
+All three shapes now fail the check, verified by planting one of each.
+
+### Notes for later
+
+- The lesson is not "the links were wrong". It is that a green check over the wrong subset
+  reads exactly like a green check, and the subset it covered was the one nobody writes by
+  hand. Worth asking of any checker: what does it *not* see?
+- Moving a page deeper breaks its own outbound relative links, and this is the second time it
+  has. The checker is the thing that catches it; nothing about the build will.

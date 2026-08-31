@@ -8,7 +8,7 @@ two ways to give it those, and this page walks through both.
 
 **Neither credential ever enters a runner container.** Containers receive a single-use
 just-in-time config blob and nothing else, in both modes. See
-[ADR 1](../reference/adr/0001-just-in-time-registration.md).
+[ADR 1](../../reference/adr/0001-just-in-time-registration/).
 
 ---
 
@@ -67,7 +67,7 @@ reach, which is why the scoping matters more than the level.
 factor: the daemon polls forever, so with a token it is a permanent tenant of a budget shared
 with your own `gh` usage and every other script you run.
 
-Recorded as [ADR 6](../reference/adr/0006-github-app-alongside-pat.md).
+Recorded as [ADR 6](../../reference/adr/0006-github-app-alongside-pat/).
 
 ---
 
@@ -142,7 +142,7 @@ Go to **Settings → Developer settings → GitHub Apps → New GitHub App**.
 
 Unchecking *Active* matters. This project polls the API and needs no inbound endpoint — which
 is what lets it run behind NAT — so leaving webhooks on would have GitHub deliver events to a
-URL that does not exist. See [ADR 3](../reference/adr/0003-polling-over-webhooks.md).
+URL that does not exist. See [ADR 3](../../reference/adr/0003-polling-over-webhooks/).
 
 Under **Repository permissions**:
 
@@ -292,7 +292,7 @@ and the reason is an unapproved request sitting in your inbox. If `doctor` still
 
 ## See also
 
-- [`operations.md`](../guides/operate/monitoring.md) — installing, running and tuning the daemon
+- [`operations.md`](../../guides/operate/monitoring/) — installing, running and tuning the daemon
 - [`SECURITY.md`](https://github.com/tguisep/gh-spot-docker-runners/blob/main/SECURITY.md) — threat model and hardening checklist
-- [ADR 1](../reference/adr/0001-just-in-time-registration.md) — why no credential enters a container
-- [ADR 6](../reference/adr/0006-github-app-alongside-pat.md) — why both modes are supported
+- [ADR 1](../../reference/adr/0001-just-in-time-registration/) — why no credential enters a container
+- [ADR 6](../../reference/adr/0006-github-app-alongside-pat/) — why both modes are supported

@@ -55,7 +55,7 @@ nothing about a missing toolkit.
 ## Stop the GPU taking CPU work
 
 Matching is a subset rule, so a pool labelled `gpu-a100` also serves jobs that never asked for
-a GPU — see [Labels and routing](./labels.md). `requires_labels` inverts it for the labels you
+a GPU — see [Labels and routing](../labels/). `requires_labels` inverts it for the labels you
 name: the job must have asked for them.
 
 ```toml
