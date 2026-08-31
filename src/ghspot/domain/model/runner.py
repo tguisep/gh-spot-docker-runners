@@ -176,6 +176,16 @@ class Runner:
         self.current_job_id = job_id
         self._record(RunnerTookJob(occurred_at=at, runner_id=self.id, job_id=job_id))
 
+    def remember_job(self, job_id: int) -> None:
+        """Record which job this runner ran, learned after the fact.
+
+        Not a transition and not an assignment: by the time anybody looks this up the runner
+        has usually finished and been retired, and discovering *which* job it ran says nothing
+        new about its state. `assign_job` cannot be used for it — that one moves the runner to
+        BUSY, which would be a lie about a runner that is already gone.
+        """
+        self.current_job_id = job_id
+
     def drain(self, at: datetime) -> None:
         """Ask the runner to stop once its current job finishes."""
         if self.state is RunnerState.DRAINING:

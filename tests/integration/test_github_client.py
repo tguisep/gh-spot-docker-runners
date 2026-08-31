@@ -429,3 +429,47 @@ async def test_the_byte_order_mark_github_sends_is_dropped(client: GitHubClient)
     respx.get(BLOB_URL).mock(return_value=httpx.Response(200, text="﻿2026-08-28 hello"))
 
     assert (await client.job_logs(REPO, 4242) or "").startswith("2026-08-28")
+
+
+@respx.mock
+async def test_the_job_a_runner_ran_is_found_by_name(client: GitHubClient) -> None:
+    """`runner_name` is on the job payload, and unique per registration — which is what makes
+    searching for it after the fact possible at all."""
+    respx.get(RUNS_URL).mock(
+        return_value=httpx.Response(200, json={"workflow_runs": [{"id": 10}, {"id": 11}]})
+    )
+    respx.get(f"{RUNS_URL}/10/jobs").mock(
+        return_value=httpx.Response(
+            200, json={"jobs": [{"id": 100, "runner_name": "somebody-else"}]}
+        )
+    )
+    respx.get(f"{RUNS_URL}/11/jobs").mock(
+        return_value=httpx.Response(
+            200, json={"jobs": [{"id": 101, "runner_name": "ghspot-default-abc"}]}
+        )
+    )
+
+    found = await client.find_job_for_runner(REPO, "ghspot-default-abc")
+
+    assert found == 101
+
+
+@respx.mock
+async def test_a_runner_that_ran_nothing_findable_answers_none(client: GitHubClient) -> None:
+    """Not an error: a runner can be retired before taking work, and the search window does
+    not reach back forever."""
+    respx.get(RUNS_URL).mock(return_value=httpx.Response(200, json={"workflow_runs": [{"id": 10}]}))
+    respx.get(f"{RUNS_URL}/10/jobs").mock(
+        return_value=httpx.Response(200, json={"jobs": [{"id": 100, "runner_name": "another"}]})
+    )
+
+    assert await client.find_job_for_runner(REPO, "ghspot-default-abc") is None
+
+
+@respx.mock
+async def test_an_unnamed_runner_costs_no_requests(client: GitHubClient) -> None:
+    """There is nothing to match on, so the walk would be pure spend."""
+    route = respx.get(RUNS_URL).mock(return_value=httpx.Response(200, json={"workflow_runs": []}))
+
+    assert await client.find_job_for_runner(REPO, "") is None
+    assert not route.called
