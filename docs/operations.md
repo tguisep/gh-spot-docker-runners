@@ -341,9 +341,29 @@ sudo systemctl enable --now ghspot
 journalctl -u ghspot -f
 ```
 
-The unit sets `TimeoutStopSec=300`. On stop the daemon finishes its current tick and leaves
-busy runners alone — killing one fails a build that was about to pass — so that timeout is
-how long systemd waits before insisting.
+#### stop, restart and reload are three different things
+
+**The host is the master: when the daemon stops, the fleet stops.** A runner outliving the
+process that made it keeps taking jobs with nothing enforcing `idle_timeout` or
+`max_job_duration`, nothing reaping it, and a registration on GitHub that corresponds to
+nothing watching.
+
+| Command | Daemon | Runners |
+|---|---|---|
+| `systemctl reload ghspot` | Re-reads the configuration in place | **Untouched** — builds keep running |
+| `systemctl restart ghspot` | Replaced | Retired, then rebuilt by the first tick |
+| `systemctl stop ghspot` | Stopped | **Retired** — registrations deleted, containers removed |
+
+Stop and restart cost the jobs in flight: they fail and have to be re-run. That is the
+deliberate trade — a CI run can be replayed, and a fleet nobody owns cannot be reasoned about.
+
+Use `reload` for a configuration change. It re-reads the file, applies the pools, labels and
+ceilings, and leaves every runner where it is — which is what makes changing a label a routine
+act rather than something scheduled around the builds. A file that no longer parses is
+**refused**, logged as `reload.rejected`, and the daemon carries on with what it already had.
+
+`TimeoutStopSec=300` covers finishing the current tick and stopping every container. They are
+stopped concurrently, so it is one container's grace period rather than the sum of them.
 
 If you installed elsewhere, point `ExecStart=` at your own path — `command -v ghspot` shows
 it. The unit runs as the `ghspot` user, so a binary under *your* home directory will not be
@@ -354,7 +374,7 @@ To upgrade later:
 ```bash
 cd gh-spot-docker-runners && git pull
 sudo /opt/ghspot/.venv/bin/pip install --quiet "$PWD"
-sudo systemctl restart ghspot
+sudo systemctl restart ghspot   # replaces the binary, and the fleet with it
 ```
 
 ## Day to day
@@ -1084,12 +1104,16 @@ sudo systemctl restart ghspot
 ```
 
 **A configuration change does nothing.**
-Settings are read **once, at startup** — pools, labels, limits, the forge client, all of it.
-Editing `config.toml` or a file under `pools.d/` changes nothing in a running daemon:
+Settings are read at startup and on reload — not on every tick. Editing `config.toml` or a
+file under `pools.d/` changes nothing until you say so:
 
 ```bash
-sudo systemctl restart ghspot
+sudo systemctl reload ghspot    # pools, labels, ceilings — runners untouched
 ```
+
+`reload` is what you want. `restart` also works and also retires every runner, which fails the
+builds in flight. If the reload was refused, `journalctl -u ghspot | grep reload.rejected`
+names the problem — the daemon keeps running the configuration it already had.
 
 `/health` reports `config_stale: true` once the file is newer than what the daemon read, and
 the dashboard shows a banner saying so, because the alternative was watching a label you just

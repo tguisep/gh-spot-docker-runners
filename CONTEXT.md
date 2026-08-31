@@ -743,3 +743,37 @@ said so, so adding a label looked identical to writing it wrong. `/health` now r
   worse than no check. Only a process holding settings from earlier can answer it.
 - Reporting staleness is not reloading. The daemon still needs a restart; it now says so
   instead of leaving the operator to guess.
+
+## 2026-08-31 — the host is the master
+
+`systemctl stop ghspot` left the fleet running. Containers kept taking jobs, registrations
+stayed on GitHub, and nothing enforced `idle_timeout` or `max_job_duration` because the thing
+that enforces them had exited. `ghspot pool status` showed them, correctly — they existed.
+
+The old behaviour was deliberate and is now reversed on purpose. Leaving a busy runner alone
+protects the build in flight; it also leaves a machine running somebody's CI with nobody
+watching it finish, and a registration that outlives the process that made it. A CI run can be
+replayed. A fleet nobody owns cannot be reasoned about.
+
+So stop retires everything, busy included, and restart does the same on its way through.
+
+**Reload is the exception**, and the reason it now exists. `SIGHUP` re-reads the configuration
+and swaps pools, labels and ceilings into the reconciler in place, touching no runner —
+changing a label should be routine, not something scheduled around the builds.
+
+### Notes for later
+
+- Retirement at shutdown is concurrent. Each container gets its `stop_timeout`; in sequence
+  that is `TimeoutStopSec` blown on any real fleet, and systemd would `SIGKILL` the daemon
+  midway through cleaning up.
+- A configuration that no longer parses is **refused**, not fatal. Refusing is recoverable;
+  exiting on a typo is a fleet down until somebody notices.
+- A stuck container is logged, not raised. The daemon is on its way out, and a non-zero exit
+  would have systemd report a failed unit for a container that would not stop.
+- The Ansible role's single "Restart ghspot" handler became two. Every configuration task now
+  notifies **Reload**; only installing the package restarts, because that is the one case where
+  the running process is the thing being replaced. Left as it was, every `ansible-playbook` run
+  that touched the config would have destroyed the fleet.
+- The reload test calls `_reload()` directly rather than running the loop: a loop that finishes
+  retires the fleet, which is precisely what reload exists to avoid and would have hidden what
+  the test asserts.
