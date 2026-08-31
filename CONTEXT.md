@@ -657,3 +657,22 @@ after it has said everything and before its output stops existing. Capped at 500
 `test_a_missing_image_says_how_to_build_it` still expected `build.sh` after the message became
 `ghspot image build`. It only runs where busybox is already pulled, so CI skipped it and the
 staleness sat there — found by pulling busybox to check the log behaviour above.
+
+## 2026-08-31 — the dangerous button says what it does
+
+The dashboard's second stop button was labelled "force", which named the API's query parameter
+rather than the effect. The effect is `backend.kill()` — SIGKILL, no grace period — and, on a
+busy runner, somebody's build failing. "kill" is what that is.
+
+The 409 message is now written by the dashboard from what it already knows, rather than shown
+from the API. The API's wording ends in "Pass force=true to stop it anyway", which is the right
+advice for a client and the wrong advice for somebody looking at a button. Appending the
+button's name to it produced the same sentence twice in two vocabularies.
+
+### Notes for later
+
+- The query parameter stays `force`. It is a published API and the two names do not have to
+  agree: one is a flag, the other is a label on a red button.
+- Still missing: `drain` — retire this runner but let its current job finish. The domain has
+  the method and the state; nothing reaches it from the API, the CLI or the dashboard, so for a
+  busy runner the only choices remain "refuse" and "kill the build".

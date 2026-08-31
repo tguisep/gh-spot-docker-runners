@@ -28,11 +28,18 @@ export function Runners() {
             await api.stop(runner.id, force);
             runners.refresh();
         } catch (caught) {
-            // 409 is the API refusing to fail somebody's build without being told twice. Say what
-            // it means and what the second click does, rather than showing the raw message alone.
+            // 409 is the API refusing to fail somebody's build without being told twice.
+            //
+            // Written here rather than shown from the API, whose message names the query
+            // parameter — `force=true` — which is the right advice for a client and the wrong
+            // advice for somebody looking at a button called "kill".
             const conflict = caught instanceof ApiError && caught.status === 409;
-            const message = caught instanceof Error ? caught.message : String(caught);
-            setProblem(conflict ? `${message} Use "force" to stop it anyway.` : message);
+            if (conflict) {
+                const job = runner.current_job_id ? `job ${runner.current_job_id}` : 'a job';
+                setProblem(`${runner.name} is running ${job}. Use "kill" to stop it anyway.`);
+            } else {
+                setProblem(caught instanceof Error ? caught.message : String(caught));
+            }
         } finally {
             setBusy(undefined);
         }
@@ -162,7 +169,7 @@ export function Runners() {
                                                 busy === runner.id || runner.state === 'retired'
                                             }
                                         >
-                                            force
+                                            kill
                                         </button>
                                     </td>
                                 </tr>
