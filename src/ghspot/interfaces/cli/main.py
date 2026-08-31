@@ -34,7 +34,7 @@ from ghspot.infrastructure.logging.setup import configure as configure_logging
 from ghspot.infrastructure.system import SystemClock
 from ghspot.interfaces.api import dashboard
 from ghspot.interfaces.cli import doctor as doctor_module
-from ghspot.interfaces.cli import operations, setup
+from ghspot.interfaces.cli import images, operations, setup
 from ghspot.interfaces.cli.render import (
     console,
     fail,
@@ -53,9 +53,11 @@ app = typer.Typer(
 pool_app = typer.Typer(help="Inspect runner pools.", no_args_is_help=True)
 runner_app = typer.Typer(help="Inspect and control individual runners.", no_args_is_help=True)
 config_app = typer.Typer(help="Work with the configuration file.", no_args_is_help=True)
+image_app = typer.Typer(help="Build the runner images.", no_args_is_help=True)
 app.add_typer(pool_app, name="pool")
 app.add_typer(runner_app, name="runner")
 app.add_typer(config_app, name="config")
+app.add_typer(image_app, name="image")
 
 ConfigOption = Annotated[
     Path | None,
@@ -180,6 +182,35 @@ def _setup_destination() -> Path:
     if os.geteuid() == 0 and Path("/etc/ghspot").is_dir():
         return Path("/etc/ghspot/config.toml")
     return Path("~/.config/ghspot/config.toml").expanduser()
+
+
+SourcesOption = Annotated[
+    str | None,
+    typer.Option("--sources", help="Build from this copy of images/runner.", show_default=False),
+]
+
+
+@image_app.command("build")
+def image_build(
+    variant: Annotated[
+        str | None,
+        typer.Argument(help="Which variant to build. All of them when omitted."),
+    ] = None,
+    sources: SourcesOption = None,
+) -> None:
+    """Build a runner image.
+
+    The sources come with the package, so this works on an installed host without a clone.
+    The build itself is `images/runner/build.sh`, unchanged — it detects the host's docker
+    group id and tags the image with the same name a workflow's label uses.
+    """
+    raise typer.Exit(code=images.build(variant, sources=sources))
+
+
+@image_app.command("list")
+def image_list(sources: SourcesOption = None) -> None:
+    """List the variants that can be built, and the base image each starts from."""
+    raise typer.Exit(code=images.variants(sources=sources))
 
 
 @app.command()

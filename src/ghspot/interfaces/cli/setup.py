@@ -29,6 +29,7 @@ from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.config.settings import ConfigError, host_cores
 from ghspot.infrastructure.config.settings import load as load_settings
 from ghspot.interfaces.cli.render import console, fail, hint
+from ghspot.paths import build_command
 
 IMAGES = ("ubuntu-24.04", "ubuntu-22.04", "rhel-9", "rhel-10")
 
@@ -247,14 +248,20 @@ def _verify(config_path: Path, answers: Answers) -> int:
         hint("the file is on disk; fix it and run: ghspot config validate")
         return 1
 
+    # A configuration under /etc is root:ghspot 0640 and the checks want the Docker socket,
+    # so the next command an operator types — in a shell where the wizard's sudo has already
+    # expired — needs its own. Step 3 always knew this; step 2 did not.
+    system = config_path.parent == Path("/etc/ghspot")
+    doctor = f"{'sudo ' if system else ''}ghspot doctor -c {config_path}"
+
     console.print()
     console.print("[bold]Next[/bold]")
-    console.print(f"  1. build the runner image   images/runner/build.sh {answers.image}")
-    console.print(f"  2. check everything         ghspot doctor -c {config_path}")
+    console.print(f"  1. build the runner image   {build_command(answers.image)}")
+    console.print(f"  2. check everything         {doctor}")
     console.print(
-        "  3. start it                 ghspot daemon"
-        if config_path.parent != Path("/etc/ghspot")
-        else "  3. start it                 sudo systemctl enable --now ghspot"
+        "  3. start it                 sudo systemctl enable --now ghspot"
+        if system
+        else "  3. start it                 ghspot daemon"
     )
     if answers.api_bind:
         console.print(f"  4. the dashboard            http://{answers.api_bind}/ui")

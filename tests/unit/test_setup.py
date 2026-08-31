@@ -12,7 +12,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.config.settings import load
+from ghspot.interfaces.cli import setup as wizard
 from ghspot.interfaces.cli.main import app
 
 runner = CliRunner()
@@ -130,3 +132,43 @@ def test_nothing_is_written_when_the_answers_run_out(tmp_path: Path) -> None:
 
     assert result.exit_code == 130
     assert not config.exists()
+
+
+def test_the_build_hint_is_a_command_and_not_a_path(tmp_path: Path) -> None:
+    """The first instruction used to be a bare `images/runner/build.sh`, which resolves only
+    for somebody standing in a clone — and never on a host installed from the .deb. It is now
+    a ghspot command, which is true in both places because the daemon finds its own sources."""
+    config = tmp_path / "config.toml"
+
+    result = runner.invoke(app, ["setup", "-c", str(config)], input=TOKEN_ANSWERS)
+
+    assert result.exit_code == 0
+    assert "ghspot image build ubuntu-24.04" in result.output
+    assert "images/runner/build.sh" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("directory", "expected"),
+    [
+        (Path("/etc/ghspot"), "sudo ghspot doctor"),
+        (Path("/home/someone/.config/ghspot"), "ghspot doctor"),
+    ],
+)
+def test_only_a_system_configuration_is_checked_with_sudo(
+    directory: Path, expected: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """`/etc/ghspot/config.toml` is root:ghspot 0640 and the checks want the Docker socket,
+    so step 2 needs the privilege step 3 always asked for — the wizard's own sudo is gone by
+    the time the operator types it. A configuration in $HOME must not ask for it."""
+    monkeypatch.setattr(wizard, "load_settings", lambda _: None)
+    answers = wizard.Answers(
+        repository=RepositoryTarget.parse("tguisep/my-project"),
+        pool="builders",
+        image="ubuntu-24.04",
+        uses_app=False,
+    )
+
+    assert wizard._verify(directory / "config.toml", answers) == 0
+
+    line = next(row for row in capsys.readouterr().out.splitlines() if "ghspot doctor" in row)
+    assert line.strip().startswith(f"2. check everything         {expected}")

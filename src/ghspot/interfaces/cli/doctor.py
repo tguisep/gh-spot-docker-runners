@@ -25,6 +25,7 @@ from ghspot.infrastructure.config.settings import ConfigError, Settings
 from ghspot.infrastructure.docker.backend import DOCKER_SOCKET, DockerRunnerBackend
 from ghspot.infrastructure.github.client import GitHubClient
 from ghspot.interfaces.cli.render import console
+from ghspot.paths import build_command
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,11 +83,10 @@ async def _docker(settings: Settings) -> list[Check]:
                 name=f"image [{pool.spec.name}]",
                 ok=present,
                 detail=image if present else f"{image} is not present",
-                remedy=(
-                    "docker build -t "
-                    f"{image} --build-arg "
-                    'DOCKER_GID="$(getent group docker | cut -d: -f3)" images/runner/'
-                ),
+                # Not a hand-written `docker build`: that one had to restate the
+                # --build-arg for the host's docker group, and a remedy that drifts from
+                # the real build is worse than no remedy.
+                remedy=build_command(image.rpartition(":")[2]),
             )
         )
         if pool.template.mount_docker_socket:
