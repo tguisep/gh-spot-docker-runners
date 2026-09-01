@@ -27,6 +27,32 @@ Adding a page means adding the file **and** a `slug` entry in `astro.config.mjs`
 does not autogenerate these groups deliberately — the order of a "start here" section is an
 editorial decision, and alphabetical is the wrong answer.
 
+## Versions
+
+The docs at the root track `main` and are labelled **Unreleased**. Each release is snapshotted
+into its own tree — `0.6/`, and so on — which is an archive: written once, then left alone.
+
+Cutting a new one, after the release is tagged:
+
+```bash
+# 1. add it to the versions list in astro.config.mjs
+#      versions: [{ slug: '0.7' }, { slug: '0.6' }]
+# 2. build once; the plugin copies the current docs into site/src/content/docs/0.7/
+npm run build
+# 3. commit the generated tree
+```
+
+The snapshot is taken from the working tree, so **take it at the release commit** — otherwise
+the archive documents features the release does not have. If you have already moved on, check
+out the tag's `site/src/content/docs/` first.
+
+The plugin rewrites what it copies: it adds the routing `slug:` to each page's frontmatter,
+and its markdown serialiser normalises bullet markers, thematic breaks and escapes. Those
+differences are cosmetic — the rendered pages are the same.
+
+Do not edit an archived tree to fix a typo unless the fix matters to somebody running that
+release. Every edit there is a decision to maintain two copies.
+
 ## House style
 
 - Paragraphs of a few lines. Anything longer is usually a list or a table that has not been
