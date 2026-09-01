@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.2](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.6.1...v0.6.2) (2026-09-01)
+
+
+### Documentation
+
+* address the README to whoever runs this ([15e0652](https://github.com/tguisep/gh-spot-docker-runners/commit/15e0652014db6e1d93b7ae9e904ecd9cb7dd254a))
+* address the README to whoever runs this, and scope the credential ([a783ec6](https://github.com/tguisep/gh-spot-docker-runners/commit/a783ec669c8264c380f8037bc1c38abbcad2b13c))
+* say the credential is scoped to the repositories it serves ([ea802f7](https://github.com/tguisep/gh-spot-docker-runners/commit/ea802f79acdea29484f2d0e59cfb38a939a681a6))
+* **site:** make the landing page route rather than explain ([2c92878](https://github.com/tguisep/gh-spot-docker-runners/commit/2c92878098011310e7c773a4e23c1841b72d45a4))
+* **site:** make the landing page route rather than explain ([8c49523](https://github.com/tguisep/gh-spot-docker-runners/commit/8c495233b3ea657c6ce429a10ca6fd9d0c351497))
+
+
+### Build and CI
+
+* add workflow_dispatch, with a runner choice where it means something ([f2f7756](https://github.com/tguisep/gh-spot-docker-runners/commit/f2f7756a9cbb05414d2265c985752061984987c5))
+* add workflow_dispatch, with a runner choice where it means something ([72236d4](https://github.com/tguisep/gh-spot-docker-runners/commit/72236d4de5d52c24115f9dc5a86399d5731249d2))
+* ask for two labels instead of four ([a444c10](https://github.com/tguisep/gh-spot-docker-runners/commit/a444c1004e4b698313d0b0d8c8dc09b2cad78c82))
+* ask for two labels instead of four ([516df9b](https://github.com/tguisep/gh-spot-docker-runners/commit/516df9b04bcb79d3947fc1c274d486d1ebfeadf4))
+* build on GitHub-hosted runners, with the fleet opt-in ([adf31a4](https://github.com/tguisep/gh-spot-docker-runners/commit/adf31a4677f41681e3fd387b68afb478662ce370))
+* build on GitHub-hosted runners, with the fleet opt-in ([2265dfb](https://github.com/tguisep/gh-spot-docker-runners/commit/2265dfb491e61d9470bc636c8774b5d52201070a))
+
 ## [0.6.1](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.6.0...v0.6.1) (2026-09-01)
 
 
