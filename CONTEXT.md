@@ -1160,3 +1160,35 @@ decision about your own branches, never about a stranger's.
   the manual escape hatch. **It does not exist in any workflow** and, from the git history,
   never did. The table is now what the code actually does — and the escape hatch it promised is
   real this time, as the variable.
+
+## 2026-09-01 — the landing page stops being a document
+
+It had become a dumping ground: a system diagram, six feature cards, a requirements list, the
+full command table, the layer table, and a security callout. Everything that came out of the
+README went onto it, and none of it was arranged for somebody arriving.
+
+A landing page's job is to route. It is now three groups of link cards — start here, once it is
+running, when something is wrong — over one paragraph saying what you deploy.
+
+Everything else moved to where it is looked up rather than stumbled upon:
+
+| Was on the landing page | Now |
+|---|---|
+| The host/GitHub diagram | `reference/architecture/` |
+| The command table | `reference/commands/`, a page that did not exist |
+| Requirements | `start/requirements/`, which was three thin bullets |
+| The layer table | Dropped — `reference/architecture/layers/` already has it, better |
+
+### Notes for later
+
+- `start/requirements.md` said "a fine-grained GitHub personal access token" and stopped. It
+  now carries the scope, the two permissions and why each, and the note that neither credential
+  reaches a container. The landing page had the better version of a page that already existed,
+  which is what happens when content lands where it fits rather than where it belongs.
+- The commands table had no home at all. It existed only on the landing page, so anybody
+  looking for "what can this thing do" had to find it there or not at all.
+- **The depth trap caught me again**, on both new pages: a page is served one level deeper than
+  its file, so `./authentication/` from `start/requirements.md` resolves to
+  `/start/requirements/authentication/`. Four broken links, found by the checker, none visible
+  in the build. It is written down in `site/README.md` and I still wrote them from the file's
+  position rather than the page's.

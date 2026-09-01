@@ -3,6 +3,20 @@ title: "Architecture"
 description: "What shape this is, and the two decisions the rest follows from."
 ---
 
+```mermaid
+flowchart LR
+    subgraph host["Linux host"]
+        daemon["ghspot daemon<br/><i>reconciliation loop</i>"]
+        subgraph runners["ephemeral containers"]
+            r1["runner"]
+            r2["runner"]
+        end
+        daemon -->|"create / stop / remove"| runners
+    end
+    daemon <-->|"poll queued jobs<br/>mint JIT config<br/>reap dead runners"| gh["GitHub API"]
+    runners -->|"long poll, one job, exit"| gh
+```
+
 ## The problem this shape solves
 
 Running self-hosted runners means keeping two systems agreeing with each other — GitHub's
