@@ -1085,3 +1085,28 @@ API call is unavoidable.
 - `--ignore-missing` because `SHA256SUMS` lists both architectures and a host has one.
 - The wget variant was written second and tested separately. Writing an untested variant beside
   a tested one is how half a snippet ships broken.
+
+## 2026-09-01 — the README addresses an operator
+
+It opened with "managed by a single Python daemon", which answers a question nobody
+installing this is asking. What somebody deploying it wants to know is what lands on their
+machine and what it will and will not do there.
+
+So: a `.deb`, a systemd unit, one `config.toml` — then the five properties that decide whether
+this fits an estate. No control plane and no account. No inbound ports, so it works behind NAT.
+No credential in a container. Bounded by the host, not just by the pool. Bundles its own
+interpreter, so a distribution upgrade cannot break it.
+
+Python is still there in the badge and the source. It is not the headline, because the runtime
+is the least interesting thing about a package that carries its own.
+
+### Notes for later
+
+- The `runs-on` example still asked for four labels. Every other example had moved to
+  `[self-hosted, ubuntu-24.04]`; the README had not, because that change went through
+  `select-runner.yml` and the pages describing it, and the README was not on the list.
+- The link table points at troubleshooting and host capacity now, rather than architecture
+  first. An operator reaches for the README when something is wrong, not when they want the
+  layering explained.
+- Every link checked for a 200 before committing. The site is versioned now, so a path that
+  moved into `/0.6/` would still resolve at the root only by accident.
