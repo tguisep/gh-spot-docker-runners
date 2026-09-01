@@ -14,7 +14,7 @@ Then push a commit with a workflow targeting your labels:
 ```yaml
 jobs:
   build:
-    runs-on: [self-hosted, linux, x64, home-vm]
+    runs-on: [self-hosted, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
       - run: echo "running on $(hostname)"

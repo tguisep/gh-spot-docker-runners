@@ -13,6 +13,10 @@ name: Select runner
 #
 # Called with `uses: ./.github/workflows/select-runner.yml` rather than copied into each
 # workflow, because a rule repeated four times is a rule that will be wrong in one of them.
+#
+# Two labels, not four. `linux` and `x64` are already implied by `ubuntu-24.04`, and every
+# extra label is another thing a pool has to carry before it can serve this repository —
+# which is how a job ends up queued for a runner nobody built.
 
 on:
   workflow_call:
@@ -46,7 +50,7 @@ jobs:
             echo 'labels=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
             echo 'where=GitHub-hosted (pull request from a fork)' >> "$GITHUB_OUTPUT"
           else
-            echo 'labels=["self-hosted","linux","x64","home-vm"]' >> "$GITHUB_OUTPUT"
+            echo 'labels=["self-hosted","ubuntu-24.04"]' >> "$GITHUB_OUTPUT"
             echo 'where=self-hosted' >> "$GITHUB_OUTPUT"
           fi
 
