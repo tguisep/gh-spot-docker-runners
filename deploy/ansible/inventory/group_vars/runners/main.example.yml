@@ -4,7 +4,7 @@
 ghspot_pools:
   - name: default
     repository: tguisep/my-project
-    labels: [self-hosted, linux, x64, ubuntu-24.04, home-vm]
+    labels: [self-hosted, linux, x64, ubuntu-24.04]
     min_idle: 1
     max_runners: 4
     container:

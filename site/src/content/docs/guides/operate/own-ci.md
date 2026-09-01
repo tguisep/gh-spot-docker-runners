@@ -8,17 +8,19 @@ honest test the project has: if reconciliation breaks, CI stops.
 
 ## Labels
 
-The workflow asks for `[self-hosted, linux, x64, home-vm]`. A pool serves a job only when it
-carries **every** label the job asks for, so the pool's `labels` must be a superset — which
-leaves room for the OS label from the section above:
+`select-runner.yml` asks for `[self-hosted, ubuntu-24.04]`. A pool serves a job only when it
+carries **every** label the job asks for, so any pool whose labels are a superset can take this
+repository's work — including the one the wizard writes:
 
 ```toml
 [[pool]]
-labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
+labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
 ```
 
-Change the workflow and the pool together, or jobs queue forever with no runner to take
-them.
+Two labels rather than four, because `linux` and `x64` are implied by `ubuntu-24.04` and every
+extra one is another thing a pool has to carry before it can serve. Ask for a label nobody
+built and the job queues until GitHub gives up on it, 24 hours later, with nothing in the log
+to say why.
 
 ## Fork pull requests never reach your machine
 
