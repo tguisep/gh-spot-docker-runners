@@ -11,6 +11,7 @@ finished before deciding what to do about it.
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -112,14 +113,18 @@ class DockerRunnerBackend:
                 cores = _positive(info.get("NCPU"))
                 total = _positive(info.get("MemTotal"))
                 containers = _positive(info.get("ContainersRunning"), allow_zero=True)
+                root = info.get("DockerRootDir")
 
             used = _memory_used(total)
+            disk_used, disk_total = _disk(str(root) if isinstance(root, str) else None)
             return HostLoad(
                 cpu_percent=_cpu_percent(cores),
                 memory_used_bytes=used,
                 memory_total_bytes=total,
                 containers_running=containers,
                 cores=cores,
+                disk_used_bytes=disk_used,
+                disk_total_bytes=disk_total,
             )
 
         return await asyncio.to_thread(run)
@@ -401,6 +406,28 @@ def _cpu_percent(cores: int | None) -> float | None:
     if not cores or cores <= 0:
         return None
     return round(100.0 * load / cores, 1)
+
+
+def _disk(root: str | None) -> tuple[int | None, int | None]:
+    """How full the filesystem holding Docker's data is.
+
+    `DockerRootDir` rather than `/`: on a host that gave Docker its own volume — which is the
+    arrangement anybody who has filled a root partition ends up with — those are different
+    filesystems and only one of them matters here.
+
+    Counts what is used against what is *usable*, not the raw total: the reserved blocks root
+    keeps back are not space a container can have, and counting them makes a disk look emptier
+    than it is at exactly the moment that matters.
+    """
+    path = root or "/var/lib/docker"
+    try:
+        stats = os.statvfs(path)
+    except OSError:
+        return None, None
+
+    usable = (stats.f_bavail + (stats.f_blocks - stats.f_bfree)) * stats.f_frsize
+    used = (stats.f_blocks - stats.f_bfree) * stats.f_frsize
+    return used, usable or None
 
 
 def _memory_used(total: int | None) -> int | None:

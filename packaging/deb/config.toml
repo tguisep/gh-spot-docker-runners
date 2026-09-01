@@ -53,6 +53,7 @@ state_db = "/var/lib/ghspot/state.db"
 # max_memory = "24g"
 # cpu_high_water = 85         # one-minute load average as a percentage of cores
 # memory_high_water = 90      # page cache excluded, since the kernel gives it back
+# disk_high_water = 85        # percent full of Docker's data directory
 
 [[pool]]
 name = "default"

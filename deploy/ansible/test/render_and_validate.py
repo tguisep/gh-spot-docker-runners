@@ -68,6 +68,17 @@ def settings_for(variables: Path) -> Settings:
         return load(rendered)
 
 
+def test_the_capacity_block_carries_every_ceiling() -> None:
+    """The template renders `ghspot_capacity` generically, so a key the daemon does not know
+    would pass straight through and be ignored. This is what turns that into a red build."""
+    capacity = settings_for(VARS / "full.yml").capacity
+
+    assert capacity.max_containers == 8
+    assert capacity.cpu_high_water == 85
+    assert capacity.memory_high_water == 90
+    assert capacity.disk_high_water == 85
+
+
 def test_the_host_is_named_when_set_and_left_to_the_system_when_not() -> None:
     """Empty must mean "use the system hostname", not "call this machine nothing" — every
     report is about one box, and an unlabelled one cannot be put beside another."""
@@ -298,6 +309,7 @@ def main() -> int:
         test_pools_can_be_rendered_one_file_each,
         test_the_dashboard_location_is_only_written_when_set,
         test_the_host_is_named_when_set_and_left_to_the_system_when_not,
+        test_the_capacity_block_carries_every_ceiling,
     ):
         test()
         print(f"  {'FAIL' if failures else 'ok  '}  {test.__name__}")

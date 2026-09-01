@@ -83,6 +83,8 @@ ghspot_pools_directory: /etc/ghspot/pools.d
 #   max_containers / max_cpus / max_memory   arithmetic over what is committed
 #   cpu_high_water / memory_high_water       percentages of what is measured; at or above
 #                                            them nothing new starts until the host recovers
+#   disk_high_water                          percent full of Docker's data directory — what
+#                                            jobs leave behind rather than what they reserve
 ghspot_capacity: {}
 
 # The pools this host serves. At least one is required.

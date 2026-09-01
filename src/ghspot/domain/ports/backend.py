@@ -57,6 +57,19 @@ class HostLoad:
     containers_running: int | None = None
     cores: int | None = None
 
+    disk_used_bytes: int | None = None
+    disk_total_bytes: int | None = None
+    """The filesystem holding Docker's data, which is the one that fills. Images, layers and
+    volumes outlive the jobs that made them, and a full disk stops the Engine dead — every
+    launch fails, and the failure names neither the disk nor the cause."""
+
+    @property
+    def disk_percent(self) -> float | None:
+        """How full Docker's filesystem is, or ``None`` when it could not be read."""
+        if not self.disk_total_bytes or self.disk_used_bytes is None:
+            return None
+        return self.disk_used_bytes / self.disk_total_bytes * 100
+
     @property
     def memory_percent(self) -> float | None:
         if self.memory_used_bytes is None or not self.memory_total_bytes:

@@ -14,6 +14,7 @@ max_memory = "24g"
 
 cpu_high_water = 85         # at or above, nothing new starts
 memory_high_water = 90
+disk_high_water = 85        # percent full of Docker's data directory
 ```
 
 Two mechanisms, working on different things:
@@ -44,6 +45,19 @@ pool reserved, or a machine already struggling before the daemon woke up.
 |---|---|---|
 | CPU | One-minute load average as a percentage of cores | `100` = as much work queued as cores. Counts uninterruptible sleep, so heavy disk IO shows here — for deciding whether to pile more on, that is a feature |
 | Memory | `MemAvailable` | The kernel's own estimate of what a new process could get. Not `MemTotal - MemFree`, which counts page cache as used and makes any working machine look 95% full |
+| Disk | `statvfs` on Docker's `DockerRootDir` | Not `/`. A host that gave Docker its own volume has two filesystems and only one of them fills. Counts against what is *usable*, since the blocks reserved for root are not space a container can have |
+
+### Why the disk needs its own mark
+
+The other two watch what jobs *use*. The disk is where what they **leave behind** accumulates:
+build caches, pulled images, anonymous volumes — all of it outliving the job that made it.
+
+[Housekeeping](../housekeeping/) reclaims that on a schedule. A schedule does not help a host
+that fills between sweeps, and a full disk stops the Engine dead: every launch fails with an
+error naming neither the disk nor the cause. This is the mark that defers launches instead.
+
+`ghspot doctor` reports it too, and says so above 90% even with no mark configured — because
+at that point nothing else will.
 
 A reading the daemon could not take never blocks anything: an unmeasurable host falls back to
 the ceilings. A mechanism that stops the fleet when its own probe breaks is worse than none.

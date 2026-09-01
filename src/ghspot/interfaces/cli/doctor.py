@@ -23,6 +23,8 @@ from ghspot.domain.errors import (
     GhSpotError,
 )
 from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.policy.admission import CapacityLimits
+from ghspot.domain.ports.backend import RunnerBackend
 from ghspot.infrastructure.config.settings import ConfigError, Settings
 from ghspot.infrastructure.docker.backend import DOCKER_SOCKET, DockerRunnerBackend
 from ghspot.infrastructure.github.client import GitHubClient
@@ -132,6 +134,7 @@ async def _docker(settings: Settings) -> list[Check]:
         return [Check(name="docker", ok=False, detail=str(error), remedy=_docker_remedy(error))]
 
     checks.append(Check(name="docker", ok=True, detail="daemon reachable"))
+    checks.extend(await _disk(backend, settings.capacity))
 
     for pool in settings.pools:
         image = pool.template.image
@@ -153,6 +156,45 @@ async def _docker(settings: Settings) -> list[Check]:
             checks.append(_gpu_check(pool.spec.name, pool.template.gpus))
 
     return checks
+
+
+async def _disk(backend: RunnerBackend, limits: CapacityLimits) -> list[Check]:
+    """How full the filesystem Docker keeps its data on is.
+
+    The failure that actually takes a runner host down is not a bad token or a missing image —
+    it is a disk filled by build caches and pulled images, where every launch then fails with
+    an error naming neither the disk nor the cause. Housekeeping reclaims on a schedule; this
+    is the part that says so before the schedule comes round.
+    """
+    try:
+        load = await backend.host_load()
+    except GhSpotError:
+        return []  # docker was reachable a moment ago; this is not the check to fail on it
+
+    full = load.disk_percent
+    if full is None:
+        return []
+
+    water = limits.disk_high_water
+    detail = f"{full:.0f}% full"
+    if water is not None:
+        detail += f" (high water {water:.0f}%)"
+
+    # Above the mark the daemon is already deferring launches; above 90 with no mark set, it
+    # is not, and nothing else will mention it.
+    over = (water is not None and full >= water) or (water is None and full >= 90)
+    return [
+        Check(
+            name="docker filesystem",
+            ok=not over,
+            detail=detail,
+            remedy=(
+                "reclaim space: ghspot daemon runs housekeeping on a schedule, or "
+                "docker system prune. Set [capacity].disk_high_water to defer launches "
+                "before it fills"
+            ),
+        )
+    ]
 
 
 def _gpu_check(pool: str, gpus: object) -> Check:

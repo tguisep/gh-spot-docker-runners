@@ -580,6 +580,7 @@ def _capacity(table: dict[str, Any]) -> CapacityLimits:
             max_memory_bytes=limit,
             cpu_high_water=water("cpu_high_water"),
             memory_high_water=water("memory_high_water"),
+            disk_high_water=water("disk_high_water"),
         )
     except (TypeError, ValueError) as error:
         raise ConfigError(f"capacity: {error}") from error
