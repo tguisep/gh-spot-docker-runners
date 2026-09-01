@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.6.2...v0.7.0) (2026-09-01)
+
+
+### Features
+
+* **core:** defer launches when Docker's filesystem is filling ([adfdd9a](https://github.com/tguisep/gh-spot-docker-runners/commit/adfdd9ac832401bc80020de1ea3a2193d3e66514))
+* **core:** defer launches when Docker's filesystem is filling ([1a0f2f4](https://github.com/tguisep/gh-spot-docker-runners/commit/1a0f2f406ed4109e112b7b55b7d7d7af792e3325))
+
+
+### Fixes
+
+* **core:** scope a runner's identity to the host that made it ([cc917f1](https://github.com/tguisep/gh-spot-docker-runners/commit/cc917f1043f91fe24f27b5e4c2a4dfd035db2b01))
+* **core:** scope a runner's identity to the host that made it ([c079bc7](https://github.com/tguisep/gh-spot-docker-runners/commit/c079bc73ab6682b83dd3a56ee4421725524da9c7))
+
 ## [0.6.2](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.6.1...v0.6.2) (2026-09-01)
 
 
