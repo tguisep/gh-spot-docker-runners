@@ -1217,3 +1217,32 @@ Everything else moved to where it is looked up rather than stumbled upon:
   `/start/requirements/authentication/`. Four broken links, found by the checker, none visible
   in the build. It is written down in `site/README.md` and I still wrote them from the file's
   position rather than the page's.
+
+## 2026-09-01 — the disk was the one thing nothing watched
+
+`doctor` checked the credential, Docker, the image, the socket, GPUs and the token. Capacity
+bounded containers, CPU and memory. Nothing anywhere looked at free space — and a disk filled
+by build caches and pulled images is the failure that actually takes a runner host down. Every
+launch then fails with an error naming neither the disk nor the cause.
+
+Two halves, following the shape that was already there:
+
+- `[capacity].disk_high_water`, alongside the CPU and memory marks. At or above it, launches
+  are deferred.
+- A `doctor` check, which reports above 90% even with no mark configured — because at that
+  point nothing else will.
+
+### Notes for later
+
+- Measured on Docker's `DockerRootDir`, not `/`. A host that gave Docker its own volume has two
+  filesystems and only one of them fills. Verified against `df`: 66.1% against its 67%.
+- Counted against what is *usable*, not the raw total. The blocks reserved for root are not
+  space a container can have, and counting them makes a disk look emptier than it is at exactly
+  the moment that matters.
+- Unreadable never blocks, like the other two probes. A careful mechanism that stops the fleet
+  when its own probe breaks is worse than no mechanism.
+- The other marks watch what jobs *use*; this one watches what they *leave*. Housekeeping
+  reclaims that on a schedule, which does not help a host filling between sweeps.
+- The Ansible template renders `ghspot_capacity` generically, so the new key needed no template
+  change — and would equally have passed a *misspelled* key straight through to be ignored.
+  The render check now asserts every ceiling arrives.

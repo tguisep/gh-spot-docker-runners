@@ -237,3 +237,45 @@ def test_backpressure_gates_before_the_ceilings_allocate() -> None:
     )
 
     assert granted(result) == {}
+
+
+# ---------------------------------------------------------------- the disk
+
+
+def test_a_full_disk_defers_every_launch() -> None:
+    """The failure that actually takes a runner host down is not a bad token or a missing
+    image — it is a disk filled by build caches and pulled images, where every launch then
+    fails with an error naming neither the disk nor the cause."""
+    load = HostLoad(disk_used_bytes=95, disk_total_bytes=100)
+
+    result = admit([want("a", 3)], load, CapacityLimits(disk_high_water=90))
+
+    assert granted(result) == {}
+    assert result.deferred == 3
+    assert "docker filesystem 95% full" in result.reasons[0]
+
+
+def test_a_disk_below_the_mark_launches_normally() -> None:
+    load = HostLoad(disk_used_bytes=50, disk_total_bytes=100)
+
+    result = admit([want("a", 3)], load, CapacityLimits(disk_high_water=90))
+
+    assert granted(result) == {"a": 3}
+
+
+def test_an_unreadable_disk_never_blocks() -> None:
+    """A careful mechanism that stops the fleet when its own probe breaks is worse than no
+    mechanism. Unknown degrades to the ceilings, which need no measurement."""
+    result = admit([want("a", 3)], HostLoad(), CapacityLimits(disk_high_water=90))
+
+    assert granted(result) == {"a": 3}
+
+
+def test_no_mark_means_the_disk_is_not_watched() -> None:
+    """Unset is unlimited, the same as every other ceiling — a host configured before this
+    existed behaves exactly as it did."""
+    load = HostLoad(disk_used_bytes=99, disk_total_bytes=100)
+
+    result = admit([want("a", 3)], load, CapacityLimits())
+
+    assert granted(result) == {"a": 3}

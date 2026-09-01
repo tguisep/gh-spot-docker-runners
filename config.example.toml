@@ -123,6 +123,12 @@ state_db = "~/.local/state/ghspot/state.db"
 # cpu_high_water = 85
 # memory_high_water = 90
 
+# The one that catches what jobs *leave behind* — build caches, pulled images, volumes.
+# Housekeeping reclaims those on a schedule; this defers launches when the schedule has
+# not come round yet. Measured on Docker's own data directory, which on a host that gave
+# Docker its own volume is not the root filesystem.
+# disk_high_water = 85
+
 [[pool]]
 name = "default"
 repository = "tguisep/my-project"
