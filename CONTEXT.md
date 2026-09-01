@@ -1058,3 +1058,30 @@ more than the reader's extra click.
   build and a glance at the picker would not have.
 - Archived trees are archives. Editing one to fix a typo is a decision to maintain two copies,
   and is only worth it when the fix matters to somebody running that release.
+
+## 2026-09-01 — fetching the right package without reading the release page
+
+The install instructions said "take the package for your architecture from the latest release",
+which is a browser task in the middle of a shell session. Both the README and the install page
+now carry a command that resolves it.
+
+```bash
+ARCH="$(dpkg --print-architecture)"
+curl -fsSL .../releases/latest \
+  | grep -o '"browser_download_url": *"[^"]*"' | cut -d'"' -f4 \
+  | grep -E "_${ARCH}\.deb$|/SHA256SUMS$" | xargs -n1 curl -fsSLO
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+The filename carries the version, so `releases/latest/download/<name>` cannot be used and the
+API call is unavoidable.
+
+### Notes for later
+
+- The first version scoped the grep to `https://[^"]*` and pulled **every URL in the release
+  notes** — a changelog full of commit links, fed to `xargs curl`. It failed loudly with forty
+  lines of `curl: (3) bad range in URL`. Scoping to `browser_download_url` is the fix, and it is
+  the reason the snippet looks more careful than it needs to.
+- `--ignore-missing` because `SHA256SUMS` lists both architectures and a host has one.
+- The wget variant was written second and tested separately. Writing an untested variant beside
+  a tested one is how half a snippet ships broken.
