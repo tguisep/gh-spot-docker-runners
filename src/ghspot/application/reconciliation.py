@@ -21,7 +21,7 @@ from ghspot.application.dto import TickReport
 from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.pool import PoolSpec, RunnerPool
-from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
+from ghspot.domain.model.runner import Runner, RunnerId, RunnerState, owner_prefix
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.policy.admission import (
     Admission,
@@ -78,8 +78,10 @@ class ReconciliationService:
         provision: ProvisionRunner,
         retire: RetireRunner,
         capacity: CapacityLimits | None = None,
+        host: str = "",
     ) -> None:
         self._pools = list(pools)
+        self._host = host
         self._forge = forge
         self._backend = backend
         self._runners = runners
@@ -339,16 +341,26 @@ class ReconciliationService:
         forge_runners: Mapping[int, ForgeRunner],
         records: Mapping[RunnerId, Runner],
     ) -> int:
-        """Delete runners GitHub lists that this daemon minted but no longer tracks.
+        """Delete runners GitHub lists that **this daemon** minted but no longer tracks.
 
-        Scoped to the name prefix and to offline runners, so a runner someone registered by
-        hand — or one that is mid-job — is never touched.
+        Scoped to this host's own prefix, and to offline runners, so a runner someone
+        registered by hand — or one that is mid-job — is never touched.
+
+        The host in the prefix is what makes this safe on a repository served by more than one
+        machine. Matching only `ghspot-` meant every daemon saw every other daemon's runners as
+        strays: A reaps B's registration, B re-registers, and the two fight for as long as both
+        are up.
+
+        A daemon with no host configured falls back to `ghspot-`, which is the old behaviour
+        and the old hazard — but `[daemon].host` defaults to the system hostname, so reaching
+        that requires setting it to something empty on purpose.
         """
         known = {runner.github_runner_id for runner in records.values()}
+        mine = owner_prefix(self._host)
         repaired = 0
 
         for listed in forge_runners.values():
-            if listed.id in known or not listed.name.startswith(NAME_PREFIX):
+            if listed.id in known or not listed.name.startswith(mine):
                 continue
             if listed.is_online or listed.busy:
                 continue

@@ -102,7 +102,13 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
     runner_logs = SqliteRunnerLogs(settings.daemon.state_db)
 
     provision = ProvisionRunner(
-        forge=forge, backend=container_backend, runners=runners, clock=clock, ids=ids, events=events
+        forge=forge,
+        backend=container_backend,
+        runners=runners,
+        clock=clock,
+        ids=ids,
+        events=events,
+        host=settings.daemon.host,
     )
     retire = RetireRunner(
         forge=forge,
@@ -123,6 +129,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
         provision=provision,
         retire=retire,
         capacity=settings.capacity,
+        host=settings.daemon.host,
     )
 
     keep = settings.housekeeping
