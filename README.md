@@ -7,42 +7,14 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 Self-hosted GitHub Actions runners as ephemeral Docker containers, managed by a single Python
-daemon. **[Documentation →](https://tguisep.github.io/gh-spot-docker-runners/)**
+daemon.
 
-## Why
-
-GitHub's free plan caps Actions minutes on private repositories. Self-hosted runners do not
+GitHub's free plan caps Actions minutes on private repositories; self-hosted runners do not
 consume them. This turns one Linux host into an on-demand fleet: it watches your repositories
 for queued jobs, starts a fresh container per job, and tears it down on both sides when the job
-finishes.
+finishes. No credential ever enters a container.
 
-```mermaid
-flowchart LR
-    subgraph host["Linux host"]
-        daemon["ghspot daemon<br/><i>reconciliation loop</i>"]
-        subgraph runners["ephemeral containers"]
-            r1["runner"]
-            r2["runner"]
-        end
-        daemon -->|"create / stop / remove"| runners
-    end
-    daemon <-->|"poll queued jobs<br/>mint JIT config<br/>reap dead runners"| gh["GitHub API"]
-    runners -->|"long poll, one job, exit"| gh
-```
-
-- **No credentials in the container.** Runners register through GitHub's
-  [just-in-time config API][jit]: the container gets a single-use, pre-scoped blob, never your
-  token or your app's key. A compromised job cannot register more runners.
-- **Continuous reconciliation.** A loop observes Docker and GitHub, diffs them against your
-  configuration, and converges both ways. Runners stuck `Offline` after a hard kill, and
-  containers orphaned by a crash, are repaired on the next tick. No cleanup script.
-- **Bounded by the host, not just the pool.** `max_runners` bounds one pool; ceilings on
-  containers, CPU and memory bound the machine, and a load high-water mark defers launches
-  while the box is struggling.
-- **Demand-driven, no inbound ports.** It polls for queued jobs, so it works behind NAT on a
-  home server.
-
-[jit]: https://docs.github.com/en/rest/actions/self-hosted-runners#create-configuration-for-a-just-in-time-runner-for-a-repository
+**[Documentation →](https://tguisep.github.io/gh-spot-docker-runners/)**
 
 ## Quick start
 
@@ -50,10 +22,8 @@ A Linux host with Docker, and credentials with **Administration: read & write** 
 **Actions: read** — a fine-grained token or a GitHub App.
 
 ```bash
-sudo apt install ./ghspot_*.deb     # from the latest release; bundles its own Python
-```
+sudo apt install ./ghspot_*.deb        # from the latest release; bundles its own Python
 
-```bash
 sudo ghspot image build ubuntu-24.04   # the runner image, with this host's docker group
 sudo ghspot setup                      # asks the four things that cannot be guessed
 sudo ghspot doctor --config /etc/ghspot/config.toml
@@ -68,7 +38,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, ubuntu-24.04]
 ```
 
-Full walkthrough, including installing from source or with Ansible:
+Installing from source or with Ansible, and everything after the first run:
 **[Getting started](https://tguisep.github.io/gh-spot-docker-runners/start/requirements/)**.
 
 ## Security
@@ -82,11 +52,8 @@ control, unacceptable for one that accepts fork pull requests.
 | | |
 |---|---|
 | [Documentation](https://tguisep.github.io/gh-spot-docker-runners/) | Install, configure, run, tune, troubleshoot |
-| [Authentication](https://tguisep.github.io/gh-spot-docker-runners/start/authentication/) | Tokens and GitHub Apps, with the exact permissions |
 | [Architecture](https://tguisep.github.io/gh-spot-docker-runners/reference/architecture/) | How the pieces fit, and the decisions behind them |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Layout rules and how to work on it |
 | [CONTEXT.md](CONTEXT.md) | Project history |
-
-## License
 
 Apache-2.0. See [LICENSE](LICENSE).

@@ -1010,13 +1010,18 @@ before Starlight sees them.
 
 ## 2026-09-01 — the README stops being the documentation
 
-193 lines down to 92. The site covers install, configure, run, tune and troubleshoot; a README
+193 lines down to 59. The site covers install, configure, run, tune and troubleshoot; a README
 that repeats it is a second copy nobody updates, which is the drift the whole site was meant to
 end.
 
 What is left is what a README is for: badges, what this is, why it exists, and enough to get a
 host running. Everything else moved to the site's landing page rather than being deleted — the
-full differentiator list, the requirements, the command table, the layer table.
+full differentiator list, the architecture diagram, the requirements, the command table, the
+layer table.
+
+The diagram went too. It is the best single explanation of the shape, which is an argument for
+putting it where somebody reading about the shape will be — the landing page — not for keeping
+a copy in front of people who came to install something.
 
 The `Status: alpha` line is gone. Six releases with packages, a documentation site and a
 verified install path is not alpha, and the line was telling people otherwise.
