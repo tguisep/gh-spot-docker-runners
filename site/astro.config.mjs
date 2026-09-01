@@ -1,6 +1,7 @@
 // @ts-check
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
+import mermaid from 'astro-mermaid';
 
 const REPO = 'https://github.com/tguisep/gh-spot-docker-runners';
 
@@ -11,6 +12,11 @@ export default defineConfig({
     site: 'https://tguisep.github.io',
     base: '/gh-spot-docker-runners',
     integrations: [
+        // Before Starlight, which the integration requires. Without it the two ```mermaid
+        // fences in reference/architecture render as plain code blocks — which they had
+        // been doing since the site was created, because Starlight does not handle mermaid
+        // and nothing had been added.
+        mermaid({ theme: 'neutral', autoTheme: true }),
         starlight({
             title: 'ghspot',
             description:

@@ -985,3 +985,25 @@ the repository settings, which is what made that flow fail at v0.5.0 in the firs
   repository is corrected; the release pages are not.
 - v0.5.1 and v0.6.0 both have their three assets, so the packages are fine throughout. Only the
   notes and one release's assets are wrong.
+
+## 2026-09-01 — the diagrams were never rendering
+
+`reference/architecture/index.md` and `lifecycle.md` have carried ```mermaid fences since the
+site was created. Starlight does not render mermaid on its own and nothing had been added, so
+both showed as plain code blocks. Nobody noticed, which is what happens to a page written once
+and read never.
+
+`astro-mermaid`, ahead of Starlight in the integration list because it rewrites the fences
+before Starlight sees them.
+
+### Notes for later
+
+- Adding it incrementally left `package.json` and `package-lock.json` out of sync, and `npm ci`
+  — which is what CI runs, and which refuses rather than resolving — failed on
+  `Missing: @emnapi/runtime from lock file`, one of sharp's optional platform packages. The
+  lockfile is regenerated from scratch.
+- The mistake underneath: verifying with `npm install && npm run build` when CI runs `npm ci`.
+  The forgiving command papers over exactly the state the strict one rejects. Check with the
+  command that will actually run.
+- Versions pinned exactly, like everything else in that file. A caret would let a minor bump
+  change the docs build with no commit saying so.
