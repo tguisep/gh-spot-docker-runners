@@ -1007,3 +1007,22 @@ before Starlight sees them.
   command that will actually run.
 - Versions pinned exactly, like everything else in that file. A caret would let a minor bump
   change the docs build with no commit saying so.
+
+## 2026-09-01 — the README stops being the documentation
+
+193 lines down to 92. The site covers install, configure, run, tune and troubleshoot; a README
+that repeats it is a second copy nobody updates, which is the drift the whole site was meant to
+end.
+
+What is left is what a README is for: badges, what this is, why it exists, and enough to get a
+host running. Everything else moved to the site's landing page rather than being deleted — the
+full differentiator list, the requirements, the command table, the layer table.
+
+The `Status: alpha` line is gone. Six releases with packages, a documentation site and a
+verified install path is not alpha, and the line was telling people otherwise.
+
+### Notes for later
+
+- Badges are for `python.yml`, `packaging.yml` and `docs.yml`, plus release and licence. Each
+  URL was checked for a 200 rather than assumed — a badge that 404s renders as a broken image
+  and looks worse than none.
