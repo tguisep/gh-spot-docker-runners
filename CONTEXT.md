@@ -1160,3 +1160,29 @@ decision about your own branches, never about a stranger's.
   the manual escape hatch. **It does not exist in any workflow** and, from the git history,
   never did. The table is now what the code actually does — and the escape hatch it promised is
   real this time, as the variable.
+
+## 2026-09-01 — Run workflow, and where
+
+Every workflow now takes `workflow_dispatch`. The five that route through `select-runner.yml`
+also take a **Where to run it** choice — `auto`, `hosted`, `self-hosted` — passed through to
+the selector, which grew a `workflow_call` input for it.
+
+That answers two questions the repository variable cannot: "is the fleet actually working?" and
+"the fleet is wedged, get me a green build" — neither of which should mean changing a setting
+for everybody else.
+
+Docs, Packaging and Runner images take the dispatch with **no** choice. Every job in them is
+pinned to GitHub-hosted for a reason written at the job — bind-mounts that resolve on the host,
+a privileged systemd container, a build that would clobber the operational image tag — so
+offering the fleet would only offer a broken run.
+
+### Notes for later
+
+- The fork check is first and returns immediately, so neither the variable nor the dispatch
+  input can reach past it. All twelve combinations of fork × choice × variable were run against
+  the actual script: a fork asking for `self-hosted` still lands on GitHub-hosted.
+- `inputs.runner || 'auto'` at each call site, because `inputs` is null on a `push` and a bare
+  `inputs.runner` would pass an empty string into the selector's `case`.
+- Adding a choice to a workflow whose jobs are pinned would have been the easy consistency, and
+  wrong. The comment at each of those three says so, next to the `workflow_dispatch` rather
+  than buried at the job.

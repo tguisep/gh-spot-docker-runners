@@ -11,6 +11,12 @@ on:
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
+    inputs:
+      runner:
+        description: "Where to run it"
+        type: choice
+        options: [auto, hosted, self-hosted]
+        default: auto
   pull_request:
     paths:
       - "images/runner/**"
@@ -22,6 +28,8 @@ permissions:
 jobs:
   runner:
     uses: ./.github/workflows/select-runner.yml
+    with:
+      runner: ${{ inputs.runner || 'auto' }}
 
   compare:
     name: Compare against upstream

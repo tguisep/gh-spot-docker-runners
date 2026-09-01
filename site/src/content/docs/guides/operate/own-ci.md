@@ -46,14 +46,35 @@ strangers**.
 
 The workflow therefore picks its runner rather than hard-coding one:
 
-| Event | `USE_SELF_HOSTED` | Runs on |
-|---|---|---|
-| Pull request from a fork | anything | **GitHub-hosted** — the author could be anyone |
-| `push`, or a pull request from a branch here | `true` | Self-hosted — both require write access |
-| `push`, or a pull request from a branch here | unset | GitHub-hosted |
+| Event | Asked for | `USE_SELF_HOSTED` | Runs on |
+|---|---|---|---|
+| Pull request from a fork | anything | anything | **GitHub-hosted** — the author could be anyone |
+| `push`, or a pull request from a branch here | `hosted` | anything | GitHub-hosted |
+| `push`, or a pull request from a branch here | `self-hosted` | anything | Self-hosted |
+| `push`, or a pull request from a branch here | `auto` | `true` | Self-hosted |
+| `push`, or a pull request from a branch here | `auto` | unset | GitHub-hosted |
 
-The fork check comes first and the variable cannot override it. Turning the fleet on is a
-decision about your own branches, never about a stranger's.
+The fork check comes first and **nothing below it can reach past it** — not the variable, not
+the dispatch input. Turning the fleet on is a decision about your own branches, never about a
+stranger's.
+
+## Running one on demand
+
+Every workflow takes **Run workflow** in the Actions tab. The five that can use the fleet —
+Python, Dashboard, Ansible, Release, Upstream toolset — offer a **Where to run it** choice:
+
+| | |
+|---|---|
+| `auto` | What `USE_SELF_HOSTED` says. The default |
+| `hosted` | GitHub-hosted, this run only |
+| `self-hosted` | The fleet, this run only |
+
+Which is the answer to both "is my fleet actually working?" and "the fleet is wedged, get me a
+green build" — without touching the variable and changing it for everyone else.
+
+Docs, Packaging and Runner images take **Run workflow** too, with no choice: every job in them
+is pinned to GitHub-hosted for a reason written at the job, and offering the fleet would only
+offer a broken run.
 
 A `select-runner` job resolves this once and every other job reads its output, so the rule
 lives in one place instead of being repeated — and forgotten — per job.

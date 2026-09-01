@@ -19,6 +19,14 @@ on:
       - ".github/workflows/python.yml"
       - ".github/workflows/select-runner.yml"
 
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Where to run it"
+        type: choice
+        options: [auto, hosted, self-hosted]
+        default: auto
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -32,6 +40,8 @@ env:
 jobs:
   runner:
     uses: ./.github/workflows/select-runner.yml
+    with:
+      runner: ${{ inputs.runner || 'auto' }}
 
   lint:
     needs: runner
