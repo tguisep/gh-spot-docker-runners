@@ -76,6 +76,7 @@ export default defineConfig({
                 {
                     label: 'Reference',
                     items: [
+                        { slug: 'reference/commands' },
                         {
                             label: 'Troubleshooting',
                             items: [
