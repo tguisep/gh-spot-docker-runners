@@ -11,6 +11,10 @@ on:
       - "images/runner/**"
       - ".github/workflows/runner-images.yml"
 
+  # No runner choice: every job here is pinned to GitHub-hosted for a reason written at the
+  # job itself, and offering the fleet would only offer a broken run.
+  workflow_dispatch:
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

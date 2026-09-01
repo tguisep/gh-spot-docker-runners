@@ -18,6 +18,11 @@ on:
       version:
         description: "Build the packages without releasing anything, at this version."
         required: false
+      runner:
+        description: "Where to run it"
+        type: choice
+        options: [auto, hosted, self-hosted]
+        default: auto
 
 permissions:
   contents: read
@@ -29,6 +34,8 @@ concurrency:
 jobs:
   runner:
     uses: ./.github/workflows/select-runner.yml
+    with:
+      runner: ${{ inputs.runner || 'auto' }}
 
   release-please:
     name: Release pull request
