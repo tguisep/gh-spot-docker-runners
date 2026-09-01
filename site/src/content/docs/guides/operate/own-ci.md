@@ -3,8 +3,20 @@ title: "Running this project's own CI on your runners"
 description: "Pointing this repository's workflows at your own fleet."
 ---
 
-The workflow in `.github/workflows/ci.yml` runs on the self-hosted fleet, which is the most
-honest test the project has: if reconciliation breaks, CI stops.
+This repository can run its own CI on its own runners, which is the most honest test it has:
+if reconciliation breaks, CI stops.
+
+It is **off by default**. Every workflow gets its `runs-on` from `select-runner.yml`, and that
+returns GitHub-hosted unless a repository variable says otherwise:
+
+```
+Settings → Secrets and variables → Actions → Variables
+USE_SELF_HOSTED = true
+```
+
+A variable rather than a code change, so moving CI off the fleet — for a migration, a host
+reboot, or a bad afternoon — is a toggle and not a pull request. Unset, nothing waits on a
+machine that may be down.
 
 ## Labels
 
@@ -34,12 +46,14 @@ strangers**.
 
 The workflow therefore picks its runner rather than hard-coding one:
 
-| Event | Runs on | Why |
+| Event | `USE_SELF_HOSTED` | Runs on |
 |---|---|---|
-| `push` | Self-hosted | Requires write access |
-| Pull request from a branch in this repository | Self-hosted | Requires write access |
-| Pull request from a fork | GitHub-hosted | The author could be anyone |
-| `workflow_dispatch` with `force_hosted` | GitHub-hosted | Manual escape hatch |
+| Pull request from a fork | anything | **GitHub-hosted** — the author could be anyone |
+| `push`, or a pull request from a branch here | `true` | Self-hosted — both require write access |
+| `push`, or a pull request from a branch here | unset | GitHub-hosted |
+
+The fork check comes first and the variable cannot override it. Turning the fleet on is a
+decision about your own branches, never about a stranger's.
 
 A `select-runner` job resolves this once and every other job reads its output, so the rule
 lives in one place instead of being repeated — and forgotten — per job.
@@ -51,8 +65,10 @@ account.
 ## When the fleet is down
 
 CI queues rather than failing: a job with no matching runner waits, and GitHub fails it after
-24 hours. To get a green build without waiting, re-run the workflow from the Actions tab with
-**Run workflow → force_hosted**, which puts everything back on GitHub-hosted runners.
+24 hours with nothing in the log to say why.
+
+Set `USE_SELF_HOSTED` to anything but `true`, or delete it, and re-run. Everything goes back to
+GitHub-hosted immediately — including jobs already queued, once they are re-run.
 
 ## Which jobs cannot move
 
