@@ -136,7 +136,7 @@ repository = "tguisep/my-project"
 #
 # "linux" and "x64" are conventional and worth keeping; a bare "linux" alone is not, because
 # a job asking for it has no idea what it will get.
-labels = ["self-hosted", "linux", "x64", "ubuntu-24.04", "home-vm"]
+labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
 
 # Labels a job must ask for *by name* before this pool serves it.
 #

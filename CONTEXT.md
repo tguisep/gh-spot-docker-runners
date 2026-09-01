@@ -1116,3 +1116,24 @@ is the least interesting thing about a package that carries its own.
   named the two permissions and stopped there, which reads as an account-wide grant. The scope
   is the more important half — a token with the right permissions over every repository you can
   reach is a worse credential than one with the same permissions over two.
+## 2026-09-01 — two labels instead of four
+
+`select-runner.yml` asked for `["self-hosted","linux","x64","home-vm"]`. It now asks for
+`["self-hosted","ubuntu-24.04"]`.
+
+`linux` and `x64` are implied by naming the OS, and `home-vm` was a label this repository's CI
+required of every pool that wanted to serve it. Asking for it is what left jobs queued against
+a runner nobody had built — the pool the wizard writes carries the OS label and nothing else,
+so it could not take this project's own work until somebody noticed and added a label by hand.
+
+One line, because every workflow's `runs-on` comes from that one output. The rule living in one
+place is what made this a single edit rather than eight.
+
+### Notes for later
+
+- Carrying a label costs nothing; *asking* for one narrows where a job can land. The docs said
+  the first half and left the second implied, which is the half that bites.
+- The live runner carries `self-hosted,linux,x64,ubuntu-24.04,home-vm`, so the narrower request
+  is a subset of what already exists — the change needs no fleet rebuild.
+- The tests keep `home-vm`. There it is an arbitrary spare label proving the subset rule, not a
+  convention being documented.
