@@ -1137,3 +1137,26 @@ place is what made this a single edit rather than eight.
   is a subset of what already exists — the change needs no fleet rebuild.
 - The tests keep `home-vm`. There it is an arbitrary spare label proving the subset rule, not a
   convention being documented.
+
+## 2026-09-01 — CI back on GitHub-hosted, the fleet opt-in
+
+Every workflow's `runs-on` comes from `select-runner.yml`, and it now returns GitHub-hosted
+unless the repository variable `USE_SELF_HOSTED` is `true`.
+
+A variable rather than a code change, because the reason to move CI off the fleet is never
+planned: a migration, a host reboot, a label that stopped matching. Making that a pull request
+means the build stays broken until somebody writes one. Unset, nothing waits on a machine that
+may be down — and a job with no matching runner does not fail, it queues for 24 hours with
+nothing in the log to say why.
+
+The fork check still comes first and the variable cannot override it. Turning the fleet on is a
+decision about your own branches, never about a stranger's.
+
+### Notes for later
+
+- One line of routing, one place, because every workflow reads that output. The same property
+  that made the label change a single edit.
+- The page describing all this documented a `workflow_dispatch` input called `force_hosted` as
+  the manual escape hatch. **It does not exist in any workflow** and, from the git history,
+  never did. The table is now what the code actually does — and the escape hatch it promised is
+  real this time, as the variable.
