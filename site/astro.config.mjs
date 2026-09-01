@@ -2,13 +2,15 @@
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 import mermaid from 'astro-mermaid';
+import starlightVersions from 'starlight-versions';
 
 const REPO = 'https://github.com/tguisep/gh-spot-docker-runners';
 
 export default defineConfig({
     // A project page, so everything is served under the repository name. Links between pages
-    // are written as relative paths to the .md file and resolved at build time, which is what
-    // keeps them right under a base path rather than silently 404ing off the root.
+    // are relative URLs resolved from the linking page's own URL — not `.md` paths, which are
+    // emitted verbatim, and not root-absolute ones, which 404 under the base path.
+    // scripts/check-site-links.py is what catches either.
     site: 'https://tguisep.github.io',
     base: '/gh-spot-docker-runners',
     integrations: [
@@ -18,6 +20,15 @@ export default defineConfig({
         // and nothing had been added.
         mermaid({ theme: 'neutral', autoTheme: true }),
         starlight({
+            // The unversioned docs at the root track `main`, so a page is written once. A
+            // release is snapshotted into its own tree and then left alone — an archive, not
+            // a second copy to keep in step.
+            plugins: [
+                starlightVersions({
+                    current: { label: 'Unreleased' },
+                    versions: [{ slug: '0.6' }],
+                }),
+            ],
             title: 'ghspot',
             description:
                 'Self-hosted GitHub Actions runners as ephemeral Docker containers, on a machine you own.',

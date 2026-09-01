@@ -1031,3 +1031,30 @@ verified install path is not alpha, and the line was telling people otherwise.
 - Badges are for `python.yml`, `packaging.yml` and `docs.yml`, plus release and licence. Each
   URL was checked for a 200 rather than assumed — a badge that 404s renders as a broken image
   and looks worse than none.
+
+## 2026-09-01 — a documentation tree per release
+
+The site now carries `starlight-versions`. The root tracks `main` and is labelled
+**Unreleased**; each release is snapshotted into its own tree — `0.6/` — with a picker in the
+header. 71 pages where there were 36.
+
+Root-tracks-main rather than root-shows-latest, deliberately. A page is written once and
+snapshots are archives; the alternative makes every edit a question about which trees get it.
+The cost lands on the reader instead: somebody on the released `.deb` has to notice they want
+`/0.6/`. With 63 doc files changed in a single day, keeping the writing side cheap was worth
+more than the reader's extra click.
+
+### Notes for later
+
+- **Snapshot at the release commit, not afterwards.** The plugin copies the working tree, so a
+  snapshot taken later documents features the release does not have. The 0.6 tree was corrected
+  from the tag for exactly this: its `index.mdx` had already gained the content moved out of the
+  README, which v0.6.0 never shipped.
+- The plugin rewrites what it copies — it adds a routing `slug:` to every page's frontmatter,
+  and its serialiser normalises bullet markers, thematic breaks and underscore escapes. Content
+  compared page by page against the tag: 33 identical, 2 differing only in serialisation.
+- Restoring a page by hand needs that `slug:` too. Without it Astro slugified the directory and
+  served the page at `/06/`, which broke its every relative link. The link checker found it; a
+  build and a glance at the picker would not have.
+- Archived trees are archives. Editing one to fix a typo is a decision to maintain two copies,
+  and is only worth it when the fix matters to somebody running that release.
