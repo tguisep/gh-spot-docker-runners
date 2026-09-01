@@ -5,13 +5,40 @@ description: "From the .deb, with Ansible, or from source."
 
 ## From a .deb (recommended on Debian and Ubuntu)
 
-Take the package for your architecture from the
-[latest release](https://github.com/tguisep/gh-spot-docker-runners/releases/latest) — cut
-automatically from the commit history, so `latest` matches `main` as of its last release.
+Releases are cut automatically from the commit history, so
+[latest](https://github.com/tguisep/gh-spot-docker-runners/releases/latest) matches `main` as
+of its last release. Each carries an `amd64` and an `arm64` package, and a `SHA256SUMS`.
 
 ```bash
-sudo apt install ./ghspot_0.1.0-1_amd64.deb
+ARCH="$(dpkg --print-architecture)"
+curl -fsSL https://api.github.com/repos/tguisep/gh-spot-docker-runners/releases/latest \
+  | grep -o '"browser_download_url": *"[^"]*"' | cut -d'"' -f4 \
+  | grep -E "_${ARCH}\.deb$|/SHA256SUMS$" | xargs -n1 curl -fsSLO
+
+sha256sum --ignore-missing -c SHA256SUMS
+sudo apt install "./ghspot_"*"_${ARCH}.deb"
 ```
+
+The filename carries the version, so the download URL cannot be known in advance — hence the
+API call rather than a fixed `releases/latest/download/...` link. The grep is scoped to
+`browser_download_url` because a release's notes are full of other URLs, and a looser pattern
+happily downloads the changelog's commit links instead.
+
+`--ignore-missing` because `SHA256SUMS` lists both architectures and you have one of them.
+
+<details><summary>With wget</summary>
+
+```bash
+ARCH="$(dpkg --print-architecture)"
+wget -qO- https://api.github.com/repos/tguisep/gh-spot-docker-runners/releases/latest \
+  | grep -o '"browser_download_url": *"[^"]*"' | cut -d'"' -f4 \
+  | grep -E "_${ARCH}\.deb$|/SHA256SUMS$" | wget -q -i -
+
+sha256sum --ignore-missing -c SHA256SUMS
+sudo apt install "./ghspot_"*"_${ARCH}.deb"
+```
+
+</details>
 
 Bundles its own Python: it neither uses nor cares about the system interpreter, works on any
 glibc distribution, and cannot be broken by an upgrade changing `python3`.

@@ -22,7 +22,14 @@ A Linux host with Docker, and credentials with **Administration: read & write** 
 **Actions: read** — a fine-grained token or a GitHub App.
 
 ```bash
-sudo apt install ./ghspot_*.deb        # from the latest release; bundles its own Python
+# The latest release for this machine's architecture, with its checksum.
+ARCH="$(dpkg --print-architecture)"
+curl -fsSL https://api.github.com/repos/tguisep/gh-spot-docker-runners/releases/latest \
+  | grep -o '"browser_download_url": *"[^"]*"' | cut -d'"' -f4 \
+  | grep -E "_${ARCH}\.deb$|/SHA256SUMS$" | xargs -n1 curl -fsSLO
+sha256sum --ignore-missing -c SHA256SUMS
+
+sudo apt install "./ghspot_"*"_${ARCH}.deb"   # bundles its own Python
 
 sudo ghspot image build ubuntu-24.04   # the runner image, with this host's docker group
 sudo ghspot setup                      # asks the four things that cannot be guessed
