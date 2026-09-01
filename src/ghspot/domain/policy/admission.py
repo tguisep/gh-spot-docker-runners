@@ -55,9 +55,18 @@ class CapacityLimits:
 
     memory_high_water: float | None = None
 
+    disk_high_water: float | None = None
+    """Percent full of the filesystem Docker keeps its data on. The ceilings above count what
+    is committed; this is the one that catches what jobs *leave behind* — build caches, pulled
+    images, volumes — which housekeeping reclaims on a schedule rather than under pressure."""
+
     @property
     def has_backpressure(self) -> bool:
-        return self.cpu_high_water is not None or self.memory_high_water is not None
+        return (
+            self.cpu_high_water is not None
+            or self.memory_high_water is not None
+            or self.disk_high_water is not None
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,6 +241,13 @@ def _backpressure(load: HostLoad, limits: CapacityLimits) -> str | None:
         return (
             f"host memory at {used:.0f}% (high water {limits.memory_high_water:.0f}%); "
             "deferring every launch until it recovers"
+        )
+
+    full = load.disk_percent
+    if limits.disk_high_water is not None and full is not None and full >= limits.disk_high_water:
+        return (
+            f"docker filesystem {full:.0f}% full (high water {limits.disk_high_water:.0f}%); "
+            "deferring every launch until housekeeping or an operator reclaims space"
         )
 
     return None

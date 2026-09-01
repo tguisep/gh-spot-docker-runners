@@ -14,9 +14,12 @@ import pytest
 from typer.testing import CliRunner
 
 from ghspot.domain.errors import BackendError, ForgeAuthError
+from ghspot.domain.policy.admission import CapacityLimits
+from ghspot.domain.ports.backend import HostLoad
 from ghspot.infrastructure.config.settings import load
 from ghspot.interfaces.cli import doctor as doctor_module
 from ghspot.interfaces.cli.main import app
+from tests.fakes.adapters import FakeBackend
 
 runner = CliRunner()
 
@@ -124,6 +127,11 @@ def test_doctor_exits_zero_only_when_everything_passes(
         async def image_exists(self, image: str) -> bool:
             return True
 
+        async def host_load(self) -> HostLoad:
+            # Half full: `doctor` checks the disk now, and a stub with no reading would
+            # report nothing rather than the healthy host this test is describing.
+            return HostLoad(disk_used_bytes=50, disk_total_bytes=100)
+
     class Forge:
         def describe_auth(self) -> str:
             return "personal access token"
@@ -185,3 +193,38 @@ class _Passwd:
     def __init__(self, *, uid: int, gid: int) -> None:
         self.pw_uid = uid
         self.pw_gid = gid
+
+
+@pytest.mark.anyio
+async def test_a_full_disk_is_reported_even_with_no_high_water_set(config: Path) -> None:
+    """Housekeeping reclaims on a schedule; this is the part that says so before the schedule
+    comes round. Above 90% with no mark configured, nothing else would mention it."""
+    backend = FakeBackend()
+    backend.load = HostLoad(disk_used_bytes=95, disk_total_bytes=100)
+
+    checks = await doctor_module._disk(backend, CapacityLimits())
+
+    assert [check.ok for check in checks] == [False]
+    assert "95% full" in checks[0].detail
+    assert "prune" in checks[0].remedy
+
+
+@pytest.mark.anyio
+async def test_a_comfortable_disk_passes(config: Path) -> None:
+    backend = FakeBackend()
+    backend.load = HostLoad(disk_used_bytes=40, disk_total_bytes=100)
+
+    checks = await doctor_module._disk(backend, CapacityLimits(disk_high_water=85))
+
+    assert [check.ok for check in checks] == [True]
+    assert "high water 85%" in checks[0].detail
+
+
+@pytest.mark.anyio
+async def test_a_disk_that_cannot_be_read_is_not_a_check(config: Path) -> None:
+    """`doctor` reports what it knows. A probe that came back empty is not a failure to
+    report, and inventing one would make every unmeasurable host look broken."""
+    backend = FakeBackend()
+    backend.load = HostLoad()
+
+    assert await doctor_module._disk(backend, CapacityLimits(disk_high_water=85)) == []
