@@ -72,8 +72,10 @@ flowchart LR
 ## What you need
 
 - A Linux host with Docker, and a user in the `docker` group.
-- Credentials with **Administration: read & write** (to register runners) and **Actions: read**
-  (to see queued jobs) — a fine-grained personal access token or a GitHub App.
+- A credential **scoped to the repositories it will serve**, not to everything the account can
+  reach — a fine-grained personal access token or a GitHub App — carrying
+  **Administration: read & write** (to register runners) and **Actions: read** (to see queued
+  jobs), and nothing else.
 - Python 3.12+ only if installing from source. The `.deb` bundles its own.
 
 [Authentication](start/authentication/) sets up both credential types and explains why each

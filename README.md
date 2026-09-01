@@ -30,8 +30,9 @@ What you deploy is a `.deb`, a systemd unit and one `config.toml`:
 
 ## Quick start
 
-A Linux host with Docker, and credentials with **Administration: read & write** and
-**Actions: read** — a fine-grained token or a GitHub App.
+A Linux host with Docker, and a credential **scoped to the repositories it will serve** —
+a fine-grained token or a GitHub App — carrying **Administration: read & write** (to register
+runners) and **Actions: read** (to see queued jobs), and nothing else.
 
 ```bash
 # The latest release for this machine's architecture, with its checksum.

@@ -37,7 +37,9 @@ token_file = "~/.config/ghspot/token"
 # account can reach, and its tokens expire hourly on their own.
 #
 # Create one at Settings -> Developer settings -> GitHub Apps, with repository permissions
-# "Administration: read & write" and "Actions: read", then install it on your account.
+# "Administration: read & write" and "Actions: read", then install it on your account and
+# select *only* the repositories it should serve. "All repositories" is the default and is
+# almost never what you want.
 #
 # app_id = "123456"
 # private_key_file = "~/.config/ghspot/app.pem"    # or set GHSPOT_GITHUB_APP_PRIVATE_KEY

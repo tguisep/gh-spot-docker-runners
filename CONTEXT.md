@@ -1110,3 +1110,9 @@ is the least interesting thing about a package that carries its own.
   layering explained.
 - Every link checked for a 200 before committing. The site is versioned now, so a path that
   moved into `/0.6/` would still resolve at the root only by accident.
+- The credential is described as **scoped to the repositories it will serve**, everywhere it is
+  summarised. `config.example.toml` already said "scoped to the repositories below" and the
+  authentication guide already said "Only select repositories"; the README and the landing page
+  named the two permissions and stopped there, which reads as an account-wide grant. The scope
+  is the more important half — a token with the right permissions over every repository you can
+  reach is a worse credential than one with the same permissions over two.
