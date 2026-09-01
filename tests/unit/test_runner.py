@@ -10,7 +10,13 @@ from ghspot.domain.model.events import (
     RunnerStarted,
     RunnerTookJob,
 )
-from ghspot.domain.model.runner import Runner, RunnerState, runner_name_for
+from ghspot.domain.model.runner import (
+    MAX_RUNNER_NAME,
+    Runner,
+    RunnerState,
+    owner_prefix,
+    runner_name_for,
+)
 from tests.unit.conftest import REPO, at, make_runner
 
 
@@ -181,3 +187,41 @@ def test_only_retired_and_failed_are_terminal() -> None:
     for state in RunnerState:
         terminal = state in {RunnerState.RETIRED, RunnerState.FAILED}
         assert make_runner(state=state).is_terminal is terminal
+
+
+def test_the_name_carries_the_host() -> None:
+    """Several daemons can serve one repository, and GitHub's runner list is the only place
+    they meet. Without the host a daemon cannot tell its own strays from another machine's."""
+    name = runner_name_for("default", "abcdef0123456789", "box-a")  # type: ignore[arg-type]
+
+    assert name == "ghspot-box-a-default-abcdef012345"
+    assert name.startswith(owner_prefix("box-a"))
+    assert not name.startswith(owner_prefix("box-b"))
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["fr-tguiseppin-fram", "ip-10-0-3-14.eu-west-1.compute.internal", "A_Weird.Host!", "x" * 200],
+)
+def test_any_host_name_produces_something_github_accepts(host: str) -> None:
+    """Hosts are called whatever they are called. GitHub rejects a runner name over 64
+    characters, and the sanitising has to survive a fully-qualified cloud instance name."""
+    name = runner_name_for("default", "abcdef0123456789", host)  # type: ignore[arg-type]
+
+    assert len(name) <= MAX_RUNNER_NAME
+    assert all(character.isalnum() or character == "-" for character in name)
+
+
+def test_the_id_and_the_pool_survive_a_long_host() -> None:
+    """Over the limit the host segment gives way: the id keeps the name unique and the pool
+    says which configuration made it, so those two are worth protecting."""
+    name = runner_name_for("a" * 31, "abcdef0123456789", "x" * 200)  # type: ignore[arg-type]
+
+    assert len(name) <= MAX_RUNNER_NAME
+    assert name.endswith(f"-{'a' * 31}-abcdef012345")
+
+
+def test_no_host_keeps_the_older_shape() -> None:
+    """A caller with no host should not produce an empty segment."""
+    assert runner_name_for("default", "abcdef0123456789") == "ghspot-default-abcdef012345"  # type: ignore[arg-type]
+    assert owner_prefix("") == "ghspot-"

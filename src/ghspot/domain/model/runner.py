@@ -95,15 +95,63 @@ ACTIVE_STATES = frozenset(
 )
 
 
-def runner_name_for(pool: str, runner_id: RunnerId) -> str:
+#: GitHub rejects a runner name longer than this.
+MAX_RUNNER_NAME = 64
+
+#: What survives sanitising a host name into a runner name.
+_UNSAFE_IN_NAME = re.compile(r"[^a-z0-9-]+")
+
+
+def host_slug(host: str, limit: int = 20) -> str:
+    """A host name reduced to something GitHub will accept in a runner name.
+
+    Hosts are called things like `fr-tguiseppin-fram` or `ip-10-0-3-14.eu-west-1.compute
+    .internal`. Lowercased, non-alphanumerics collapsed to a dash, and truncated — the point is
+    to be recognisable in GitHub's runner list, not to round-trip.
+    """
+    slug = _UNSAFE_IN_NAME.sub("-", host.strip().lower()).strip("-")
+    return slug[:limit].rstrip("-") or "host"
+
+
+def runner_name_for(pool: str, runner_id: RunnerId, host: str = "") -> str:
     """The name a runner is registered under on GitHub.
 
-    Derived from our own id so it is unique by construction, and prefixed so a human reading
-    the runner list on github.com can tell where it came from.
+    ``ghspot-{host}-{pool}-{id}``. Derived from our own id so it is unique by construction, and
+    carrying the host because **several daemons can serve one repository** and GitHub's runner
+    list is the only place they meet.
+
+    Without the host in the name a daemon cannot tell its own stray registrations from another
+    machine's, and the sweep that reaps the first happily reaps the second. The name is what
+    makes ownership decidable — and, incidentally, readable by a human looking at the list.
+
+    ``host`` is optional so a caller that has none still produces the older shape rather than
+    an empty segment.
     """
     if not _POOL_NAME.match(pool):
         raise ValueError(f"{pool!r} is not a valid pool name")
-    return f"ghspot-{pool}-{runner_id[:12]}"
+
+    parts = (
+        ["ghspot", host_slug(host), pool, runner_id[:12]]
+        if host
+        else ["ghspot", pool, runner_id[:12]]
+    )
+    name = "-".join(parts)
+    if len(name) <= MAX_RUNNER_NAME:
+        return name
+
+    # Over the limit, the host segment gives way: the id keeps it unique and the pool says
+    # which configuration made it, so those two are the ones worth protecting.
+    room = MAX_RUNNER_NAME - len(f"ghspot--{pool}-{runner_id[:12]}")
+    return "-".join(["ghspot", host_slug(host, max(room, 1)), pool, runner_id[:12]])
+
+
+def owner_prefix(host: str) -> str:
+    """The prefix every runner this daemon registers shares.
+
+    What `_delete_stray_registrations` matches on, so it reaps its own leftovers and leaves
+    another host's alone.
+    """
+    return f"ghspot-{host_slug(host)}-" if host else "ghspot-"
 
 
 @dataclass(slots=True)

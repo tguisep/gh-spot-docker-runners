@@ -56,12 +56,14 @@ class ProvisionRunner:
         clock: Clock,
         ids: IdGenerator,
         events: EventPublisher,
+        host: str = "",
     ) -> None:
         self._forge = forge
         self._backend = backend
         self._runners = runners
         self._clock = clock
         self._ids = ids
+        self._host = host
         self._events = events
 
     async def __call__(self, spec: PoolSpec, template: RunnerTemplate) -> Runner:
@@ -70,7 +72,7 @@ class ProvisionRunner:
 
         runner = Runner(
             id=runner_id,
-            name=runner_name_for(spec.name, runner_id),
+            name=runner_name_for(spec.name, runner_id, self._host),
             pool=spec.name,
             repository=spec.repository,
             labels=spec.labels,

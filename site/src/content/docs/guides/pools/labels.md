@@ -67,3 +67,24 @@ docker_socket = true
 
 Both pools watch the same repository; the daemon polls it once per tick regardless of how
 many pools point at it, and each pool only counts the jobs it can actually serve.
+
+## More than one host, one repository
+
+Several daemons can serve the same repository. Each sees only its own runners in its own state
+database, and GitHub's runner list is the only place they meet — so a runner's **name** is what
+decides which machine owns it:
+
+```
+ghspot-{host}-{pool}-{id}
+```
+
+`{host}` is `[daemon].host`, defaulting to the system hostname. The sweep that deletes leftover
+registrations matches on `ghspot-{host}-` and so reaps only its own. Without it, every daemon
+saw every other daemon's runners as strays: A deletes B's registration, B re-registers, and the
+two fight for as long as both are up.
+
+:::note[Upgrading a fleet that was already running]
+Runners registered before this carry `ghspot-{pool}-{id}` and no longer match any host's
+prefix, so nothing reaps them. They are offline registrations on GitHub and harmless; delete
+them from the repository's runner settings, or leave them.
+:::

@@ -59,7 +59,7 @@ class Harness:
         return {str(r.id): r.state for r in self.repository.saved.values()}
 
 
-def build(*specs: PoolSpec, capacity: CapacityLimits | None = None) -> Harness:
+def build(*specs: PoolSpec, capacity: CapacityLimits | None = None, host: str = "box-a") -> Harness:
     spec = specs[0] if specs else make_spec()
     clock = FakeClock(T0)
     forge = FakeForge()
@@ -68,7 +68,7 @@ def build(*specs: PoolSpec, capacity: CapacityLimits | None = None) -> Harness:
     events = RecordingPublisher()
     ids = SequentialIds()
 
-    provision = ProvisionRunner(forge, backend, repository, clock, ids, events)
+    provision = ProvisionRunner(forge, backend, repository, clock, ids, events, host=host)
     runner_logs = InMemoryRunnerLogs()
     retire = RetireRunner(forge, backend, repository, clock, events, archive=runner_logs)
     service = ReconciliationService(
@@ -81,6 +81,7 @@ def build(*specs: PoolSpec, capacity: CapacityLimits | None = None) -> Harness:
         provision=provision,
         retire=retire,
         capacity=capacity,
+        host=host,
     )
     return Harness(
         service, provision, forge, backend, repository, clock, events, spec, retire, runner_logs
@@ -308,7 +309,7 @@ async def test_a_container_with_no_record_is_adopted(harness: Harness) -> None:
 
 async def test_a_stray_registration_of_ours_is_deleted(harness: Harness) -> None:
     harness.forge.runners[900] = ForgeRunner(
-        id=900, name="ghspot-default-deadbeef", status="offline", busy=False, labels=LABELS
+        id=900, name="ghspot-box-a-default-deadbeef", status="offline", busy=False, labels=LABELS
     )
 
     report = await harness.service.tick()
@@ -321,8 +322,8 @@ async def test_a_stray_registration_of_ours_is_deleted(harness: Harness) -> None
     ("name", "status", "busy"),
     [
         ("my-laptop", "offline", False),  # not ours: no prefix
-        ("ghspot-default-abc", "online", False),  # ours, but alive
-        ("ghspot-default-abc", "online", True),  # ours, and working
+        ("ghspot-box-a-default-abc", "online", False),  # ours, but alive
+        ("ghspot-box-a-default-abc", "online", True),  # ours, and working
     ],
 )
 async def test_runners_that_are_not_ours_to_delete_are_left_alone(
@@ -657,3 +658,61 @@ async def test_a_log_that_cannot_be_read_does_not_block_the_retirement(
 
     assert runner.state is RunnerState.RETIRED
     assert runner.container_id in harness.backend.removed
+
+
+# ---------------------------------------------------------------- more than one host
+
+
+@pytest.mark.anyio
+async def test_another_host_s_runner_is_left_alone() -> None:
+    """The bug this exists to prevent: matching only `ghspot-` meant every daemon saw every
+    other daemon's registrations as strays. A reaps B's, B re-registers, and the two fight for
+    as long as both are up — on a repository they were both configured to serve."""
+    harness = build(host="box-a")
+    harness.forge.runners[901] = ForgeRunner(
+        id=901, name="ghspot-box-b-default-deadbeef", status="offline", busy=False, labels=LABELS
+    )
+
+    report = await harness.service.tick()
+
+    assert harness.forge.deleted == []
+    assert report.repaired == 0
+
+
+@pytest.mark.anyio
+async def test_our_own_stray_is_still_reaped() -> None:
+    """Narrowing the sweep must not stop it sweeping."""
+    harness = build(host="box-a")
+    harness.forge.runners[900] = ForgeRunner(
+        id=900, name="ghspot-box-a-default-deadbeef", status="offline", busy=False, labels=LABELS
+    )
+
+    await harness.service.tick()
+
+    assert harness.forge.deleted == [900]
+
+
+@pytest.mark.anyio
+async def test_a_runner_registers_under_this_host_s_name() -> None:
+    """The name is what makes ownership decidable, so it has to carry the host."""
+    harness = build(host="box-a")
+
+    runner = await harness.provision(harness.spec, TEMPLATE)
+
+    assert runner.name.startswith("ghspot-box-a-")
+
+
+@pytest.mark.anyio
+async def test_registrations_from_before_the_host_was_in_the_name_are_left(
+    harness: Harness,
+) -> None:
+    """A runner minted by an older version carries `ghspot-{pool}-{id}` and no longer matches
+    this host's prefix. Left alone rather than reaped: the alternative is guessing, and guessing
+    wrong deletes another machine's runner — the very thing this change is for."""
+    harness.forge.runners[902] = ForgeRunner(
+        id=902, name="ghspot-default-deadbeef", status="offline", busy=False, labels=LABELS
+    )
+
+    await harness.service.tick()
+
+    assert harness.forge.deleted == []

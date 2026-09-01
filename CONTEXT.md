@@ -1217,3 +1217,29 @@ Everything else moved to where it is looked up rather than stumbled upon:
   `/start/requirements/authentication/`. Four broken links, found by the checker, none visible
   in the build. It is written down in `site/README.md` and I still wrote them from the file's
   position rather than the page's.
+
+## 2026-09-01 — a runner's name says which host owns it
+
+`_delete_stray_registrations` matched `ghspot-`, which every daemon's runners start with. On a
+repository served by two hosts that meant each saw the other's registrations as strays: A reaps
+B's, B re-registers, and they fight for as long as both are up. Flagged when the host was first
+added to the reports and deliberately left then, because it changes what is registered on
+GitHub.
+
+The name now carries the host — `ghspot-{host}-{pool}-{id}` — and the sweep matches
+`ghspot-{host}-`. Ownership becomes decidable, and readable by a human looking at the runner
+list on github.com, which is the other thing that was missing.
+
+### Notes for later
+
+- GitHub rejects a name over 64 characters, and hosts are called things like
+  `ip-10-0-3-14.eu-west-1.compute.internal`. The host segment is sanitised and truncated, and
+  gives way first when the whole name will not fit: the id keeps it unique and the pool says
+  which configuration made it, so those two are the ones worth protecting. Eighteen
+  host × pool combinations checked, worst case exactly 64.
+- Runners registered before this keep `ghspot-{pool}-{id}` and match no host's prefix, so
+  nothing reaps them. Left deliberately: the alternative is guessing, and guessing wrong
+  deletes another machine's runner — the thing being fixed.
+- `host` defaults to `""` at every seam, which reproduces the old name. That is the old hazard
+  too, but `[daemon].host` defaults to the system hostname, so reaching it means setting the
+  host to empty on purpose.
