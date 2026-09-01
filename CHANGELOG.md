@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.1](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.6.0...v0.6.1) (2026-09-01)
+
+
+### Fixes
+
+* **site:** render the mermaid diagrams ([b5d7ee5](https://github.com/tguisep/gh-spot-docker-runners/commit/b5d7ee5b12d816b4462dc288b4d3761a5978a08d))
+* **site:** render the mermaid diagrams ([311e6f1](https://github.com/tguisep/gh-spot-docker-runners/commit/311e6f112cb9921a000e96179b129f752c2c1647))
+
+
+### Documentation
+
+* cut the diagram and the feature list from the README ([5b80a30](https://github.com/tguisep/gh-spot-docker-runners/commit/5b80a3046df722fa45655f0687026ad0b78de681))
+* fetch the right .deb for the host architecture ([5158779](https://github.com/tguisep/gh-spot-docker-runners/commit/515877998561b598a3aaaefd603e571a63e5f2f6))
+* fetch the right .deb for the host architecture ([a62786a](https://github.com/tguisep/gh-spot-docker-runners/commit/a62786a03a611bc02a1bcc3c3afb55bc156cdc0b))
+* land the README trim and the versioned docs on main ([76151d5](https://github.com/tguisep/gh-spot-docker-runners/commit/76151d5dbcf279f0dcdf49f99b839940899d2861))
+* **site:** a documentation tree per release ([2109017](https://github.com/tguisep/gh-spot-docker-runners/commit/21090173b690b86935ffc7c50cad4aff46c7e77d))
+* **site:** a documentation tree per release ([4553b61](https://github.com/tguisep/gh-spot-docker-runners/commit/4553b61f17eec14a6c20654bcd8af6eaf8359dd7))
+* trim the README, and move the rest to the site index ([29123ea](https://github.com/tguisep/gh-spot-docker-runners/commit/29123ea52f43e1d448c1d02cd9b08fb1401ae51f))
+* trim the README, and move the rest to the site index ([0aa7081](https://github.com/tguisep/gh-spot-docker-runners/commit/0aa7081eaa9b68c152396f5aa037830bc643093d))
+
 ## [0.6.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.5.1...v0.6.0) (2026-08-31)
 
 
