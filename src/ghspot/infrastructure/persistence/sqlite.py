@@ -23,6 +23,7 @@ from typing import Any
 
 from ghspot.domain.model import events as domain_events
 from ghspot.domain.model.events import DomainEvent
+from ghspot.domain.model.job import WorkClass
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.queue import (
     HostPressure,
@@ -493,6 +494,9 @@ def _snapshot_document(snapshot: QueueSnapshot) -> dict[str, Any]:
                 "job_name": entry.job_name,
                 "labels": list(entry.labels),
                 "queued_at": entry.queued_at.isoformat(),
+                "url": entry.url,
+                "work_class": entry.work_class.value,
+                "urgency": entry.urgency,
                 "pool": entry.pool,
                 "priority": entry.priority,
                 "position": entry.position,
@@ -562,6 +566,9 @@ def _entry_from_document(item: Any) -> QueueEntry:
         job_name=str(item.get("job_name", "")),
         labels=tuple(str(label) for label in item.get("labels", [])),
         queued_at=_time(item["queued_at"]),
+        url=str(item.get("url", "")),
+        work_class=_work_class(item.get("work_class")),
+        urgency=int(item.get("urgency", 0)),
         pool=str(item.get("pool", "")),
         priority=int(item.get("priority", 0)),
         position=int(item.get("position", 0)),
@@ -577,3 +584,12 @@ def _reason(value: Any) -> WaitReason:
         return WaitReason(value)
     except ValueError:
         return WaitReason.CONTENDED
+
+
+def _work_class(value: Any) -> WorkClass:
+    """A class this version does not know degrades to a plain branch push, which claims
+    nothing about who is waiting and so cannot mislead."""
+    try:
+        return WorkClass(value)
+    except ValueError:
+        return WorkClass.BRANCH

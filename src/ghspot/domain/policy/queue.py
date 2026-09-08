@@ -32,6 +32,7 @@ from ghspot.domain.model.queue import (
 )
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.policy.admission import Admission, CapacityLimits
+from ghspot.domain.policy.priority import classify, urgency_of
 from ghspot.domain.ports.backend import HostLoad
 
 
@@ -87,7 +88,7 @@ def explain_queue(
 
     for standing in standings:
         spec = standing.spec
-        waiting = sorted(by_pool[spec.name], key=lambda job: (job.queued_at, job.id))
+        waiting = sorted(by_pool[spec.name], key=_rank)
         granted = admission.for_pool(spec.name)
         reason, detail = _why_blocked(standing, admission, granted)
 
@@ -130,7 +131,7 @@ def explain_queue(
             )
         )
 
-    for job in sorted(homeless, key=lambda item: (item.queued_at, item.id)):
+    for job in sorted(homeless, key=_rank):
         entries.append(
             _entry(
                 job,
@@ -145,9 +146,11 @@ def explain_queue(
             )
         )
 
-    # Oldest first across the whole queue: the reader's first question is what has been
-    # waiting longest, and that question does not stop at a pool boundary.
-    entries.sort(key=lambda entry: (entry.queued_at, entry.job_id))
+    # Most urgent first across the whole queue, oldest first within a class — the same order
+    # the positions were handed out in, so the table reads top to bottom whichever pool a row
+    # belongs to. The reader's first question is what important thing is stuck, and that
+    # question does not stop at a pool boundary.
+    entries.sort(key=lambda entry: (-entry.urgency, entry.queued_at, entry.job_id))
 
     return QueueSnapshot(
         taken_at=now,
@@ -157,6 +160,16 @@ def explain_queue(
         notes=tuple(notes),
         unreadable=tuple(unreadable),
     )
+
+
+def _rank(job: QueuedJob) -> tuple[int, datetime, int]:
+    """The order jobs are placed in: most urgent first, oldest first within a class.
+
+    A model of the line, not a claim about it. GitHub hands a free runner to whichever job it
+    chooses — roughly oldest first — so this says which job an operator should care about, not
+    which one will actually go next. `policy/priority.py` has the long version.
+    """
+    return (-urgency_of(classify(job)), job.queued_at, job.id)
 
 
 def _best_pool(standings: Sequence[PoolStanding], job: QueuedJob) -> PoolStanding | None:
@@ -226,6 +239,7 @@ def _entry(
     reason: WaitReason,
     detail: str,
 ) -> QueueEntry:
+    work_class = classify(job)
     return QueueEntry(
         job_id=job.id,
         run_id=job.run_id,
@@ -234,6 +248,9 @@ def _entry(
         job_name=job.job_name,
         labels=tuple(job.labels.as_list()),
         queued_at=job.queued_at,
+        url=job.url,
+        work_class=work_class,
+        urgency=urgency_of(work_class),
         pool=pool,
         priority=priority,
         position=position,

@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 
+from ghspot.domain.model.job import WorkClass
+
 
 class WaitReason(StrEnum):
     """Why one queued job is not running yet.
@@ -77,6 +79,17 @@ class QueueEntry:
     labels: tuple[str, ...]
     queued_at: datetime
 
+    url: str = ""
+    """The job's page on the forge. Empty only when the forge did not give one."""
+
+    work_class: WorkClass = WorkClass.BRANCH
+    """What kind of work this is — a merge to the default branch, a review, a draft."""
+
+    urgency: int = 0
+    """What that class is worth. The job's own rank, distinct from `priority` below, which
+    belongs to the pool: one says how much this job matters, the other how much its pool's
+    launches matter when the host cannot satisfy every pool at once."""
+
     pool: str = ""
     """The pool that would serve it, or empty when none can."""
 
@@ -84,7 +97,8 @@ class QueueEntry:
     """The serving pool's weight, carried here so the queue can be read on its own."""
 
     position: int = 0
-    """1-based place in its pool's line, oldest first. 0 when no pool serves it."""
+    """1-based place in its pool's line: most urgent first, oldest first within a class.
+    0 when no pool serves it."""
 
     reason: WaitReason = WaitReason.NO_POOL
     detail: str = ""
