@@ -29,10 +29,11 @@ from ghspot.domain.policy.admission import (
     LaunchRequest,
     admit,
 )
+from ghspot.domain.policy.queue import PoolStanding, explain_queue
 from ghspot.domain.policy.scaling import ScalePlan, plan_scaling
 from ghspot.domain.ports.backend import ContainerStatus, HostLoad, RunnerBackend
 from ghspot.domain.ports.forge import ForgeClient, ForgeRunner
-from ghspot.domain.ports.repository import RunnerRepository
+from ghspot.domain.ports.repository import QueueSnapshots, RunnerRepository
 from ghspot.domain.ports.system import Clock, EventPublisher
 
 #: How long a runner may sit registered-but-containerless before it is treated as the debris
@@ -79,6 +80,7 @@ class ReconciliationService:
         retire: RetireRunner,
         capacity: CapacityLimits | None = None,
         host: str = "",
+        queue: QueueSnapshots | None = None,
     ) -> None:
         self._pools = list(pools)
         self._host = host
@@ -90,6 +92,7 @@ class ReconciliationService:
         self._provision = provision
         self._retire_runner = retire
         self._capacity = capacity or CapacityLimits()
+        self._queue = queue
 
     def replace_pools(
         self, pools: Sequence[PoolConfiguration], capacity: CapacityLimits | None = None
@@ -135,6 +138,7 @@ class ReconciliationService:
             )
 
         demand_by_repository: dict[RepositoryTarget, Sequence[QueuedJob]] = {}
+        unreadable: list[str] = []
 
         # Every pool is planned before anything acts, because how many runners the host can
         # take is a question about all of them at once. Retiring and terminating happen here
@@ -166,8 +170,13 @@ class ReconciliationService:
 
             except GhSpotError as error:
                 errors.append(f"[{spec.name}] {error}")
+                if spec.repository not in demand_by_repository:
+                    # The queue for this repository was never read, so anything waiting in it
+                    # is invisible to this tick. Said out loud in the snapshot, because an
+                    # empty queue view and an unread one look identical to whoever reads it.
+                    unreadable.append(str(spec.repository))
 
-        admission = await self._admit(planned)
+        admission, load = await self._admit(planned)
         notes.extend(admission.reasons)
 
         for configuration, _pool, _plan in planned:
@@ -179,6 +188,8 @@ class ReconciliationService:
                 launched += await self._launch(spec, configuration.template, allowed)
             except GhSpotError as error:
                 errors.append(f"[{spec.name}] {error}")
+
+        await self._record_queue(planned, demand_by_repository, admission, load, notes, unreadable)
 
         return TickReport(
             started_at=started,
@@ -194,13 +205,17 @@ class ReconciliationService:
 
     async def _admit(
         self, planned: Sequence[tuple[PoolConfiguration, RunnerPool, ScalePlan]]
-    ) -> Admission:
-        """How much of what the pools want the host will take this tick.
+    ) -> tuple[Admission, HostLoad]:
+        """How much of what the pools want the host will take this tick, and what it looked like.
 
         The load probe is asked for only when something wants to start and a limit is
         configured — it is a call to the Engine and a read of /proc, and a fleet with no
         limits should not pay for either. A probe that fails degrades to an unmeasured host,
         which the policy treats as "no reason to hold back".
+
+        The reading is returned alongside the decision because the queue view reports it: an
+        operator told a launch was deferred needs the number that deferred it, and taking a
+        second sample to show them would be a different machine a moment later.
         """
         requests = [
             LaunchRequest(
@@ -215,7 +230,7 @@ class ReconciliationService:
         ]
 
         if not any(request.wanted for request in requests):
-            return Admission(granted={request.pool: 0 for request in requests})
+            return Admission(granted={request.pool: 0 for request in requests}), HostLoad()
 
         load = HostLoad()
         if self._capacity.has_backpressure:
@@ -226,7 +241,49 @@ class ReconciliationService:
                 # to stop the fleet.
                 load = HostLoad()
 
-        return admit(requests, load, self._capacity)
+        return admit(requests, load, self._capacity), load
+
+    async def _record_queue(
+        self,
+        planned: Sequence[tuple[PoolConfiguration, RunnerPool, ScalePlan]],
+        demand: Mapping[RepositoryTarget, Sequence[QueuedJob]],
+        admission: Admission,
+        load: HostLoad,
+        notes: Sequence[str],
+        unreadable: Sequence[str],
+    ) -> None:
+        """Leave behind why every queued job is still queued.
+
+        Last in the tick, and after the launches, so the snapshot describes the fleet the
+        reader will actually find rather than the one that existed before it acted.
+
+        Everything here was computed above; nothing is asked of Docker or the forge again.
+        A pool that raised is absent from `planned` and so absent from the snapshot — its
+        repository is named in `unreadable` instead, which is the honest answer.
+        """
+        if self._queue is None:
+            return
+
+        standings = [
+            PoolStanding(
+                spec=configuration.spec,
+                available=pool.available_count,
+                active=pool.active_count,
+                wanted=plan.launch,
+            )
+            for configuration, pool, plan in planned
+        ]
+        snapshot = explain_queue(
+            standings,
+            demand,
+            admission,
+            load,
+            self._capacity,
+            self._clock.now(),
+            notes=notes,
+            unreadable=unreadable,
+        )
+        await self._queue.record(snapshot)
 
     # -- observation ----------------------------------------------------------------
 

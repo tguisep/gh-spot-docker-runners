@@ -20,6 +20,7 @@ from tests.fakes.adapters import (
     FakeBackend,
     FakeClock,
     FakeForge,
+    InMemoryQueueSnapshots,
     InMemoryRunnerLogs,
     InMemoryRunnerRepository,
     RecordingPublisher,
@@ -82,6 +83,7 @@ def build_daemon(
         runners=repository,  # type: ignore[arg-type]
         events=events,  # type: ignore[arg-type]
         runner_logs=InMemoryRunnerLogs(),  # type: ignore[arg-type]
+        queue=InMemoryQueueSnapshots(),  # type: ignore[arg-type]
         reconciler=reconciler,  # type: ignore[arg-type]
         housekeeping=ReclaimHostSpace(
             backend=backend,

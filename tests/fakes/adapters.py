@@ -15,6 +15,7 @@ from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.events import DomainEvent
 from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.labels import LabelSet
+from ghspot.domain.model.queue import QueueSnapshot
 from ghspot.domain.model.runner import Runner, RunnerId
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.ports.backend import (
@@ -330,3 +331,20 @@ class InMemoryRunnerLogs:
 
     async def fetch(self, runner_id: str) -> str | None:
         return self.kept.get(str(runner_id))
+
+
+class InMemoryQueueSnapshots:
+    """The queue view the daemon leaves for the read side, without the file.
+
+    Keeps every snapshot it is given rather than only the last one, so a test can assert on
+    what a particular tick concluded instead of only on the state it ended in.
+    """
+
+    def __init__(self) -> None:
+        self.recorded: list[QueueSnapshot] = []
+
+    async def record(self, snapshot: QueueSnapshot) -> None:
+        self.recorded.append(snapshot)
+
+    async def latest(self) -> QueueSnapshot | None:
+        return self.recorded[-1] if self.recorded else None
