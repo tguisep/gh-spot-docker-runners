@@ -51,11 +51,24 @@ MAX_RUNS_PER_POLL = 30
 
 _RETRYABLE_STATUS = frozenset({500, 502, 503, 504})
 
+#: Open pull requests read in one page when working out which runs are drafts. A repository
+#: with more open pull requests than this, *and* queued jobs on the ones past the cut, sees
+#: those classified as ordinary pull requests — which is the safe direction to be wrong in.
+_OPEN_PULLS_PER_POLL = 100
+
 
 @dataclass(slots=True)
 class _CachedResponse:
     etag: str
     payload: Any
+
+
+@dataclass(frozen=True, slots=True)
+class _RunContext:
+    """What a poll learned about the repository, to classify its runs with."""
+
+    default_branch: str = ""
+    draft_branches: frozenset[str] = frozenset()
 
 
 class GitHubClient:
@@ -85,6 +98,9 @@ class GitHubClient:
         self._max_attempts = max(1, max_attempts)
         self._backoff_seconds = max(0.0, backoff_seconds)
         self._cache: dict[str, _CachedResponse] = {}
+        # Set once the pull request listing is refused, so a token without
+        # `Pull requests: read` costs one 403 rather than one per tick forever.
+        self._drafts_unavailable = False
         self._rate_limit_reset: datetime | None = None
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(
@@ -182,29 +198,101 @@ class GitHubClient:
         # the whole cost of a tick — measured at over three minutes on a host with two pools
         # and a backlog, against a fifteen second poll interval. The daemon cannot react to a
         # queue it takes minutes to read.
-        run_ids = [run["id"] for run in runs if isinstance(run.get("id"), int)]
+        by_run = {run["id"]: run for run in runs if isinstance(run.get("id"), int)}
         limit = asyncio.Semaphore(_JOB_FETCH_CONCURRENCY)
 
-        async def jobs_for(run_id: int) -> list[dict[str, Any]]:
+        async def jobs_for(run_id: int) -> tuple[int, list[dict[str, Any]]]:
             async with limit:
-                return await self._paginate(
+                return run_id, await self._paginate(
                     f"/{repository.api_path}/actions/runs/{run_id}/jobs",
                     key="jobs",
                     params={"filter": "latest"},
                 )
 
-        fetched = await asyncio.gather(*(jobs_for(run_id) for run_id in run_ids))
+        fetched = await asyncio.gather(*(jobs_for(run_id) for run_id in by_run))
 
-        jobs: list[QueuedJob] = []
+        # Paired with their run before anything else: the job says what it needs, the run says
+        # who is waiting on it, and the classification wants both.
+        waiting: list[tuple[Mapping[str, Any], Mapping[str, Any]]] = []
         seen: set[int] = set()
-        for items in fetched:
+        for run_id, items in fetched:
             for item in items:
-                job = _parse_job(item, repository)
-                if job is not None and job.id not in seen:
-                    seen.add(job.id)
-                    jobs.append(job)
+                job_id = item.get("id")
+                if _is_waiting(item) and isinstance(job_id, int) and job_id not in seen:
+                    seen.add(job_id)
+                    waiting.append((item, by_run[run_id]))
 
-        return jobs
+        if not waiting:
+            # Nothing queued, so nothing to classify. The two lookups below are skipped
+            # entirely on a quiet repository, which is nearly all of the time.
+            return []
+
+        context = await self._run_context(repository, [run for _, run in waiting])
+        return [_parse_job(item, run, repository, context) for item, run in waiting]
+
+    async def _run_context(
+        self, repository: RepositoryTarget, runs: Sequence[Mapping[str, Any]]
+    ) -> _RunContext:
+        """What the runs themselves do not say: which branch is default, and which are drafts.
+
+        Two conditional GETs at most, and only when something is actually queued. Both are
+        ETag-cached like every other read, so a repository whose default branch and open pull
+        requests have not changed pays a `304` and nothing against the rate limit.
+
+        Neither is allowed to fail the poll. Classification is a nicety on top of the queue;
+        losing it costs a column, and raising here would cost the fleet its demand signal.
+        """
+        default_branch = await self._default_branch(repository)
+        wants_drafts = any(str(run.get("event", "")).startswith("pull_request") for run in runs)
+        drafts = await self._draft_branches(repository) if wants_drafts else frozenset()
+        return _RunContext(default_branch=default_branch, draft_branches=drafts)
+
+    async def _default_branch(self, repository: RepositoryTarget) -> str:
+        try:
+            payload = await self._request("GET", f"/{repository.api_path}")
+        except ForgeError:
+            return ""
+        if not isinstance(payload, dict):
+            return ""
+        return str(payload.get("default_branch") or "")
+
+    async def _draft_branches(self, repository: RepositoryTarget) -> frozenset[str]:
+        """Head refs of the open pull requests marked draft.
+
+        Matched by branch rather than by number because that is what a workflow run carries:
+        `pull_requests` on a run is empty for anything from a fork, so the number is not
+        reliably there to match on.
+
+        This is the one read that needs a permission the daemon does not otherwise ask for
+        (`Pull requests: read`). Without it the call is refused once, remembered, and never
+        made again — drafts then read as ordinary pull requests, which is a rank too high
+        rather than work quietly demoted.
+        """
+        if self._drafts_unavailable:
+            return frozenset()
+
+        try:
+            payload = await self._request(
+                "GET",
+                f"/{repository.api_path}/pulls",
+                params={"state": "open", "per_page": str(_OPEN_PULLS_PER_POLL)},
+            )
+        except (ForgePermissionError, ForgeNotFoundError):
+            self._drafts_unavailable = True
+            return frozenset()
+        except ForgeError:
+            # Transient. Not remembered, so the next tick tries again.
+            return frozenset()
+
+        if not isinstance(payload, list):
+            return frozenset()
+        return frozenset(
+            str(head.get("ref"))
+            for item in payload
+            if isinstance(item, dict) and item.get("draft")
+            for head in [item.get("head") or {}]
+            if isinstance(head, dict) and head.get("ref")
+        )
 
     async def find_job_for_runner(
         self, repository: RepositoryTarget, runner_name: str, limit: int = MAX_RUNS_PER_POLL
@@ -465,28 +553,48 @@ def _parse_runner(item: Mapping[str, Any]) -> ForgeRunner:
     )
 
 
-def _parse_job(item: Mapping[str, Any], repository: RepositoryTarget) -> QueuedJob | None:
+def _is_waiting(item: Mapping[str, Any]) -> bool:
+    """Whether this job listing is one the daemon is expected to serve.
+
+    Split out from parsing so a poll can decide whether anything is queued *before* paying
+    for the two lookups that classify it.
+    """
     if item.get("status") != "queued":
-        return None
+        return False
+    if not isinstance(item.get("id"), int) or not isinstance(item.get("run_id"), int):
+        return False
+    # A job with no labels wants a GitHub-hosted runner and is none of our business.
+    return any(str(label).strip() for label in item.get("labels", []))
 
-    job_id = item.get("id")
-    run_id = item.get("run_id")
-    if not isinstance(job_id, int) or not isinstance(run_id, int):
-        return None
 
+def _parse_job(
+    item: Mapping[str, Any],
+    run: Mapping[str, Any],
+    repository: RepositoryTarget,
+    context: _RunContext,
+) -> QueuedJob:
+    """One queued job, with what its run says about who is waiting on it.
+
+    Only called for items `_is_waiting` accepted, so the fields it needs are known present.
+    """
     raw_labels = [str(label) for label in item.get("labels", []) if str(label).strip()]
-    if not raw_labels:
-        # A job with no labels wants a GitHub-hosted runner and is none of our business.
-        return None
+    branch = str(run.get("head_branch") or "")
 
     return QueuedJob(
-        id=job_id,
-        run_id=run_id,
+        id=int(item["id"]),
+        run_id=int(item["run_id"]),
         repository=repository,
         labels=LabelSet.from_iterable(raw_labels),
         queued_at=_parse_time(item.get("started_at") or item.get("created_at")),
-        workflow_name=str(item.get("workflow_name") or ""),
+        workflow_name=str(item.get("workflow_name") or run.get("name") or ""),
         job_name=str(item.get("name") or ""),
+        # The forge's own link, never one assembled here: an Enterprise install serves its
+        # pages from a different host than its API, and a built URL would 404 there.
+        url=str(item.get("html_url") or run.get("html_url") or ""),
+        event=str(run.get("event") or ""),
+        branch=branch,
+        on_default_branch=bool(branch) and branch == context.default_branch,
+        draft=branch in context.draft_branches,
     )
 
 

@@ -22,6 +22,13 @@ permissions, no account permissions, no webhooks.
 | **Administration** | Read and write | Registering and removing runners |
 | **Actions** | Read | Seeing which jobs are queued |
 | **Metadata** | Read | Mandatory; GitHub selects it for you |
+| **Pull requests** | Read | *Optional.* Telling a draft pull request from one under review |
+
+**Pull requests: Read** is the only optional one, and nothing breaks without it. It is what
+lets [the queue view](../../guides/operate/queue/) rank a draft below a review: the run says
+it came from a pull request, and only the pull request itself says whether it is a draft.
+Refused, the daemon asks once, remembers, and treats every pull request as ready — a rank too
+high rather than somebody's work quietly demoted.
 
 ### Why write, specifically
 
@@ -35,6 +42,8 @@ call the daemon makes, and the permission GitHub requires for it:
 | `DELETE .../actions/runners/{id}` | Retiring or reaping a runner | Administration | **write** |
 | `GET .../actions/runs` | Every tick, to find queued work | Actions | read |
 | `GET .../actions/runs/{id}/jobs` | Every tick, to read job labels | Actions | read |
+| `GET /repos/{owner}/{repo}` | When something is queued, for the default branch | Metadata | read |
+| `GET .../pulls?state=open` | When a pull request is queued, for draft status | Pull requests | read *(optional)* |
 
 The write level exists solely because creating and deleting a self-hosted runner *is* an
 administration operation in GitHub's model. There is no narrower permission that permits it —
@@ -91,6 +100,7 @@ Under **Permissions → Repository permissions**, set:
 |---|---|
 | Administration | **Read and write** |
 | Actions | **Read-only** |
+| Pull requests | **Read-only** *(optional — draft detection in the queue view)* |
 | Metadata | Read-only *(GitHub sets this for you)* |
 
 Leave every other permission at **No access**. Do not set any *Account* permissions.
@@ -150,6 +160,7 @@ Under **Repository permissions**:
 |---|---|
 | Administration | **Read and write** |
 | Actions | **Read-only** |
+| Pull requests | **Read-only** *(optional — draft detection in the queue view)* |
 | Metadata | Read-only *(mandatory, pre-selected)* |
 
 Leave **Organization permissions** and **Account permissions** entirely alone. Subscribe to

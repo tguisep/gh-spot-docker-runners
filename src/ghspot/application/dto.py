@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from ghspot.domain.model.job import WorkClass
 from ghspot.domain.model.queue import WaitReason
 from ghspot.domain.model.runner import RunnerState
 
@@ -201,6 +202,12 @@ class QueueEntryView:
     workflow: str
     job_name: str
     labels: list[str]
+    url: str
+    work_class: WorkClass
+    urgency: int
+    """The job's own rank, from what triggered it. Distinct from `priority`, which is the
+    serving pool's weight — one is about this job, the other about its pool's launches."""
+
     pool: str
     priority: int
     position: int

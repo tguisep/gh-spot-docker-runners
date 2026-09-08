@@ -28,11 +28,33 @@ BASE = "https://api.github.com"
 RUNNERS_URL = f"{BASE}/repos/tguisep/gh-spot-docker-runners/actions/runners"
 JIT_URL = f"{RUNNERS_URL}/generate-jitconfig"
 RUNS_URL = f"{BASE}/repos/tguisep/gh-spot-docker-runners/actions/runs"
+REPO_URL = f"{BASE}/repos/tguisep/gh-spot-docker-runners"
+PULLS_URL = f"{REPO_URL}/pulls"
 
 
 @pytest.fixture
 async def client() -> GitHubClient:
     return GitHubClient(token="ghp_test", max_attempts=1, backoff_seconds=0)
+
+
+def _classification(default_branch: str = "main", drafts: list[str] | None = None) -> None:
+    """Mock the two lookups a poll makes to work out who is waiting on each run.
+
+    Both are conditional and only made when something is actually queued, so a test with an
+    empty queue never needs them.
+    """
+    respx.get(REPO_URL).mock(
+        return_value=httpx.Response(200, json={"default_branch": default_branch})
+    )
+    respx.get(PULLS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"number": index, "draft": True, "head": {"ref": branch}}
+                for index, branch in enumerate(drafts or [], start=1)
+            ],
+        )
+    )
 
 
 def _runner(
@@ -224,6 +246,7 @@ async def test_queued_jobs_are_gathered_from_queued_and_in_progress_runs(
             },
         )
     )
+    _classification()
 
     jobs = await client.list_queued_jobs(REPO)
 
@@ -473,3 +496,244 @@ async def test_an_unnamed_runner_costs_no_requests(client: GitHubClient) -> None
 
     assert await client.find_job_for_runner(REPO, "") is None
     assert not route.called
+
+
+@respx.mock
+async def test_a_queued_job_carries_the_run_context_that_ranks_it(
+    client: GitHubClient,
+) -> None:
+    """The classifier reads the run, not the job: the job listing says nothing about the
+    branch, the trigger, or whether a pull request is a draft."""
+    respx.get(RUNS_URL, params={"status": "queued"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "workflow_runs": [{"id": 1, "event": "push", "head_branch": "main", "name": "ci"}],
+            },
+        )
+    )
+    respx.get(RUNS_URL, params={"status": "in_progress"}).mock(
+        return_value=httpx.Response(200, json={"total_count": 0, "workflow_runs": []})
+    )
+    respx.get(f"{RUNS_URL}/1/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "jobs": [
+                    {
+                        "id": 10,
+                        "run_id": 1,
+                        "status": "queued",
+                        "name": "build",
+                        "labels": ["self-hosted", "linux"],
+                        "created_at": "2026-08-26T12:00:00Z",
+                        "html_url": "https://github.com/o/r/actions/runs/1/job/10",
+                    }
+                ],
+            },
+        )
+    )
+    _classification(default_branch="main")
+
+    job = (await client.list_queued_jobs(REPO))[0]
+
+    assert job.event == "push"
+    assert job.branch == "main"
+    assert job.on_default_branch
+    assert not job.draft
+    assert job.url == "https://github.com/o/r/actions/runs/1/job/10"
+
+
+@respx.mock
+async def test_a_draft_pull_request_is_recognised_by_its_head_branch(
+    client: GitHubClient,
+) -> None:
+    """Matched by branch rather than number: `pull_requests` on a run is empty for anything
+    from a fork, so the number is not reliably there to match on."""
+    respx.get(RUNS_URL, params={"status": "queued"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "workflow_runs": [{"id": 1, "event": "pull_request", "head_branch": "wip/thing"}],
+            },
+        )
+    )
+    respx.get(RUNS_URL, params={"status": "in_progress"}).mock(
+        return_value=httpx.Response(200, json={"total_count": 0, "workflow_runs": []})
+    )
+    respx.get(f"{RUNS_URL}/1/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "jobs": [
+                    {
+                        "id": 10,
+                        "run_id": 1,
+                        "status": "queued",
+                        "labels": ["self-hosted"],
+                        "created_at": "2026-08-26T12:00:00Z",
+                    }
+                ],
+            },
+        )
+    )
+    _classification(drafts=["wip/thing"])
+
+    assert (await client.list_queued_jobs(REPO))[0].draft
+
+
+@respx.mock
+async def test_a_token_without_pull_request_read_is_asked_once_and_never_again(
+    client: GitHubClient,
+) -> None:
+    """Draft detection is the one read needing a permission the daemon does not require.
+    Refused, it degrades to "not a draft" — a rank too high rather than work quietly demoted —
+    and must not spend a 403 on every tick forever."""
+    respx.get(RUNS_URL, params={"status": "queued"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "workflow_runs": [{"id": 1, "event": "pull_request", "head_branch": "wip"}],
+            },
+        )
+    )
+    respx.get(RUNS_URL, params={"status": "in_progress"}).mock(
+        return_value=httpx.Response(200, json={"total_count": 0, "workflow_runs": []})
+    )
+    respx.get(f"{RUNS_URL}/1/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "jobs": [
+                    {
+                        "id": 10,
+                        "run_id": 1,
+                        "status": "queued",
+                        "labels": ["self-hosted"],
+                        "created_at": "2026-08-26T12:00:00Z",
+                    }
+                ],
+            },
+        )
+    )
+    respx.get(REPO_URL).mock(return_value=httpx.Response(200, json={"default_branch": "main"}))
+    refused = respx.get(PULLS_URL).mock(
+        return_value=httpx.Response(403, json={"message": "Resource not accessible"})
+    )
+
+    assert not (await client.list_queued_jobs(REPO))[0].draft
+    assert not (await client.list_queued_jobs(REPO))[0].draft
+
+    assert refused.call_count == 1
+
+
+@respx.mock
+async def test_a_quiet_repository_is_never_asked_about_branches_or_drafts(
+    client: GitHubClient,
+) -> None:
+    """Two extra reads per poll would be two per repository per fifteen seconds, forever, to
+    classify a queue that is empty."""
+    respx.get(RUNS_URL, params={"status": "queued"}).mock(
+        return_value=httpx.Response(200, json={"total_count": 0, "workflow_runs": []})
+    )
+    respx.get(RUNS_URL, params={"status": "in_progress"}).mock(
+        return_value=httpx.Response(200, json={"total_count": 0, "workflow_runs": []})
+    )
+    repository = respx.get(REPO_URL).mock(return_value=httpx.Response(200, json={}))
+    pulls = respx.get(PULLS_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    assert await client.list_queued_jobs(REPO) == []
+
+    assert not repository.called
+    assert not pulls.called
+
+
+@respx.mock
+async def test_the_drafts_listing_is_skipped_when_nothing_queued_is_a_pull_request(
+    client: GitHubClient,
+) -> None:
+    respx.get(RUNS_URL, params={"status": "queued"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "workflow_runs": [{"id": 1, "event": "push", "head_branch": "main"}],
+            },
+        )
+    )
+    respx.get(RUNS_URL, params={"status": "in_progress"}).mock(
+        return_value=httpx.Response(200, json={"total_count": 0, "workflow_runs": []})
+    )
+    respx.get(f"{RUNS_URL}/1/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "jobs": [
+                    {
+                        "id": 10,
+                        "run_id": 1,
+                        "status": "queued",
+                        "labels": ["self-hosted"],
+                        "created_at": "2026-08-26T12:00:00Z",
+                    }
+                ],
+            },
+        )
+    )
+    respx.get(REPO_URL).mock(return_value=httpx.Response(200, json={"default_branch": "main"}))
+    pulls = respx.get(PULLS_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    await client.list_queued_jobs(REPO)
+
+    assert not pulls.called
+
+
+@respx.mock
+async def test_a_repository_lookup_that_fails_does_not_fail_the_poll(
+    client: GitHubClient,
+) -> None:
+    """Classification is a nicety on top of the queue. Losing it costs a column; raising here
+    would cost the fleet its demand signal."""
+    respx.get(RUNS_URL, params={"status": "queued"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "workflow_runs": [{"id": 1, "event": "push", "head_branch": "main"}],
+            },
+        )
+    )
+    respx.get(RUNS_URL, params={"status": "in_progress"}).mock(
+        return_value=httpx.Response(200, json={"total_count": 0, "workflow_runs": []})
+    )
+    respx.get(f"{RUNS_URL}/1/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total_count": 1,
+                "jobs": [
+                    {
+                        "id": 10,
+                        "run_id": 1,
+                        "status": "queued",
+                        "labels": ["self-hosted"],
+                        "created_at": "2026-08-26T12:00:00Z",
+                    }
+                ],
+            },
+        )
+    )
+    respx.get(REPO_URL).mock(return_value=httpx.Response(404, json={"message": "Not Found"}))
+    respx.get(PULLS_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    jobs = await client.list_queued_jobs(REPO)
+
+    assert [job.id for job in jobs] == [10]
+    assert not jobs[0].on_default_branch

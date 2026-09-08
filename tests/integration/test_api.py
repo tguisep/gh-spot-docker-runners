@@ -649,3 +649,37 @@ def test_the_queue_can_be_narrowed_to_one_pool(client: TestClient, harness: Harn
 
     assert [pool["pool"] for pool in body["pools"]] == ["default"]
     assert body["total"] == 1
+
+
+def test_a_queued_job_is_served_with_its_link_and_its_class(
+    client: TestClient, harness: Harness
+) -> None:
+    from tests.unit.conftest import merge_job
+
+    harness.forge.queued[REPO] = [
+        merge_job(1, url="https://github.com/tguisep/gh-spot-docker-runners/actions/runs/1001")
+    ]
+    client.post("/reconcile")
+
+    entry = client.get("/queue").json()["entries"][0]
+
+    assert entry["url"].endswith("/actions/runs/1001")
+    assert entry["work_class"] == "default-branch"
+    assert entry["urgency"] == 10
+
+
+def test_the_queue_ranks_a_merge_above_an_older_draft(client: TestClient, harness: Harness) -> None:
+    from datetime import timedelta
+
+    from tests.unit.conftest import T0, draft_job, merge_job
+
+    harness.forge.queued[REPO] = [
+        draft_job(1, queued_at=T0),
+        merge_job(2, queued_at=T0 + timedelta(minutes=5)),
+    ]
+    client.post("/reconcile")
+
+    body = client.get("/queue").json()
+
+    assert [entry["job_id"] for entry in body["entries"]] == [2, 1]
+    assert [entry["urgency"] for entry in body["entries"]] == [10, 4]

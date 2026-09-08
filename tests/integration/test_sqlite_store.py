@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from ghspot.domain.model.events import RunnerRegistered, RunnerRetired
+from ghspot.domain.model.job import WorkClass
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.queue import (
     HostPressure,
@@ -268,6 +269,9 @@ def make_snapshot() -> QueueSnapshot:
                 job_name="test (3.13)",
                 labels=("self-hosted", "linux"),
                 queued_at=T0,
+                url="https://github.com/tguisep/gh-spot-docker-runners/actions/runs/55/job/991",
+                work_class=WorkClass.DEFAULT_BRANCH,
+                urgency=10,
                 pool="default",
                 priority=7,
                 position=2,
@@ -345,3 +349,24 @@ async def test_a_document_from_another_schema_reads_as_no_snapshot(tmp_path: Pat
         connection.execute("UPDATE queue_snapshot SET document = '{\"nope\": 1}' WHERE id = 1")
 
     assert await store.latest() is None
+
+
+@pytest.mark.anyio
+async def test_a_work_class_this_version_does_not_know_reads_as_a_branch_push(
+    tmp_path: Path,
+) -> None:
+    """Written by a newer daemon against the same file. Degrading to `branch` claims nothing
+    about who is waiting, so it cannot mislead the reader either way."""
+    path = tmp_path / "state.db"
+    store = SqliteQueueSnapshots(path)
+    await store.record(make_snapshot())
+
+    with store.connect() as connection:
+        connection.execute(
+            "UPDATE queue_snapshot SET document = replace(document, "
+            '\'"work_class": "default-branch"\', \'"work_class": "hotfix"\')'
+        )
+
+    read = await store.latest()
+    assert read is not None
+    assert read.entries[0].work_class is WorkClass.BRANCH

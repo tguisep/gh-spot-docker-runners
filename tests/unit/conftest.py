@@ -75,14 +75,36 @@ def make_job(
     labels: LabelSet | None = None,
     repository: RepositoryTarget = REPO,
     queued_at: datetime | None = None,
+    event: str = "",
+    branch: str = "",
+    on_default_branch: bool = False,
+    draft: bool = False,
+    url: str = "",
 ) -> QueuedJob:
+    """A queued job. The run context defaults to empty, which classifies as a branch push —
+    the rank that claims nothing about who is waiting."""
     return QueuedJob(
         id=job_id,
         run_id=1000 + job_id,
         repository=repository,
         labels=labels or LabelSet.of("self-hosted", "linux"),
         queued_at=queued_at or T0,
+        event=event,
+        branch=branch,
+        on_default_branch=on_default_branch,
+        draft=draft,
+        url=url,
     )
+
+
+def merge_job(job_id: int = 1, **overrides: object) -> QueuedJob:
+    """A job from a merge to the default branch: the top of the scale."""
+    return make_job(job_id, event="push", branch="main", on_default_branch=True, **overrides)  # type: ignore[arg-type]
+
+
+def draft_job(job_id: int = 1, **overrides: object) -> QueuedJob:
+    """A job from a draft pull request: the bottom of the scale bar nightlies."""
+    return make_job(job_id, event="pull_request", branch="wip", draft=True, **overrides)  # type: ignore[arg-type]
 
 
 @pytest.fixture

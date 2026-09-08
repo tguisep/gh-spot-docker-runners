@@ -4,7 +4,7 @@ import { api } from '../api';
 import { Bar, Panel, Status } from '../components/Chrome';
 import { duration } from '../format';
 import { usePoll } from '../usePoll';
-import type { HostPressure, WaitReason } from '../types';
+import type { HostPressure, QueueEntry, WaitReason, WorkClass } from '../types';
 
 /**
  * Which of the eight reasons is worth colouring, and how.
@@ -22,6 +22,21 @@ const REASON_CLASS: Record<WaitReason, string> = {
     'host-busy': 'bad',
     contended: 'warn',
     'no-pool': 'bad',
+};
+
+/**
+ * Only the two ends of the scale are coloured.
+ *
+ * A colour per rung is a legend to memorise; what the reader needs at a glance is whether the
+ * stuck work is the branch everybody shares or somebody's unfinished draft.
+ */
+const CLASS_CLASS: Record<WorkClass, string> = {
+    'default-branch': 'ok',
+    manual: 'ok',
+    'pull-request': '',
+    branch: '',
+    draft: 'dim',
+    scheduled: 'dim',
 };
 
 export function Queue() {
@@ -93,8 +108,9 @@ export function Queue() {
                                     <th className="num">waiting</th>
                                     <th>job</th>
                                     <th>repository</th>
-                                    <th>pool</th>
+                                    <th>kind</th>
                                     <th className="num">prio</th>
+                                    <th>pool</th>
                                     <th className="num">#</th>
                                     <th>status</th>
                                     <th>why</th>
@@ -106,13 +122,16 @@ export function Queue() {
                                         <td className="num">
                                             {duration(entry.waiting_seconds)}
                                         </td>
-                                        <th scope="row">{entry.title}</th>
+                                        <th scope="row">
+                                            <JobLink entry={entry} />
+                                        </th>
                                         <td className="dim">{entry.repository}</td>
+                                        <td className={CLASS_CLASS[entry.work_class]}>
+                                            {entry.work_class}
+                                        </td>
+                                        <td className="num">{entry.urgency}</td>
                                         <td>
                                             {entry.pool || <span className="bad">none</span>}
-                                        </td>
-                                        <td className="num">
-                                            {entry.pool ? entry.priority : '—'}
                                         </td>
                                         <td className="num">{entry.position || '—'}</td>
                                         <td className={REASON_CLASS[entry.reason]}>
@@ -186,6 +205,30 @@ export function Queue() {
                 ) : null}
             </Panel>
         </>
+    );
+}
+
+/**
+ * The job's name, linked to its page on the forge.
+ *
+ * A new tab, because the dashboard is a thing you keep open and watch while a burst drains —
+ * navigating away from it to read one job's log is the wrong trade. `noreferrer` comes with
+ * `noopener`, which is what stops the opened page reaching back through `window.opener`.
+ *
+ * The link is the forge's own `html_url`, so an Enterprise install points at its own host.
+ * A job the forge gave no URL for renders as plain text rather than a dead link.
+ */
+function JobLink({ entry }: { entry: QueueEntry }) {
+    if (!entry.url) return <>{entry.title}</>;
+    return (
+        <a
+            href={entry.url}
+            target="_blank"
+            rel="noreferrer"
+            title={`open ${entry.title} on the forge`}
+        >
+            {entry.title}
+        </a>
     );
 }
 

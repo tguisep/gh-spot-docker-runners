@@ -13,6 +13,7 @@ import pytest
 
 from ghspot.application.queries.queue import GetQueue
 from ghspot.application.queries.views import GetPoolStatus
+from ghspot.domain.model.job import WorkClass
 from ghspot.domain.model.queue import (
     HostPressure,
     PoolPressure,
@@ -33,6 +34,9 @@ def entry(job_id: int = 1, *, pool: str = "default", **overrides: object) -> Que
         "job_name": "test",
         "labels": ("self-hosted", "linux"),
         "queued_at": T0,
+        "url": "https://github.com/tguisep/gh-spot-docker-runners/actions/runs/1001/job/1",
+        "work_class": WorkClass.PULL_REQUEST,
+        "urgency": 6,
         "pool": pool,
         "priority": 1,
         "position": 1,
@@ -232,3 +236,19 @@ async def test_an_explicit_count_wins_over_the_snapshot() -> None:
     views = await query([make_spec()], {"default": 9})
 
     assert views[0].queued_jobs == 9
+
+
+@pytest.mark.anyio
+async def test_the_job_link_and_its_class_reach_the_reader() -> None:
+    """Both exist for the person looking at the page: one to get them to the job in a click,
+    the other to tell a backlog somebody is waiting on from a pile of drafts."""
+    snapshot = QueueSnapshot(
+        taken_at=T0,
+        entries=(entry(1, work_class=WorkClass.DEFAULT_BRANCH, urgency=10),),
+    )
+
+    view = await GetQueue(await stored(snapshot), FakeClock(T0))()
+
+    assert view.entries[0].work_class is WorkClass.DEFAULT_BRANCH
+    assert view.entries[0].urgency == 10
+    assert view.entries[0].url.endswith("/actions/runs/1001/job/1")

@@ -13,14 +13,14 @@ from datetime import timedelta
 
 import pytest
 
-from ghspot.domain.model.job import QueuedJob
+from ghspot.domain.model.job import QueuedJob, WorkClass
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.queue import QueueSnapshot, WaitReason
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.policy.admission import Admission, CapacityLimits
 from ghspot.domain.policy.queue import PoolStanding, explain_queue
 from ghspot.domain.ports.backend import HostLoad
-from tests.unit.conftest import REPO, T0, at, make_job, make_spec
+from tests.unit.conftest import REPO, T0, at, draft_job, make_job, make_spec, merge_job
 
 
 def standing(available: int = 0, active: int = 0, wanted: int = 0, **spec: object) -> PoolStanding:
@@ -257,3 +257,58 @@ def test_idle_timeout_is_not_a_queue_reason() -> None:
     )
 
     assert snapshot.entries[0].detail == ""
+
+
+# ---------------------------------------------------------------- priority
+
+
+def test_the_line_puts_a_merge_in_front_of_an_older_draft() -> None:
+    """The point of classifying at all. Age alone cannot tell a backlog somebody is waiting
+    on from forty draft matrix legs."""
+    old_draft = draft_job(1, queued_at=T0)
+    fresh_merge = merge_job(2, queued_at=at(seconds=20))
+
+    snapshot = explain([standing(available=0, active=4, max_runners=4)], [old_draft, fresh_merge])
+
+    assert [entry.job_id for entry in snapshot.entries] == [2, 1]
+    assert [entry.position for entry in snapshot.entries] == [1, 2]
+    assert snapshot.entries[0].work_class is WorkClass.DEFAULT_BRANCH
+    assert snapshot.entries[0].urgency == 10
+
+
+def test_age_still_decides_between_two_jobs_of_the_same_kind() -> None:
+    jobs = [merge_job(2, queued_at=at(seconds=20)), merge_job(1, queued_at=T0)]
+
+    snapshot = explain([standing(available=0, active=4, max_runners=4)], jobs)
+
+    assert [entry.job_id for entry in snapshot.entries] == [1, 2]
+
+
+def test_the_free_runner_goes_to_the_most_urgent_job_in_the_line() -> None:
+    """Position is what marks a job assignable, so ranking has to happen before the cut."""
+    snapshot = explain(
+        [standing(available=1, active=1)],
+        [draft_job(1, queued_at=T0), merge_job(2, queued_at=at(seconds=30))],
+    )
+
+    assignable = [entry for entry in snapshot.entries if entry.reason is WaitReason.ASSIGNABLE]
+    assert [entry.job_id for entry in assignable] == [2]
+
+
+def test_the_job_link_the_forge_gave_is_carried_through_untouched() -> None:
+    url = "https://ghe.example.com/tguisep/repo/actions/runs/1001/job/1"
+    snapshot = explain([standing(available=1, active=1)], [make_job(1, url=url)])
+
+    assert snapshot.entries[0].url == url
+
+
+def test_a_job_no_pool_serves_is_still_classified_and_ranked() -> None:
+    """It is the reason that never clears on its own, so knowing whether it is a merge or a
+    draft is the difference between acting now and acting on Monday."""
+    unservable = merge_job(1, labels=LabelSet.of("self-hosted", "windows"))
+
+    snapshot = explain([standing(available=2, active=2)], [unservable])
+
+    assert snapshot.entries[0].reason is WaitReason.NO_POOL
+    assert snapshot.entries[0].work_class is WorkClass.DEFAULT_BRANCH
+    assert snapshot.entries[0].urgency == 10

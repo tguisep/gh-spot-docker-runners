@@ -92,7 +92,7 @@ every tick.
 |---|---|---|
 | `id` | INTEGER PK | `CHECK (id = 1)` — there is only ever one row |
 | `taken_at` | TEXT | ISO-8601. The reader compares it against the poll interval to decide whether the reading is stale |
-| `document` | TEXT | JSON: the queued jobs with their pool, priority, position and wait reason; each pool's pressure; the host readings and the limits they were judged against |
+| `document` | TEXT | JSON: the queued jobs with their link, class, urgency, pool, position and wait reason; each pool's pressure; the host readings and the limits they were judged against |
 
 A JSON document rather than tables because nothing ever queries inside it: it is written
 whole by one writer and read whole by any number of readers.

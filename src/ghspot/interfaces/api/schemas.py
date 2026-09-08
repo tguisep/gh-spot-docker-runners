@@ -268,6 +268,18 @@ class QueueEntryResponse(BaseModel):
     job_name: str
     title: str
     labels: list[str]
+
+    url: str
+    """The job's page on the forge, as the forge itself reported it. Empty if it gave none."""
+
+    work_class: str
+    """What kind of work this is: `default-branch`, `manual`, `pull-request`, `branch`,
+    `draft` or `scheduled`. Derived from the run, never declared by the workflow."""
+
+    urgency: int
+    """What that class is worth. The job's own rank — distinct from `priority` below, which
+    is the serving pool's weight."""
+
     pool: str
     """Empty when no configured pool serves this job's labels."""
 
@@ -291,6 +303,9 @@ class QueueEntryResponse(BaseModel):
             job_name=view.job_name,
             title=view.title,
             labels=view.labels,
+            url=view.url,
+            work_class=view.work_class.value,
+            urgency=view.urgency,
             pool=view.pool,
             priority=view.priority,
             position=view.position,

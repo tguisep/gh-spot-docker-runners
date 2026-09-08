@@ -15,17 +15,22 @@ ghspot queue --watch 2      # repaint in place while a burst drains
 ```
 
 ```
-queue — 5 job(s), 3 waiting on capacity, longest 3m20s  ·  read 4s ago
-┏━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━┳━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ waiting ┃ job           ┃ pool    ┃ prio ┃ # ┃ status           ┃ why                               ┃
-┡━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━╇━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│     40s │ ci / test (1) │ default │    5 │ 1 │ assignable       │                                   │
-│   1m20s │ ci / test (2) │ default │    5 │ 2 │ starting         │ a runner is starting for it       │
-│   2m00s │ ci / test (3) │ default │    5 │ 3 │ pool-at-capacity │ pool is at max_runners=3 with 3 up │
-│   2m40s │ ci / test (4) │ gpu     │   10 │ 1 │ host-at-capacity │ the host refused: max_cpus=8       │
-│   3m20s │ ci / test (5) │ —       │    — │ — │ no-pool          │ no pool serves […, windows]       │
-└─────────┴───────────────┴─────────┴──────┴───┴──────────────────┴───────────────────────────────────┘
+queue — 5 job(s), 3 waiting on capacity, longest 15m00s  ·  read 4s ago
+┏━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ waiting ┃ job           ┃ kind           ┃ prio ┃ pool    ┃ # ┃ status           ┃ why                  ┃
+┡━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│     45s │ ci / test (1) │ default-branch │   10 │ default │ 1 │ assignable       │                      │
+│   3m20s │ ci / deploy   │ manual         │    8 │ default │ 2 │ starting         │ a runner is starting │
+│   4m20s │ ci / test (3) │ pull-request   │    6 │ default │ 3 │ pool-at-capacity │ at max_runners=3     │
+│   5m00s │ ci / gpu      │ pull-request   │    6 │ gpu     │ 1 │ host-at-capacity │ the host refused:    │
+│  15m00s │ ci / test (5) │ draft          │    4 │ default │ 4 │ pool-at-capacity │ at max_runners=3     │
+└─────────┴───────────────┴────────────────┴──────┴─────────┴───┴──────────────────┴──────────────────────┘
 ```
+
+Job names are hyperlinks. In a terminal that supports them, clicking one opens the job on
+GitHub; in one that does not, it is a plain name and nothing is lost. The dashboard renders
+the same link as an ordinary link, opening in a new tab so the page you are watching stays
+where it is.
 
 Below the jobs comes a row per pool — what it holds, what the scaling policy asked for, what
 the host granted, and what held the rest back — then the host's own readings beside the
@@ -59,6 +64,48 @@ The same thing lives on the dashboard's **queue** page and at `GET /queue`.
 `no-pool` is worth watching for. Nothing is wrong with the fleet and nothing will ever
 happen: a workflow asks for `windows` or `gpu`, no pool carries it, and the job waits until
 somebody cancels it. Before this view it was invisible — the job appeared in no count at all.
+
+## Kind and priority
+
+Two jobs asking for the same labels are interchangeable to the fleet, and are not
+interchangeable to the people waiting. So every queued job is classified from its run, and the
+queue is read most urgent first, oldest first within a class.
+
+| Kind | Prio | When |
+|---|---|---|
+| `default-branch` | 10 | A push or merge to the default branch. The build nobody can route around |
+| `manual` | 8 | `workflow_dispatch` — somebody pressed a button and is watching the page |
+| `pull-request` | 6 | A pull request open for review |
+| `branch` | 5 | A push to any other branch, or a tag |
+| `draft` | 4 | A draft pull request. The author has said it is not finished |
+| `scheduled` | 2 | `schedule` — a nightly ten minutes late is still a nightly |
+
+Nothing is configurable per job, and that is the point: a workflow that could declare its own
+importance would declare the top of the scale, every time, and the ranking would mean nothing
+within a week. The classification comes from what the run already says — its event, its
+branch, and whether the pull request behind it is a draft.
+
+`prio` here is the **job's** rank. The `prio` in the pools table below it is the pool's
+`priority` weight, which is a different thing: one says how much this job matters, the other
+how much its pool's launches matter when the host cannot satisfy every pool at once.
+
+### What ranking does, and what it does not
+
+It orders the queue **as read**, and nothing else.
+
+The daemon does not hand jobs to runners. It starts runners, and GitHub decides which job each
+one picks up, roughly in the order they were queued. So a merge cannot jump a draft inside
+GitHub's own dispatch, and nothing here preempts a job already running.
+
+What it does is answer the question you actually have when the queue is deep: *is this a
+backlog somebody is waiting on, or is it forty draft-PR matrix legs?* Those want different
+responses — raise `max_runners`, or leave it alone — and a queue sorted only by age cannot
+tell them apart.
+
+> **Draft detection needs `Pull requests: read`**, which the daemon does not otherwise
+> require. Without it the listing is refused once, remembered, and never asked for again;
+> drafts then read as ordinary pull requests. See
+> [authentication](../../../start/authentication/).
 
 ## How fresh the reading is
 

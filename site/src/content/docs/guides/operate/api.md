@@ -34,6 +34,9 @@ dashboards are open.
   "entries": [
     {
       "title": "ci / test (3.13)",
+      "url": "https://github.com/owner/repo/actions/runs/1001/job/9912",
+      "work_class": "default-branch",
+      "urgency": 10,
       "pool": "default",
       "priority": 5,
       "position": 3,
@@ -45,6 +48,11 @@ dashboards are open.
   ]
 }
 ```
+
+`url` is the forge's own link, so an Enterprise install points at its own host rather than at
+github.com. `work_class` and `urgency` are the job's rank, derived from the run; `priority` is
+the serving pool's weight, which is a different number about a different thing. Entries come
+back most urgent first, oldest first within a class.
 
 `taken_at` and `stale` are part of the answer, not metadata about it. The daemon writes a
 reading every poll interval; with the daemon stopped, a client that renders only `entries`
