@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.8.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.7.0...v0.8.0) (2026-09-08)
+
+
+### Features
+
+* **api:** expose the queue at GET /queue ([e55c38b](https://github.com/tguisep/gh-spot-docker-runners/commit/e55c38b9884d4e808efb17d58f8804cd924d5ec2))
+* **cli:** add ghspot queue ([8316050](https://github.com/tguisep/gh-spot-docker-runners/commit/83160508ca9b924dff6e6c879f97b9f8e48e5826))
+* **core:** record what is queued and why it is waiting ([94a63ed](https://github.com/tguisep/gh-spot-docker-runners/commit/94a63ed107526fc507a50e5a4d34054cad29d7ad))
+* **dashboard:** add the queue page ([19dedf7](https://github.com/tguisep/gh-spot-docker-runners/commit/19dedf780f980894dbe4738b91a58e2c21658558))
+* show what is queued and why it is waiting ([42d71b5](https://github.com/tguisep/gh-spot-docker-runners/commit/42d71b548caf1bfd9a164a21cb1405ae0e815c3f))
+
+
+### Documentation
+
+* document the queue view ([6373eb6](https://github.com/tguisep/gh-spot-docker-runners/commit/6373eb69d73679aee982f404f53bbb172325d0be))
+
+
+### Build and CI
+
+* **deps:** Bump the actions group with 2 updates ([227458f](https://github.com/tguisep/gh-spot-docker-runners/commit/227458f45fb0c7befa3cc997c7fdc529d9283163))
+* **deps:** Bump the actions group with 2 updates ([965bf5d](https://github.com/tguisep/gh-spot-docker-runners/commit/965bf5d72509e29bfebd73ddc6d0a0a962fa8d1c))
+
 ## [0.7.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.6.2...v0.7.0) (2026-09-01)
 
 
