@@ -10,7 +10,7 @@ from ghspot.application.dto import PoolView, RunnerView
 from ghspot.domain.model.pool import PoolSpec
 from ghspot.domain.model.runner import Runner, RunnerState
 from ghspot.domain.ports.backend import RunnerBackend
-from ghspot.domain.ports.repository import RunnerRepository
+from ghspot.domain.ports.repository import QueueSnapshots, RunnerRepository
 from ghspot.domain.ports.system import Clock
 
 
@@ -98,11 +98,26 @@ async def _with_usage(views: list[RunnerView], backend: RunnerBackend) -> list[R
 
 
 class GetPoolStatus:
-    """Each configured pool with the runners currently in it."""
+    """Each configured pool with the runners currently in it, and what is waiting on it.
 
-    def __init__(self, runners: RunnerRepository, clock: Clock) -> None:
+    ``queue`` is what makes the `queued` column mean anything. Only the daemon can see the
+    forge, so the number comes from the snapshot its last tick wrote down; without it every
+    reader — `ghspot pool list`, `ghspot pool status`, `GET /pools`, the dashboard — showed a
+    hard-coded zero however much CI was piled up behind the fleet.
+
+    It stays optional so the query still answers with the queue store missing, which is what
+    a database written by an older version looks like on the first read after an upgrade.
+    """
+
+    def __init__(
+        self,
+        runners: RunnerRepository,
+        clock: Clock,
+        queue: QueueSnapshots | None = None,
+    ) -> None:
         self._runners = runners
         self._clock = clock
+        self._queue = queue
 
     async def __call__(
         self,
@@ -110,7 +125,7 @@ class GetPoolStatus:
         queued: Mapping[str, int] | None = None,
     ) -> list[PoolView]:
         now = self._clock.now()
-        counts = queued or {}
+        counts, oldest = await self._demand(queued, now)
         views: list[PoolView] = []
 
         for spec in specs:
@@ -131,10 +146,28 @@ class GetPoolStatus:
                     starting=_count(live, RunnerState.REGISTERED, RunnerState.STARTING),
                     active=sum(1 for runner in live if runner.is_active),
                     queued_jobs=counts.get(spec.name, 0),
+                    oldest_wait_seconds=oldest.get(spec.name, 0.0),
                     runners=[to_view(runner, now) for runner in live],
                 )
             )
         return views
+
+    async def _demand(
+        self, queued: Mapping[str, int] | None, now: datetime
+    ) -> tuple[Mapping[str, int], Mapping[str, float]]:
+        """Queued counts and longest waits per pool, from the last snapshot.
+
+        An explicit ``queued`` wins, so a caller that already has the numbers — a test, or a
+        tick reporting on itself — does not pay a read for them.
+        """
+        if queued is not None:
+            return queued, {}
+        if self._queue is None:
+            return {}, {}
+        snapshot = await self._queue.latest()
+        if snapshot is None:
+            return {}, {}
+        return snapshot.counts_by_pool(), snapshot.oldest_by_pool(now)
 
 
 def _count(runners: Sequence[Runner], *states: RunnerState) -> int:

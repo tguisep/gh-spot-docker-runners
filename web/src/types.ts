@@ -42,6 +42,8 @@ export interface Pool {
     starting: number;
     active: number;
     queued_jobs: number;
+    /** How long the longest-waiting job in this pool's line has been queued at GitHub. */
+    oldest_wait_seconds: number;
     headroom: number;
     runners: Runner[];
 }
@@ -129,3 +131,84 @@ export const ACTIVE_STATES: ReadonlySet<RunnerState> = new Set<RunnerState>([
     'busy',
     'draining',
 ]);
+
+/**
+ * Why one queued job has not started. Mirrors `WaitReason` in the domain.
+ *
+ * The first two are not delays at all: a runner is free or on its way, and the job is
+ * waiting on GitHub handing it over. Everything after them is the fleet's own doing.
+ */
+export type WaitReason =
+    | 'assignable'
+    | 'starting'
+    | 'pool-at-capacity'
+    | 'tick-limit'
+    | 'host-at-capacity'
+    | 'host-busy'
+    | 'contended'
+    | 'no-pool';
+
+export interface QueueEntry {
+    job_id: number;
+    run_id: number;
+    repository: string;
+    workflow: string;
+    job_name: string;
+    /** `workflow / job`, or whichever half GitHub gave us. */
+    title: string;
+    labels: string[];
+    /** Empty when no configured pool serves this job's labels. */
+    pool: string;
+    priority: number;
+    position: number;
+    reason: WaitReason;
+    detail: string;
+    waiting_seconds: number;
+    delayed: boolean;
+}
+
+export interface PoolPressure {
+    pool: string;
+    repository: string;
+    priority: number;
+    queued: number;
+    available: number;
+    active: number;
+    max_runners: number;
+    launching: number;
+    wanted: number;
+    blocked_by: string;
+    oldest_wait_seconds: number;
+}
+
+export interface HostPressure {
+    cpu_percent: number | null;
+    memory_percent: number | null;
+    disk_percent: number | null;
+    containers_running: number | null;
+    cpu_high_water: number | null;
+    memory_high_water: number | null;
+    disk_high_water: number | null;
+    max_containers: number | null;
+    max_cpus: number | null;
+    max_memory_bytes: number | null;
+    /** Set when backpressure is deferring every launch on this host. */
+    holding: string;
+}
+
+export interface Queue {
+    /** Null when the daemon has never written a reading — it is not running, or is new. */
+    taken_at: string | null;
+    age_seconds: number;
+    /** Older than the poll interval allows for. Nothing here can be read as current. */
+    stale: boolean;
+    total: number;
+    delayed: number;
+    longest_wait_seconds: number;
+    entries: QueueEntry[];
+    pools: PoolPressure[];
+    host: HostPressure;
+    notes: string[];
+    /** Repositories whose queue the last tick could not read. */
+    unreadable: string[];
+}

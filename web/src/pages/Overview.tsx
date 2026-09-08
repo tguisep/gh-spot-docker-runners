@@ -5,6 +5,7 @@ import { duration } from '../format';
 import { usePoll } from '../usePoll';
 import type { Tick } from '../types';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 export function Overview() {
     const health = usePoll(() => api.health(), 10_000);
@@ -107,6 +108,7 @@ export function Overview() {
                                 <th className="num">busy</th>
                                 <th className="num">starting</th>
                                 <th className="num">queued</th>
+                                <th className="num">waiting</th>
                                 <th>capacity</th>
                                 <th>labels</th>
                             </tr>
@@ -120,7 +122,16 @@ export function Overview() {
                                     <td className="num">{pool.busy}</td>
                                     <td className="num">{pool.starting}</td>
                                     <td className={`num ${pool.queued_jobs ? 'warn' : ''}`}>
-                                        {pool.queued_jobs}
+                                        {pool.queued_jobs ? (
+                                            <Link to="/queue">{pool.queued_jobs}</Link>
+                                        ) : (
+                                            0
+                                        )}
+                                    </td>
+                                    <td className="num dim">
+                                        {pool.queued_jobs
+                                            ? duration(pool.oldest_wait_seconds)
+                                            : '—'}
                                     </td>
                                     <td>
                                         <Bar

@@ -254,6 +254,17 @@ tr.total td {
     color: var(--dim);
 }
 
+/* The scaling and admission reasons a tick recorded, under the host readings. */
+.notes {
+    margin: 0;
+    padding: 10px 14px 14px 30px;
+    font-size: 13px;
+}
+
+.notes li {
+    margin: 2px 0;
+}
+
 .reason {
     display: block;
     font-weight: 400;

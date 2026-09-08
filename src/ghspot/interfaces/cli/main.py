@@ -21,9 +21,15 @@ from rich.text import Text
 
 from ghspot import __version__
 from ghspot.application.dto import PoolView
+from ghspot.application.queries.queue import GetQueue
 from ghspot.application.queries.stats import GatherStats
 from ghspot.application.queries.views import GetPoolStatus, ListRunners
-from ghspot.composition import build, read_only_events, read_only_store
+from ghspot.composition import (
+    build,
+    read_only_events,
+    read_only_queue,
+    read_only_store,
+)
 from ghspot.daemon import run_forever
 from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.pool import PoolSpec
@@ -40,6 +46,7 @@ from ghspot.interfaces.cli.render import (
     fail,
     hint,
     pools_table,
+    queue_tables,
     runners_table,
     stats_tables,
 )
@@ -264,6 +271,36 @@ def stats(
         console.print(block)
 
 
+# ---------------------------------------------------------------- queue
+
+
+@app.command()
+def queue(
+    pool: Annotated[str | None, typer.Option("--pool", help="Restrict to one pool.")] = None,
+    watch: WatchOption = None,
+    config: ConfigOption = None,
+) -> None:
+    """Show what is waiting for a runner, and what each job is waiting on.
+
+    Reads the snapshot the daemon's last tick wrote to the projection, so it needs neither a
+    GitHub token nor a reachable Docker — and costs the API nothing however often it is run.
+    The heading always says how old the reading is: with the daemon stopped, an empty queue
+    and a queue nobody is looking at are the same picture, and only the age tells them apart.
+
+    ``--watch 2`` repaints in place, which is the way to watch a burst drain.
+    """
+    settings = _settings(config)
+
+    def frame() -> Any:
+        query = GetQueue(read_only_queue(settings), SystemClock(), settings.daemon.poll_interval)
+        return Group(*queue_tables(_run(query(pool))))
+
+    if watch is not None:
+        _watch(frame, watch)
+        return
+    console.print(frame())
+
+
 # ---------------------------------------------------------------- pools
 
 
@@ -274,7 +311,7 @@ def pool_list(watch: WatchOption = None, config: ConfigOption = None) -> None:
     specs = [pool.spec for pool in settings.pools]
 
     def frame() -> Any:
-        query = GetPoolStatus(read_only_store(settings), SystemClock())
+        query = GetPoolStatus(read_only_store(settings), SystemClock(), read_only_queue(settings))
         return pools_table(_run(query(specs)))
 
     if watch is not None:
@@ -305,7 +342,7 @@ def pool_status(
             raise typer.Exit(code=2)
 
     def frame() -> Any:
-        query = GetPoolStatus(read_only_store(settings), SystemClock())
+        query = GetPoolStatus(read_only_store(settings), SystemClock(), read_only_queue(settings))
         blocks: list[Any] = []
         for view in _run(query(specs)):
             blocks.append(pools_table([view]))

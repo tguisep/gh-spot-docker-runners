@@ -24,10 +24,17 @@ from typing import Any
 from ghspot.domain.model import events as domain_events
 from ghspot.domain.model.events import DomainEvent
 from ghspot.domain.model.labels import LabelSet
+from ghspot.domain.model.queue import (
+    HostPressure,
+    PoolPressure,
+    QueueEntry,
+    QueueSnapshot,
+    WaitReason,
+)
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
 from ghspot.domain.model.target import RepositoryTarget
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runners (
@@ -67,6 +74,17 @@ CREATE TABLE IF NOT EXISTS events (
     payload     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_by_time ON events (occurred_at DESC);
+
+-- What the last tick saw waiting, and what it decided was in the way. One row, replaced
+-- every tick: the queue is a live thing, and a reader asking what is waiting means now.
+--
+-- Stored as a JSON document rather than normalised into tables because nothing ever queries
+-- inside it — it is written whole and read whole, by one writer and any number of readers.
+CREATE TABLE IF NOT EXISTS queue_snapshot (
+    id       INTEGER PRIMARY KEY CHECK (id = 1),
+    taken_at TEXT NOT NULL,
+    document TEXT NOT NULL
+);
 """
 
 
@@ -298,6 +316,50 @@ class SqliteEventLog(SqliteStore):
         await self.append(events)
 
 
+class SqliteQueueSnapshots(SqliteStore):
+    """The queue view the daemon leaves behind for the CLI and the API to read.
+
+    Writing is best-effort by contract: the reconciler calls it at the end of a tick, and a
+    tick that did its actual work must not be reported as failed because a note about it
+    could not be filed. Reading is strict — a corrupt document reads as "no snapshot", which
+    the interfaces already render as "the daemon has not looked yet".
+    """
+
+    async def record(self, snapshot: QueueSnapshot) -> None:
+        document = json.dumps(_snapshot_document(snapshot))
+        taken_at = snapshot.taken_at.isoformat()
+
+        def work(connection: sqlite3.Connection) -> None:
+            connection.execute(
+                """
+                INSERT INTO queue_snapshot (id, taken_at, document)
+                VALUES (1, :taken_at, :document)
+                ON CONFLICT(id) DO UPDATE SET
+                    taken_at = excluded.taken_at,
+                    document = excluded.document
+                """,
+                {"taken_at": taken_at, "document": document},
+            )
+
+        with suppress(sqlite3.Error, OSError):
+            await self._run(work)
+
+    async def latest(self) -> QueueSnapshot | None:
+        def work(connection: sqlite3.Connection) -> QueueSnapshot | None:
+            row = connection.execute("SELECT document FROM queue_snapshot WHERE id = 1").fetchone()
+            if row is None:
+                return None
+            try:
+                return _snapshot_from_document(json.loads(row["document"]))
+            except (ValueError, TypeError, KeyError):
+                # Written by an older schema whose shape has since changed. Nothing is lost
+                # that the next tick will not write again a few seconds from now.
+                return None
+
+        result: QueueSnapshot | None = await self._run(work)
+        return result
+
+
 # -- mapping -------------------------------------------------------------------------
 
 
@@ -381,3 +443,137 @@ def _time(value: str) -> datetime:
     except ValueError:
         return datetime.now(UTC)
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _snapshot_document(snapshot: QueueSnapshot) -> dict[str, Any]:
+    """The snapshot as plain JSON.
+
+    Written out field by field rather than through `asdict`, so that adding a field to the
+    domain model is a deliberate act here too — the reader below has to learn about it, and a
+    silent asymmetry between the two is exactly the bug this shape prevents.
+    """
+    return {
+        "taken_at": snapshot.taken_at.isoformat(),
+        "notes": list(snapshot.notes),
+        "unreadable": list(snapshot.unreadable),
+        "host": {
+            "cpu_percent": snapshot.host.cpu_percent,
+            "memory_percent": snapshot.host.memory_percent,
+            "disk_percent": snapshot.host.disk_percent,
+            "containers_running": snapshot.host.containers_running,
+            "cpu_high_water": snapshot.host.cpu_high_water,
+            "memory_high_water": snapshot.host.memory_high_water,
+            "disk_high_water": snapshot.host.disk_high_water,
+            "max_containers": snapshot.host.max_containers,
+            "max_cpus": snapshot.host.max_cpus,
+            "max_memory_bytes": snapshot.host.max_memory_bytes,
+            "holding": snapshot.host.holding,
+        },
+        "pools": [
+            {
+                "pool": pressure.pool,
+                "repository": pressure.repository,
+                "priority": pressure.priority,
+                "queued": pressure.queued,
+                "available": pressure.available,
+                "active": pressure.active,
+                "max_runners": pressure.max_runners,
+                "launching": pressure.launching,
+                "wanted": pressure.wanted,
+                "blocked_by": pressure.blocked_by,
+            }
+            for pressure in snapshot.pools
+        ],
+        "entries": [
+            {
+                "job_id": entry.job_id,
+                "run_id": entry.run_id,
+                "repository": entry.repository,
+                "workflow": entry.workflow,
+                "job_name": entry.job_name,
+                "labels": list(entry.labels),
+                "queued_at": entry.queued_at.isoformat(),
+                "pool": entry.pool,
+                "priority": entry.priority,
+                "position": entry.position,
+                "reason": entry.reason.value,
+                "detail": entry.detail,
+            }
+            for entry in snapshot.entries
+        ],
+    }
+
+
+def _snapshot_from_document(document: Any) -> QueueSnapshot:
+    if not isinstance(document, dict):
+        raise ValueError("queue snapshot is not an object")
+    host = document.get("host") or {}
+    return QueueSnapshot(
+        taken_at=_time(document["taken_at"]),
+        entries=tuple(_entry_from_document(item) for item in document.get("entries", [])),
+        pools=tuple(
+            PoolPressure(
+                pool=str(item["pool"]),
+                repository=str(item.get("repository", "")),
+                priority=int(item.get("priority", 0)),
+                queued=int(item.get("queued", 0)),
+                available=int(item.get("available", 0)),
+                active=int(item.get("active", 0)),
+                max_runners=int(item.get("max_runners", 0)),
+                launching=int(item.get("launching", 0)),
+                wanted=int(item.get("wanted", 0)),
+                blocked_by=str(item.get("blocked_by", "")),
+            )
+            for item in document.get("pools", [])
+        ),
+        host=HostPressure(
+            cpu_percent=_number(host.get("cpu_percent")),
+            memory_percent=_number(host.get("memory_percent")),
+            disk_percent=_number(host.get("disk_percent")),
+            containers_running=_count(host.get("containers_running")),
+            cpu_high_water=_number(host.get("cpu_high_water")),
+            memory_high_water=_number(host.get("memory_high_water")),
+            disk_high_water=_number(host.get("disk_high_water")),
+            max_containers=_count(host.get("max_containers")),
+            max_cpus=_number(host.get("max_cpus")),
+            max_memory_bytes=_count(host.get("max_memory_bytes")),
+            holding=str(host.get("holding") or ""),
+        ),
+        notes=tuple(str(note) for note in document.get("notes", [])),
+        unreadable=tuple(str(name) for name in document.get("unreadable", [])),
+    )
+
+
+def _number(value: Any) -> float | None:
+    """A reading, or ``None``. Absent and zero are different facts about a host."""
+    return float(value) if isinstance(value, int | float) else None
+
+
+def _count(value: Any) -> int | None:
+    return int(value) if isinstance(value, int | float) else None
+
+
+def _entry_from_document(item: Any) -> QueueEntry:
+    return QueueEntry(
+        job_id=int(item["job_id"]),
+        run_id=int(item.get("run_id", 0)),
+        repository=str(item.get("repository", "")),
+        workflow=str(item.get("workflow", "")),
+        job_name=str(item.get("job_name", "")),
+        labels=tuple(str(label) for label in item.get("labels", [])),
+        queued_at=_time(item["queued_at"]),
+        pool=str(item.get("pool", "")),
+        priority=int(item.get("priority", 0)),
+        position=int(item.get("position", 0)),
+        # An unknown reason from a newer writer degrades to "waiting", which is true of every
+        # queued job and so can never mislead.
+        reason=_reason(item.get("reason")),
+        detail=str(item.get("detail", "")),
+    )
+
+
+def _reason(value: Any) -> WaitReason:
+    try:
+        return WaitReason(value)
+    except ValueError:
+        return WaitReason.CONTENDED

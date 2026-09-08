@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Protocol
 
 from ghspot.domain.model.events import DomainEvent
+from ghspot.domain.model.queue import QueueSnapshot
 from ghspot.domain.model.runner import Runner, RunnerId
 
 
@@ -74,4 +75,27 @@ class EventLog(Protocol):
         Oldest first because the readers fold events into a per-runner story, and a story is
         cheaper to assemble in the order it happened. ``None`` means the whole log.
         """
+        ...
+
+
+class QueueSnapshots(Protocol):
+    """The last picture of the queue a tick took, and who may read it back.
+
+    One slot, overwritten every tick. There is no history here on purpose: the queue is a
+    live thing and the question asked of it — "what is waiting *now*, and why" — is answered
+    by the latest reading. Anything worth keeping longer is already in the event log.
+
+    It exists because the reader and the writer are different processes. Only the daemon has
+    a forge client; `ghspot queue` and the API deliberately do not, so that an expired token
+    never takes away an operator's ability to see what is going on. Writing the answer down
+    is what lets them show a real queue without holding a credential.
+    """
+
+    async def record(self, snapshot: QueueSnapshot) -> None:
+        """Replace the stored snapshot. Never raises for the caller's sake — a tick must not
+        fail because it could not write down what it was thinking."""
+        ...
+
+    async def latest(self) -> QueueSnapshot | None:
+        """The stored snapshot, or ``None`` when no tick has written one yet."""
         ...

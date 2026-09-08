@@ -30,6 +30,7 @@ from tests.fakes.adapters import (
     FakeBackend,
     FakeClock,
     FakeForge,
+    InMemoryQueueSnapshots,
     InMemoryRunnerLogs,
     InMemoryRunnerRepository,
     RecordingPublisher,
@@ -54,6 +55,7 @@ class Harness:
     spec: PoolSpec
     retire: RetireRunner
     runner_logs: InMemoryRunnerLogs
+    queue: InMemoryQueueSnapshots
 
     def runner_states(self) -> dict[str, RunnerState]:
         return {str(r.id): r.state for r in self.repository.saved.values()}
@@ -70,6 +72,7 @@ def build(*specs: PoolSpec, capacity: CapacityLimits | None = None, host: str = 
 
     provision = ProvisionRunner(forge, backend, repository, clock, ids, events, host=host)
     runner_logs = InMemoryRunnerLogs()
+    queue = InMemoryQueueSnapshots()
     retire = RetireRunner(forge, backend, repository, clock, events, archive=runner_logs)
     service = ReconciliationService(
         pools=[PoolConfiguration(spec=s, template=TEMPLATE) for s in (specs or (spec,))],
@@ -82,9 +85,20 @@ def build(*specs: PoolSpec, capacity: CapacityLimits | None = None, host: str = 
         retire=retire,
         capacity=capacity,
         host=host,
+        queue=queue,
     )
     return Harness(
-        service, provision, forge, backend, repository, clock, events, spec, retire, runner_logs
+        service,
+        provision,
+        forge,
+        backend,
+        repository,
+        clock,
+        events,
+        spec,
+        retire,
+        runner_logs,
+        queue,
     )
 
 
@@ -716,3 +730,93 @@ async def test_registrations_from_before_the_host_was_in_the_name_are_left(
     await harness.service.tick()
 
     assert harness.forge.deleted == []
+
+
+# ---------------------------------------------------------------- the queue snapshot
+
+
+@pytest.mark.anyio
+async def test_a_tick_writes_down_what_it_saw_queued(harness: Harness) -> None:
+    """The fix for a `queued` column that always read zero.
+
+    Only the daemon can see the forge. Everything else — the CLI, the API, the dashboard —
+    reads the projection, and until a tick wrote the queue into it there was nothing there
+    to read but a default.
+    """
+    harness.forge.queued[REPO] = [make_job(1), make_job(2)]
+
+    await harness.service.tick()
+
+    snapshot = await harness.queue.latest()
+    assert snapshot is not None
+    assert snapshot.total == 2
+    assert snapshot.counts_by_pool() == {"default": 2}
+
+
+@pytest.mark.anyio
+async def test_the_snapshot_says_which_limit_deferred_a_launch() -> None:
+    harness = build(make_spec(max_runners=8), capacity=CapacityLimits(cpu_high_water=10))
+    harness.backend.load = HostLoad(cpu_percent=95.0)
+    harness.forge.queued[REPO] = [make_job(1)]
+
+    await harness.service.tick()
+
+    snapshot = await harness.queue.latest()
+    assert snapshot is not None
+    assert snapshot.entries[0].reason.value == "host-busy"
+    assert "high water 10%" in snapshot.entries[0].detail
+    assert snapshot.host.cpu_percent == 95.0
+
+
+@pytest.mark.anyio
+async def test_a_repository_that_could_not_be_read_is_named_in_the_snapshot() -> None:
+    """Otherwise an unreadable queue and an empty one render identically."""
+    harness = build()
+    harness.forge.unreachable.add(REPO)
+
+    await harness.service.tick()
+
+    snapshot = await harness.queue.latest()
+    assert snapshot is not None
+    assert snapshot.unreadable == (str(REPO),)
+
+
+@pytest.mark.anyio
+async def test_the_snapshot_describes_the_fleet_the_reader_will_find(harness: Harness) -> None:
+    """Recorded after the launches, so a job a runner was just started for reads as
+    `starting` rather than as an unexplained backlog."""
+    harness.forge.queued[REPO] = [make_job(1)]
+
+    await harness.service.tick()
+
+    snapshot = await harness.queue.latest()
+    assert snapshot is not None
+    assert snapshot.entries[0].reason.value == "starting"
+    assert snapshot.pools[0].launching == 1
+
+
+@pytest.mark.anyio
+async def test_a_job_no_pool_serves_still_reaches_the_snapshot(harness: Harness) -> None:
+    from ghspot.domain.model.labels import LabelSet
+
+    harness.forge.queued[REPO] = [make_job(1, labels=LabelSet.of("self-hosted", "windows"))]
+
+    await harness.service.tick()
+
+    snapshot = await harness.queue.latest()
+    assert snapshot is not None
+    assert snapshot.entries[0].reason.value == "no-pool"
+    # It is not this pool's demand, so it must not inflate the pool's count.
+    assert snapshot.counts_by_pool() == {"default": 0}
+
+
+@pytest.mark.anyio
+async def test_a_reconciler_with_no_queue_store_still_ticks() -> None:
+    """A database written by an older version has no snapshot table until it is prepared."""
+    harness = build()
+    harness.service._queue = None
+    harness.forge.queued[REPO] = [make_job(1)]
+
+    report = await harness.service.tick()
+
+    assert report.queued_jobs == 1

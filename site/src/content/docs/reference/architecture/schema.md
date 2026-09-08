@@ -1,6 +1,6 @@
 ---
 title: "State schema"
-description: "The three tables, what each column holds, and why losing the file costs history rather than correctness."
+description: "The four tables, what each column holds, and why losing the file costs history rather than correctness."
 ---
 
 One SQLite file, at `[daemon].state_db`. It is a **projection**, not the truth: the truth is
@@ -15,7 +15,7 @@ sqlite3 /var/lib/ghspot/state.db .schema
 |---|---|
 | Journal mode | WAL — the CLI reads while the daemon writes |
 | Foreign keys | `ON`, which is what makes the cascade below a retention policy |
-| `PRAGMA user_version` | `1` |
+| `PRAGMA user_version` | `2` |
 
 ## `runners`
 
@@ -83,12 +83,35 @@ Append-only. What `ghspot stats` reads.
 Kinds: `RunnerRegistered`, `RunnerStarted`, `RunnerCameOnline`, `RunnerTookJob`,
 `RunnerRetired`, `RunnerFailed`.
 
+## `queue_snapshot`
+
+What the last tick saw waiting, and what it decided was in the way. **One row**, replaced
+every tick.
+
+| Column | Type | |
+|---|---|---|
+| `id` | INTEGER PK | `CHECK (id = 1)` — there is only ever one row |
+| `taken_at` | TEXT | ISO-8601. The reader compares it against the poll interval to decide whether the reading is stale |
+| `document` | TEXT | JSON: the queued jobs with their pool, priority, position and wait reason; each pool's pressure; the host readings and the limits they were judged against |
+
+A JSON document rather than tables because nothing ever queries inside it: it is written
+whole by one writer and read whole by any number of readers.
+
+It exists because the reader and the writer are different processes. Only the daemon holds a
+GitHub token, and `ghspot queue`, the API and the dashboard deliberately do not — so the
+daemon writes down the answer it already paid for. Before this table, the `queued` column
+every one of them rendered had nothing behind it and read zero however much CI was waiting.
+
+No history is kept. The question asked of a queue is what is waiting *now*, and anything
+worth keeping longer is already in `events`.
+
 ## What is lost if the file goes
 
 | Lost | Kept |
 |---|---|
 | `ghspot stats` history | Every running runner, re-adopted from its container labels |
 | Archived logs of retired runners | The pools, which come from the configuration |
+| One tick's worth of queue visibility | The queue itself, which lives at GitHub — the next tick reads it again |
 
 Correctness is never at stake, and a test asserts exactly that. Back the file up if you want
 the usage history; nothing else depends on it surviving.

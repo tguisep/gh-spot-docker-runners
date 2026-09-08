@@ -30,12 +30,16 @@ in the two remaining, that pool drops out for the tick and the others carry on.
 
 **There is no queue to drain.** A pool refused this tick simply wants the same thing on the
 next one, and the loop re-derives everything anyway. Being held back is not a lost launch,
-and `ghspot pool status` and the daemon log say who was held back and by what:
+and the daemon log says who was held back and by what:
 
 ```
 [batch] held back by max_containers=8 (weight 1, 3 still wanted)
 host cpu at 94% (high water 85%); deferring every launch until it recovers
 ```
+
+`ghspot queue` says the same thing from the waiting job's side — which pool it belongs to,
+what its weight is, and which of the two lines above is the reason it has not started. See
+[the queue](../../operate/queue/).
 
 Retiring and terminating are never held back. They *release* capacity, and refusing them is
 what would turn a busy host into a stuck one.

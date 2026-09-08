@@ -13,10 +13,18 @@ import pytest
 
 from ghspot.domain.model.events import RunnerRegistered, RunnerRetired
 from ghspot.domain.model.labels import LabelSet
+from ghspot.domain.model.queue import (
+    HostPressure,
+    PoolPressure,
+    QueueEntry,
+    QueueSnapshot,
+    WaitReason,
+)
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
 from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.persistence.sqlite import (
     SqliteEventLog,
+    SqliteQueueSnapshots,
     SqliteRunnerLogs,
     SqliteRunnerRepository,
 )
@@ -243,3 +251,91 @@ async def test_a_log_too_large_to_keep_is_kept_from_the_end(tmp_path: Path) -> N
     assert kept is not None
     assert kept.endswith("THE END")
     assert len(kept.encode("utf-8")) <= SqliteRunnerLogs.MAX_BYTES
+
+
+# ---------------------------------------------------------------- the queue snapshot
+
+
+def make_snapshot() -> QueueSnapshot:
+    return QueueSnapshot(
+        taken_at=T0,
+        entries=(
+            QueueEntry(
+                job_id=991,
+                run_id=55,
+                repository=str(REPO),
+                workflow="ci",
+                job_name="test (3.13)",
+                labels=("self-hosted", "linux"),
+                queued_at=T0,
+                pool="default",
+                priority=7,
+                position=2,
+                reason=WaitReason.POOL_AT_CAPACITY,
+                detail="pool is at max_runners=4 with 4 up",
+            ),
+        ),
+        pools=(
+            PoolPressure(
+                pool="default",
+                repository=str(REPO),
+                priority=7,
+                queued=1,
+                available=0,
+                active=4,
+                max_runners=4,
+                launching=0,
+                wanted=1,
+                blocked_by="pool is at max_runners=4 with 4 up",
+            ),
+        ),
+        host=HostPressure(cpu_percent=42.5, cpu_high_water=85.0, containers_running=4),
+        notes=("[default] 1 queued job(s) with no runner available",),
+        unreadable=("tguisep/private",),
+    )
+
+
+@pytest.mark.anyio
+async def test_a_queue_snapshot_survives_the_round_trip(tmp_path: Path) -> None:
+    store = SqliteQueueSnapshots(tmp_path / "state.db")
+
+    await store.record(make_snapshot())
+
+    read = await store.latest()
+    assert read == make_snapshot()
+
+
+@pytest.mark.anyio
+async def test_only_the_latest_reading_is_kept(tmp_path: Path) -> None:
+    """One slot, on purpose: the question asked of a queue is what is waiting *now*."""
+    store = SqliteQueueSnapshots(tmp_path / "state.db")
+    await store.record(make_snapshot())
+
+    newer = QueueSnapshot(taken_at=datetime(2026, 8, 26, 13, 0, tzinfo=UTC))
+    await store.record(newer)
+
+    read = await store.latest()
+    assert read is not None
+    assert read.taken_at == newer.taken_at
+    assert read.entries == ()
+
+
+@pytest.mark.anyio
+async def test_no_reading_yet_is_none_rather_than_an_empty_queue(tmp_path: Path) -> None:
+    """The two mean opposite things, and the readers render them differently."""
+    store = SqliteQueueSnapshots(tmp_path / "state.db")
+
+    assert await store.latest() is None
+
+
+@pytest.mark.anyio
+async def test_a_document_from_another_schema_reads_as_no_snapshot(tmp_path: Path) -> None:
+    """Losing one reading costs a few seconds of visibility. Raising would cost the page."""
+    path = tmp_path / "state.db"
+    store = SqliteQueueSnapshots(path)
+    await store.record(make_snapshot())
+
+    with store.connect() as connection:
+        connection.execute("UPDATE queue_snapshot SET document = '{\"nope\": 1}' WHERE id = 1")
+
+    assert await store.latest() is None

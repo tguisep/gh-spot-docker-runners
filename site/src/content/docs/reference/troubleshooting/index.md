@@ -5,7 +5,8 @@ description: "Symptoms, what causes them, and what to do."
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Jobs stay queued, no container | Pool lacks a label the job asks for | Compare `ghspot pool list` with `runs-on` |
+| Jobs stay queued, no container | Several causes, and they need different fixes | `ghspot queue` names the one — see [the queue](../../guides/operate/queue/) |
+| `ghspot queue` shows nothing at all | The daemon has not written a reading | It is not running, or has not finished its first tick. The heading says which |
 | Runner shows `Offline` on github.com | Normal between ticks | Leave it. Persisting past a few ticks → check `tick.error` |
 | Daemon exits immediately | Configuration | `ghspot config validate` names the field |
 | `ImageNotFoundError` | Image not built here | `ghspot image build <variant>` |

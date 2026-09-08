@@ -4,6 +4,7 @@ import { api } from './api';
 
 import { Logs } from './pages/Logs';
 import { Overview } from './pages/Overview';
+import { Queue } from './pages/Queue';
 import { Runners } from './pages/Runners';
 import { Stats } from './pages/Stats';
 import { usePoll } from './usePoll';
@@ -27,6 +28,7 @@ export function App() {
                     <NavLink to="/" end>
                         overview
                     </NavLink>
+                    <NavLink to="/queue">queue</NavLink>
                     <NavLink to="/runners">runners</NavLink>
                     <NavLink to="/logs">logs</NavLink>
                     <NavLink to="/stats">stats</NavLink>
@@ -39,6 +41,7 @@ export function App() {
             <main>
                 <Routes>
                     <Route path="/" element={<Overview />} />
+                    <Route path="/queue" element={<Queue />} />
                     <Route path="/runners" element={<Runners />} />
                     <Route path="/logs" element={<Logs />} />
                     <Route path="/stats" element={<Stats />} />

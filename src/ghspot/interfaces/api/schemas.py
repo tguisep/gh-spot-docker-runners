@@ -11,7 +11,17 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from ghspot.application.dto import PoolView, RunnerView, StatsView, TickReport, UsageStats
+from ghspot.application.dto import (
+    HostPressureView,
+    PoolPressureView,
+    PoolView,
+    QueueEntryView,
+    QueueView,
+    RunnerView,
+    StatsView,
+    TickReport,
+    UsageStats,
+)
 
 
 class RunnerResponse(BaseModel):
@@ -71,6 +81,7 @@ class PoolResponse(BaseModel):
     active: int = 0
     headroom: int = 0
     queued_jobs: int = 0
+    oldest_wait_seconds: float = 0.0
     runners: list[RunnerResponse] = Field(default_factory=list)
 
     @classmethod
@@ -87,6 +98,7 @@ class PoolResponse(BaseModel):
             active=view.active,
             headroom=view.headroom,
             queued_jobs=view.queued_jobs,
+            oldest_wait_seconds=round(view.oldest_wait_seconds, 1),
             runners=[RunnerResponse.of(runner) for runner in view.runners],
         )
 
@@ -244,3 +256,145 @@ class JobLogsResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class QueueEntryResponse(BaseModel):
+    """One queued job, and the one thing standing in front of it."""
+
+    job_id: int
+    run_id: int
+    repository: str
+    workflow: str
+    job_name: str
+    title: str
+    labels: list[str]
+    pool: str
+    """Empty when no configured pool serves this job's labels."""
+
+    priority: int
+    position: int
+    """1-based place in its pool's line, oldest first. 0 when no pool serves it."""
+
+    reason: str
+    detail: str
+    waiting_seconds: float
+    delayed: bool
+    """False when a runner is free or starting for it — then the wait is GitHub's dispatch."""
+
+    @classmethod
+    def of(cls, view: QueueEntryView) -> QueueEntryResponse:
+        return cls(
+            job_id=view.job_id,
+            run_id=view.run_id,
+            repository=view.repository,
+            workflow=view.workflow,
+            job_name=view.job_name,
+            title=view.title,
+            labels=view.labels,
+            pool=view.pool,
+            priority=view.priority,
+            position=view.position,
+            reason=view.reason.value,
+            detail=view.detail,
+            waiting_seconds=round(view.waiting_seconds, 1),
+            delayed=view.is_delayed,
+        )
+
+
+class PoolPressureResponse(BaseModel):
+    pool: str
+    repository: str
+    priority: int
+    queued: int
+    available: int
+    active: int
+    max_runners: int
+    launching: int
+    wanted: int
+    blocked_by: str
+    oldest_wait_seconds: float = 0.0
+
+    @classmethod
+    def of(cls, view: PoolPressureView) -> PoolPressureResponse:
+        return cls(
+            pool=view.pool,
+            repository=view.repository,
+            priority=view.priority,
+            queued=view.queued,
+            available=view.available,
+            active=view.active,
+            max_runners=view.max_runners,
+            launching=view.launching,
+            wanted=view.wanted,
+            blocked_by=view.blocked_by,
+            oldest_wait_seconds=round(view.oldest_wait_seconds, 1),
+        )
+
+
+class HostPressureResponse(BaseModel):
+    """Measured load beside the limits it is judged against. Null means unread."""
+
+    cpu_percent: float | None = None
+    memory_percent: float | None = None
+    disk_percent: float | None = None
+    containers_running: int | None = None
+    cpu_high_water: float | None = None
+    memory_high_water: float | None = None
+    disk_high_water: float | None = None
+    max_containers: int | None = None
+    max_cpus: float | None = None
+    max_memory_bytes: int | None = None
+    holding: str = ""
+
+    @classmethod
+    def of(cls, view: HostPressureView) -> HostPressureResponse:
+        return cls(
+            cpu_percent=view.cpu_percent,
+            memory_percent=view.memory_percent,
+            disk_percent=view.disk_percent,
+            containers_running=view.containers_running,
+            cpu_high_water=view.cpu_high_water,
+            memory_high_water=view.memory_high_water,
+            disk_high_water=view.disk_high_water,
+            max_containers=view.max_containers,
+            max_cpus=view.max_cpus,
+            max_memory_bytes=view.max_memory_bytes,
+            holding=view.holding,
+        )
+
+
+class QueueResponse(BaseModel):
+    """What the daemon's last tick saw waiting, and why none of it has started.
+
+    `taken_at` and `stale` are part of the answer, not metadata about it: a client that
+    renders `entries` without them will show a stopped daemon as an empty queue.
+    """
+
+    taken_at: datetime | None = None
+    age_seconds: float = 0.0
+    stale: bool = False
+    total: int = 0
+    delayed: int = 0
+    longest_wait_seconds: float = 0.0
+    entries: list[QueueEntryResponse] = Field(default_factory=list)
+    pools: list[PoolPressureResponse] = Field(default_factory=list)
+    host: HostPressureResponse = Field(default_factory=HostPressureResponse)
+    notes: list[str] = Field(default_factory=list)
+    unreadable: list[str] = Field(default_factory=list)
+    """Repositories whose queue the last tick could not read."""
+
+    @classmethod
+    def of(cls, view: QueueView) -> QueueResponse:
+        return cls(
+            taken_at=view.taken_at,
+            age_seconds=round(view.age_seconds, 1),
+            stale=view.stale,
+            total=view.total,
+            delayed=view.delayed,
+            longest_wait_seconds=round(view.longest_wait_seconds, 1),
+            entries=[QueueEntryResponse.of(entry) for entry in view.entries],
+            pools=[PoolPressureResponse.of(pool) for pool in view.pools],
+            host=HostPressureResponse.of(view.host),
+            notes=view.notes,
+            unreadable=view.unreadable,
+        )

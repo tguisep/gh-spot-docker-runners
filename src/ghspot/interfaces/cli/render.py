@@ -12,7 +12,16 @@ from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 
-from ghspot.application.dto import PoolView, RunnerView, StatsView, TickReport, UsageStats
+from ghspot.application.dto import (
+    HostPressureView,
+    PoolView,
+    QueueView,
+    RunnerView,
+    StatsView,
+    TickReport,
+    UsageStats,
+)
+from ghspot.domain.model.queue import WaitReason
 from ghspot.domain.model.runner import RunnerState
 
 console = Console()
@@ -112,6 +121,9 @@ def pools_table(pools: Sequence[PoolView]) -> Table:
     table.add_column("active", justify="right")
     table.add_column("max", justify="right")
     table.add_column("queued", justify="right")
+    # Beside the count rather than instead of it: five jobs queued for ten seconds is a
+    # matrix landing, and one job queued for forty minutes is something wrong.
+    table.add_column("waiting", justify="right")
 
     for pool in pools:
         table.add_row(
@@ -122,7 +134,8 @@ def pools_table(pools: Sequence[PoolView]) -> Table:
             str(pool.busy),
             str(pool.active),
             str(pool.max_runners),
-            str(pool.queued_jobs) if pool.queued_jobs else "—",
+            Text(str(pool.queued_jobs), style="yellow") if pool.queued_jobs else "—",
+            duration(pool.oldest_wait_seconds) if pool.queued_jobs else "—",
         )
     return table
 
@@ -206,6 +219,176 @@ def stats_tables(view: StatsView) -> list[Table | Text]:
         blocks.append(failures)
 
     return blocks
+
+
+_REASON_COLOUR = {
+    WaitReason.ASSIGNABLE: "green",
+    WaitReason.STARTING: "cyan",
+    WaitReason.POOL_AT_CAPACITY: "yellow",
+    WaitReason.TICK_LIMIT: "yellow",
+    WaitReason.HOST_AT_CAPACITY: "magenta",
+    WaitReason.HOST_BUSY: "red",
+    WaitReason.CONTENDED: "yellow",
+    WaitReason.NO_POOL: "red",
+}
+
+
+def queue_tables(view: QueueView) -> list[Table | Text]:
+    """The queue, why it is a queue, and how fresh the answer is.
+
+    The heading always says when the reading was taken. A queue view that looks live but is
+    minutes old is worse than none: the whole reason to open it is to find out whether the
+    fleet is keeping up, and an empty table from a stopped daemon answers that wrongly.
+    """
+    if not view.has_snapshot:
+        return [
+            Text("the daemon has not read the queue yet", style="yellow"),
+            Text(
+                "nothing has been recorded. The daemon writes a reading every tick, so this "
+                "means it is not running, or has not finished its first pass.",
+                style="dim",
+            ),
+        ]
+
+    blocks: list[Table | Text] = [_queue_heading(view)]
+
+    for repository in view.unreadable:
+        blocks.append(
+            Text(
+                f"! {repository} could not be read this tick — anything queued there is "
+                "missing from this table",
+                style="red",
+            )
+        )
+
+    if view.host.holding:
+        blocks.append(Text(f"! {view.host.holding}", style="red"))
+
+    if not view.entries:
+        blocks.append(Text("nothing queued", style="dim"))
+    else:
+        blocks.append(_queue_table(view))
+
+    if view.pools:
+        blocks.append(_pressure_table(view))
+
+    host = _host_line(view.host)
+    if host is not None:
+        blocks.append(host)
+
+    for note in view.notes:
+        blocks.append(Text(f"· {note}", style="dim"))
+
+    return blocks
+
+
+def _queue_heading(view: QueueView) -> Text:
+    if not view.entries:
+        heading = Text("queue ", style="bold")
+        heading.append("— empty", style="dim")
+    else:
+        heading = Text("queue ", style="bold")
+        heading.append(f"— {view.total} job(s)", style="bold")
+        if view.delayed:
+            heading.append(f", {view.delayed} waiting on capacity", style="yellow")
+        heading.append(f", longest {duration(view.longest_wait_seconds)}", style="dim")
+
+    age = duration(view.age_seconds)
+    if view.stale:
+        heading.append(f"  ·  read {age} ago — the daemon may not be running", style="bold red")
+    else:
+        heading.append(f"  ·  read {age} ago", style="dim")
+    return heading
+
+
+def _queue_table(view: QueueView) -> Table:
+    table = Table(header_style="bold", expand=False)
+    table.add_column("waiting", justify="right")
+    table.add_column("job", style="bold", overflow="fold", min_width=16)
+    table.add_column("repository", style="dim")
+    table.add_column("pool")
+    table.add_column("prio", justify="right")
+    table.add_column("#", justify="right")
+    table.add_column("status")
+    # The column the command exists for. Folded, never truncated: a reason cut off at the
+    # terminal width is the one sentence the reader came here to finish.
+    table.add_column("why", overflow="fold", min_width=24)
+
+    for entry in view.entries:
+        table.add_row(
+            duration(entry.waiting_seconds),
+            entry.title,
+            entry.repository,
+            entry.pool or Text("—", style="red"),
+            str(entry.priority) if entry.pool else "—",
+            str(entry.position) if entry.position else "—",
+            Text(entry.reason.value, style=_REASON_COLOUR.get(entry.reason, "")),
+            Text(entry.detail, style="dim") if entry.detail else "",
+        )
+    return table
+
+
+def _pressure_table(view: QueueView) -> Table:
+    """Where each pool stands: what it holds, what it asked for, what it got."""
+    table = Table(header_style="bold", expand=False, title="pools")
+    table.add_column("pool", style="bold")
+    table.add_column("prio", justify="right")
+    table.add_column("queued", justify="right")
+    table.add_column("free", justify="right")
+    table.add_column("active", justify="right")
+    table.add_column("wanted", justify="right")
+    table.add_column("starting", justify="right")
+    table.add_column("held by", overflow="fold", min_width=20)
+
+    for pressure in view.pools:
+        table.add_row(
+            pressure.pool,
+            str(pressure.priority),
+            Text(str(pressure.queued), style="yellow") if pressure.queued else "—",
+            str(pressure.available),
+            f"{pressure.active}/{pressure.max_runners}",
+            str(pressure.wanted) if pressure.wanted else "—",
+            str(pressure.launching) if pressure.launching else "—",
+            Text(pressure.blocked_by, style="yellow") if pressure.blocked_by else "",
+        )
+    return table
+
+
+def _host_line(host: HostPressureView) -> Text | None:
+    """The machine, each reading next to the limit it is read against.
+
+    A percentage on its own says nothing about whether it is a problem. Printed as
+    `71% / 90%` so the reader can see the margin without going to look up the config.
+    """
+    parts = [
+        _gauge("cpu", host.cpu_percent, host.cpu_high_water),
+        _gauge("memory", host.memory_percent, host.memory_high_water),
+        _gauge("disk", host.disk_percent, host.disk_high_water),
+    ]
+    measured = [part for part in parts if part is not None]
+    if host.containers_running is not None:
+        ceiling = f"/{host.max_containers}" if host.max_containers else ""
+        measured.append(Text(f"containers {host.containers_running}{ceiling}", style="dim"))
+    if not measured:
+        return None
+
+    line = Text("host ", style="bold")
+    for index, part in enumerate(measured):
+        if index:
+            line.append("  ", style="dim")
+        line.append_text(part)
+    return line
+
+
+def _gauge(name: str, value: float | None, high_water: float | None) -> Text | None:
+    if value is None:
+        return None
+    text = Text(f"{name} ", style="dim")
+    over = high_water is not None and value >= high_water
+    text.append(f"{value:.0f}%", style="red" if over else "")
+    if high_water is not None:
+        text.append(f" / {high_water:.0f}%", style="dim")
+    return text
 
 
 def tick_summary(report: TickReport) -> Text:

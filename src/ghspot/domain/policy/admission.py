@@ -18,6 +18,9 @@ Priority decides who gets scarce capacity. There is no queue to persist: a pool 
 refused this tick simply wants the same thing on the next one, and the next tick re-derives
 everything anyway. The queue is the reconciliation loop.
 
+What *is* kept is the reasoning — which pool was refused and by which ceiling — because an
+operator watching a job sit there has no other way to find out. See `policy/queue.py`.
+
 Only launches are trimmed. Retiring and terminating *release* capacity, so a host under
 pressure must still be allowed to do them — refusing those would be the one thing that turns
 a busy host into a stuck one.
@@ -93,6 +96,18 @@ class Admission:
     deferred: int = 0
     """Launches asked for and not granted. They are not lost — the next tick asks again."""
 
+    held_by: str = ""
+    """The backpressure sentence when the host refused *every* launch, empty otherwise.
+
+    Separate from `reasons` because it is categorically different: a ceiling stops one pool
+    and the others carry on, whereas this stops the machine. The queue view reads it to tell
+    "your pool is full" apart from "the box is", which need different things done about them.
+    """
+
+    blocked: Mapping[str, str] = field(default_factory=dict)
+    """Pool -> the committed ceiling that stopped it, as `max_cpus=4`. Only pools that asked
+    for a runner and were refused by arithmetic appear here."""
+
     def for_pool(self, pool: str) -> int:
         return self.granted.get(pool, 0)
 
@@ -112,7 +127,7 @@ def admit(
 
     held = _backpressure(load, limits)
     if held is not None:
-        return Admission(granted=granted, reasons=(held,), deferred=wanted_total)
+        return Admission(granted=granted, reasons=(held,), deferred=wanted_total, held_by=held)
 
     committed = _Committed(
         containers=sum(request.committed for request in requests),
@@ -120,22 +135,25 @@ def admit(
         memory=sum(request.committed * (request.memory_bytes or 0) for request in requests),
     )
 
+    blocked: dict[str, str] = {}
+
     for pool in _shares(requests):
         request = pool.request
-        blocked = _ceiling_reached(
+        ceiling = _ceiling_reached(
             limits,
             containers=committed.containers + 1,
             cpus=committed.cpus + (request.cpus or 0.0),
             memory=committed.memory + (request.memory_bytes or 0),
         )
-        if blocked is not None:
+        if ceiling is not None:
             # This pool cannot take another runner, but a cheaper one still might: a pool
             # reserving four CPUs is blocked by two remaining where a pool reserving one is
             # not. So the pool drops out and the rest carry on.
             reasons.append(
-                f"[{request.pool}] held back by {blocked} "
+                f"[{request.pool}] held back by {ceiling} "
                 f"(weight {request.priority}, {pool.remaining} still wanted)"
             )
+            blocked[request.pool] = ceiling
             pool.give_up()
             continue
 
@@ -144,7 +162,7 @@ def admit(
         committed.add(request)
 
     deferred = wanted_total - sum(granted.values())
-    return Admission(granted=granted, reasons=tuple(reasons), deferred=deferred)
+    return Admission(granted=granted, reasons=tuple(reasons), deferred=deferred, blocked=blocked)
 
 
 @dataclass

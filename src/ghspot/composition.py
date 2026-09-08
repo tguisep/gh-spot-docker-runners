@@ -24,6 +24,7 @@ from ghspot.infrastructure.github.auth import (
 from ghspot.infrastructure.github.client import GitHubClient
 from ghspot.infrastructure.persistence.sqlite import (
     SqliteEventLog,
+    SqliteQueueSnapshots,
     SqliteRunnerLogs,
     SqliteRunnerRepository,
 )
@@ -40,6 +41,7 @@ class Application:
     runners: SqliteRunnerRepository
     events: SqliteEventLog
     runner_logs: SqliteRunnerLogs
+    queue: SqliteQueueSnapshots
     reconciler: ReconciliationService
     housekeeping: ReclaimHostSpace
     clock: SystemClock
@@ -100,6 +102,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
     runners = SqliteRunnerRepository(settings.daemon.state_db)
     events = SqliteEventLog(settings.daemon.state_db)
     runner_logs = SqliteRunnerLogs(settings.daemon.state_db)
+    queue = SqliteQueueSnapshots(settings.daemon.state_db)
 
     provision = ProvisionRunner(
         forge=forge,
@@ -130,6 +133,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
         retire=retire,
         capacity=settings.capacity,
         host=settings.daemon.host,
+        queue=queue,
     )
 
     keep = settings.housekeeping
@@ -156,6 +160,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
         runners=runners,
         events=events,
         runner_logs=runner_logs,
+        queue=queue,
         reconciler=reconciler,
         housekeeping=housekeeping,
         clock=clock,
@@ -181,3 +186,13 @@ def read_only_events(settings: Settings) -> SqliteEventLog:
 def read_only_runner_logs(settings: Settings) -> SqliteRunnerLogs:
     """What retired containers said, on the same read-only terms as the projection."""
     return SqliteRunnerLogs(settings.daemon.state_db)
+
+
+def read_only_queue(settings: Settings) -> SqliteQueueSnapshots:
+    """The last queue reading the daemon wrote down.
+
+    Read-only on the same terms as the rest: `ghspot queue` shows a real queue without ever
+    holding a GitHub token, because the daemon already paid for the request and left the
+    answer in the projection.
+    """
+    return SqliteQueueSnapshots(settings.daemon.state_db)

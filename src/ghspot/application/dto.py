@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from ghspot.domain.model.queue import WaitReason
 from ghspot.domain.model.runner import RunnerState
 
 
@@ -62,6 +63,15 @@ class PoolView:
     starting: int = 0
     active: int = 0
     queued_jobs: int = 0
+    """Jobs waiting that this pool would serve, from the daemon's last queue reading.
+
+    Zero when no tick has taken one yet — which is a fresh install or a stopped daemon, not
+    an empty queue. `QueueView` carries the age that tells the two apart.
+    """
+
+    oldest_wait_seconds: float = 0.0
+    """How long the longest-waiting job in this pool's line has been queued at GitHub."""
+
     runners: list[RunnerView] = field(default_factory=list)
 
     @property
@@ -179,3 +189,112 @@ class TickReport:
     @property
     def changed_anything(self) -> bool:
         return bool(self.launched or self.retired or self.terminated or self.repaired)
+
+
+@dataclass(frozen=True, slots=True)
+class QueueEntryView:
+    """One queued job as an operator sees it, with the wait already worked out."""
+
+    job_id: int
+    run_id: int
+    repository: str
+    workflow: str
+    job_name: str
+    labels: list[str]
+    pool: str
+    priority: int
+    position: int
+    reason: WaitReason
+    detail: str
+    waiting_seconds: float
+
+    @property
+    def title(self) -> str:
+        """`workflow / job`, or whichever half GitHub gave us."""
+        parts = [part for part in (self.workflow, self.job_name) if part]
+        return " / ".join(parts) or f"job {self.job_id}"
+
+    @property
+    def is_delayed(self) -> bool:
+        return self.reason.is_delayed
+
+
+@dataclass(frozen=True, slots=True)
+class PoolPressureView:
+    """One pool's share of the queue, and what is holding it back."""
+
+    pool: str
+    repository: str
+    priority: int
+    queued: int
+    available: int
+    active: int
+    max_runners: int
+    launching: int
+    wanted: int
+    blocked_by: str
+    oldest_wait_seconds: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class HostPressureView:
+    """The machine and the limits it is read against, as the last tick measured it."""
+
+    cpu_percent: float | None = None
+    memory_percent: float | None = None
+    disk_percent: float | None = None
+    containers_running: int | None = None
+
+    cpu_high_water: float | None = None
+    memory_high_water: float | None = None
+    disk_high_water: float | None = None
+
+    max_containers: int | None = None
+    max_cpus: float | None = None
+    max_memory_bytes: int | None = None
+
+    holding: str = ""
+    """Set when backpressure is deferring every launch on the host."""
+
+
+@dataclass(frozen=True, slots=True)
+class QueueView:
+    """Everything `ghspot queue` and `GET /queue` render.
+
+    A *reading*, with the moment it was taken kept next to it. The daemon polls GitHub on an
+    interval, so this is always slightly behind — and a view that hid that would let a
+    stopped daemon look like an empty queue, which is the failure this whole view exists to
+    make impossible.
+    """
+
+    taken_at: datetime | None = None
+    """``None`` when the daemon has never written a snapshot: it is not running, has not
+    reached its first tick, or is a version that did not record one."""
+
+    age_seconds: float = 0.0
+    stale: bool = False
+    """Older than the daemon's poll interval allows for. Nothing here can be trusted as
+    current, and the likeliest reason is that the daemon is not running."""
+
+    entries: list[QueueEntryView] = field(default_factory=list)
+    pools: list[PoolPressureView] = field(default_factory=list)
+    host: HostPressureView = field(default_factory=HostPressureView)
+    notes: list[str] = field(default_factory=list)
+    unreadable: list[str] = field(default_factory=list)
+
+    @property
+    def total(self) -> int:
+        return len(self.entries)
+
+    @property
+    def delayed(self) -> int:
+        """Jobs waiting on the fleet, as opposed to ones a runner is already free for."""
+        return sum(1 for entry in self.entries if entry.is_delayed)
+
+    @property
+    def longest_wait_seconds(self) -> float:
+        return max((entry.waiting_seconds for entry in self.entries), default=0.0)
+
+    @property
+    def has_snapshot(self) -> bool:
+        return self.taken_at is not None
