@@ -1335,3 +1335,61 @@ The same mechanism answers the question behind the report, which was never reall
   the entries would make the pools table quietly depend on the job list staying complete.
 - Recording is best-effort and swallows storage errors: a tick that did its real work must not
   be reported as failed because a note about it could not be filed.
+
+## 2026-09-08 — the queue knows what kind of work it is holding
+
+Two follow-ups to the queue view, from using it: there was no way to get from a row to the
+job, and a deep queue was just a number.
+
+**A link.** `QueuedJob` carries the `html_url` the forge gave, never one assembled here — an
+Enterprise install serves its pages from a different host than its API, and a built URL would
+404 there. The dashboard renders it as a link in a new tab; the CLI as an OSC 8 hyperlink on
+the job's name, which a terminal without support renders as plain text and loses nothing.
+
+**A classifier.** Every queued job is now ranked from what its run already says:
+
+| Kind | Prio | |
+|---|---|---|
+| `default-branch` | 10 | A merge to the shared branch: nobody can route around it |
+| `manual` | 8 | `workflow_dispatch` — somebody is watching the page |
+| `pull-request` | 6 | Open for review |
+| `branch` | 5 | Any other push, or a tag |
+| `draft` | 4 | The author has said it is not finished |
+| `scheduled` | 2 | A nightly ten minutes late is still a nightly |
+
+The queue is read most urgent first, oldest first within a class.
+
+### Decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Where the class comes from | The run, never the workflow | A workflow that could declare its own importance would declare the top of the scale, every time, and the ranking would mean nothing within a week. |
+| Whether to make the weights configurable | No, for now | "Auto" was the request. A config key means a key in four deployment paths, and nobody has yet wanted a different order. |
+| Whether it feeds `admission` | No | Deliberately not: making a pool's weight move on its own, according to what happened to be queued at that instant, is a behaviour change and deserves its own decision rather than arriving as a side effect of a display feature. |
+| Draft detection | One open-PR listing per repository, permission-optional | It is the only fact the run does not carry, and the only read needing a permission the daemon does not otherwise require. |
+
+### Notes for later
+
+- **It orders the queue as read, and nothing else.** The daemon starts runners; GitHub decides
+  which job each one takes, roughly oldest first. A merge cannot jump a draft inside GitHub's
+  dispatch, and nothing preempts a running job. What ranking buys is the answer to the question
+  an operator actually has when the queue is deep — *is this work somebody is waiting on, or
+  forty draft matrix legs?* — which age alone cannot give.
+- Two extra reads per poll, both conditional and both skipped when nothing is queued: the
+  repository (for its default branch) and the open pull requests (for draft status). A quiet
+  repository pays for neither, and a busy one pays two `304`s.
+- Draft status is matched by **head branch**, not PR number: `pull_requests` on a workflow run
+  is empty for anything from a fork, so the number is not reliably there to match on.
+- `Pull requests: read` is optional and newly documented. Refused, the listing is asked for
+  once, remembered on the client, and never attempted again — a token without it costs one
+  403, not one per tick forever. Drafts then read as ordinary pull requests: a rank too high
+  rather than somebody's work quietly demoted, which is the safe direction.
+- `schedule` is checked before the default-branch test, because a nightly fires *on* the
+  default branch. Getting that order wrong would have inverted the whole scale, and it is the
+  one case with a test that asserts the inversion cannot happen.
+- Two things called "prio" now sit near each other and mean different things: the job's rank,
+  and the pool's `priority` weight for contested host capacity. The queue table shows the
+  first, the pools table the second, and the docs say so. Worth watching — if it confuses
+  anyone, the pools column is the one to rename.
+- An unrecognised class from a newer writer reads back as `branch`, which claims nothing about
+  who is waiting and so cannot mislead in either direction.

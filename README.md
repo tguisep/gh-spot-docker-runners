@@ -32,7 +32,8 @@ What you deploy is a `.deb`, a systemd unit and one `config.toml`:
 
 A Linux host with Docker, and a credential **scoped to the repositories it will serve** —
 a fine-grained token or a GitHub App — carrying **Administration: read & write** (to register
-runners) and **Actions: read** (to see queued jobs), and nothing else.
+runners) and **Actions: read** (to see queued jobs). **Pull requests: read** is optional and
+only sharpens how the queue view ranks drafts.
 
 ```bash
 # The latest release for this machine's architecture, with its checksum.
