@@ -27,6 +27,7 @@ from tests.fakes.adapters import (
     FakeBackend,
     FakeClock,
     FakeForge,
+    InMemoryQueueSnapshots,
     InMemoryRunnerLogs,
     InMemoryRunnerRepository,
     RecordingPublisher,
@@ -45,6 +46,7 @@ class Harness:
         self.backend = FakeBackend(now=T0)
         self.repository = InMemoryRunnerRepository()
         self.runner_logs = InMemoryRunnerLogs()
+        self.queue = InMemoryQueueSnapshots()
         self.events = RecordingPublisher()
 
         provision = ProvisionRunner(
@@ -73,6 +75,7 @@ class Harness:
             runners=self.repository,  # type: ignore[arg-type]
             events=self.events,  # type: ignore[arg-type]
             runner_logs=self.runner_logs,  # type: ignore[arg-type]
+            queue=self.queue,  # type: ignore[arg-type]
             reconciler=ReconciliationService(
                 pools=settings.pools,
                 forge=self.forge,
@@ -82,6 +85,7 @@ class Harness:
                 events=self.events,
                 provision=provision,
                 retire=retire,
+                queue=self.queue,
             ),
             housekeeping=ReclaimHostSpace(
                 backend=self.backend,
@@ -588,3 +592,60 @@ def test_health_says_when_the_configuration_has_moved_on(
     )
 
     assert client.get("/health").json()["config_stale"] is True
+
+
+# ---------------------------------------------------------------- the queue
+
+
+def test_the_queue_is_empty_and_absent_before_the_first_tick(client: TestClient) -> None:
+    """`taken_at: null` is the distinction a client has to render: nothing is queued, versus
+    nobody has looked."""
+    body = client.get("/queue").json()
+
+    assert body["taken_at"] is None
+    assert body["total"] == 0
+    assert body["entries"] == []
+
+
+def test_the_queue_says_what_each_job_is_waiting_on(client: TestClient, harness: Harness) -> None:
+    from tests.unit.conftest import make_job
+
+    harness.forge.queued[REPO] = [make_job(index) for index in range(1, 6)]
+    client.post("/reconcile")
+
+    body = client.get("/queue").json()
+
+    assert body["taken_at"] is not None
+    assert body["total"] == 5
+    reasons = {entry["reason"] for entry in body["entries"]}
+    # `max_runners` is 3 in the harness spec, so two of the five have nowhere to go.
+    assert "pool-at-capacity" in reasons
+    blocked = next(e for e in body["entries"] if e["reason"] == "pool-at-capacity")
+    assert "max_runners" in blocked["detail"]
+    assert blocked["delayed"] is True
+
+
+def test_the_pools_endpoint_reports_the_queue_it_recorded(
+    client: TestClient, harness: Harness
+) -> None:
+    """The defect: this read zero however much was queued, because nothing wrote it down."""
+    from tests.unit.conftest import make_job
+
+    harness.forge.queued[REPO] = [make_job(1), make_job(2)]
+    client.post("/reconcile")
+
+    body = client.get("/pools").json()
+
+    assert body[0]["queued_jobs"] == 2
+
+
+def test_the_queue_can_be_narrowed_to_one_pool(client: TestClient, harness: Harness) -> None:
+    from tests.unit.conftest import make_job
+
+    harness.forge.queued[REPO] = [make_job(1)]
+    client.post("/reconcile")
+
+    body = client.get("/queue", params={"pool": "default"}).json()
+
+    assert [pool["pool"] for pool in body["pools"]] == ["default"]
+    assert body["total"] == 1

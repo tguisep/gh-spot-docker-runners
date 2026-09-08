@@ -22,6 +22,7 @@ from starlette.requests import Request
 
 from ghspot import __version__
 from ghspot.application.queries.jobs import FindJobForRunner
+from ghspot.application.queries.queue import GetQueue
 from ghspot.application.queries.resolve import ResolveRunner
 from ghspot.application.queries.stats import GatherStats
 from ghspot.application.queries.views import GetPoolStatus, ListRunners, to_view
@@ -36,6 +37,7 @@ from ghspot.interfaces.api.schemas import (
     JobLogsResponse,
     LogsResponse,
     PoolResponse,
+    QueueResponse,
     RunnerResponse,
     StatsResponse,
     TickResponse,
@@ -126,7 +128,7 @@ def create_app(application: Application) -> FastAPI:
 
     @api.get("/pools", response_model=list[PoolResponse], tags=["pools"])
     async def list_pools(app: Wired) -> list[PoolResponse]:
-        query = GetPoolStatus(app.runners, app.clock)
+        query = GetPoolStatus(app.runners, app.clock, app.queue)
         views = await query([pool.spec for pool in app.settings.pools])
         return [PoolResponse.of(view) for view in views]
 
@@ -135,8 +137,23 @@ def create_app(application: Application) -> FastAPI:
         specs = [pool.spec for pool in app.settings.pools if pool.spec.name == name]
         if not specs:
             raise HTTPException(status_code=404, detail=f"no pool named {name!r}")
-        query = GetPoolStatus(app.runners, app.clock)
+        query = GetPoolStatus(app.runners, app.clock, app.queue)
         return PoolResponse.of((await query(specs))[0])
+
+    @api.get("/queue", response_model=QueueResponse, tags=["pools"])
+    async def get_queue(
+        app: Wired,
+        pool: Annotated[str | None, Query(description="Restrict to one pool.")] = None,
+    ) -> QueueResponse:
+        """What is waiting for a runner, and what each job is waiting on.
+
+        Served from the snapshot the last tick wrote down, so polling this costs nothing
+        against the GitHub rate limit however many dashboards are open. `age_seconds` and
+        `stale` say how far behind the reading is; render them, or a stopped daemon will look
+        like an empty queue.
+        """
+        query = GetQueue(app.queue, app.clock, app.settings.daemon.poll_interval)
+        return QueueResponse.of(await query(pool))
 
     @api.get("/runners", response_model=list[RunnerResponse], tags=["runners"])
     async def list_runners(
