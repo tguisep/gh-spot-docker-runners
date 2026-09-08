@@ -352,10 +352,15 @@ class HostPressureResponse(BaseModel):
     cpu_percent: float | None = None
     memory_percent: float | None = None
     disk_percent: float | None = None
+    io_percent: float | None = None
+    """How busy Docker's disk is, not how full. Null on a daemon's first probe: it is a rate,
+    and a rate needs two readings to exist."""
+
     containers_running: int | None = None
     cpu_high_water: float | None = None
     memory_high_water: float | None = None
     disk_high_water: float | None = None
+    io_high_water: float | None = None
     max_containers: int | None = None
     max_cpus: float | None = None
     max_memory_bytes: int | None = None
@@ -367,10 +372,12 @@ class HostPressureResponse(BaseModel):
             cpu_percent=view.cpu_percent,
             memory_percent=view.memory_percent,
             disk_percent=view.disk_percent,
+            io_percent=view.io_percent,
             containers_running=view.containers_running,
             cpu_high_water=view.cpu_high_water,
             memory_high_water=view.memory_high_water,
             disk_high_water=view.disk_high_water,
+            io_high_water=view.io_high_water,
             max_containers=view.max_containers,
             max_cpus=view.max_cpus,
             max_memory_bytes=view.max_memory_bytes,

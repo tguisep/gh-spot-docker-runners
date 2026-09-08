@@ -147,11 +147,16 @@ class HostPressure:
     cpu_percent: float | None = None
     memory_percent: float | None = None
     disk_percent: float | None = None
+    io_percent: float | None = None
+    """How busy Docker's disk is, as opposed to how full it is. ``None`` on the first probe of
+    a process: it is a rate, and a rate needs two readings."""
+
     containers_running: int | None = None
 
     cpu_high_water: float | None = None
     memory_high_water: float | None = None
     disk_high_water: float | None = None
+    io_high_water: float | None = None
 
     max_containers: int | None = None
     max_cpus: float | None = None

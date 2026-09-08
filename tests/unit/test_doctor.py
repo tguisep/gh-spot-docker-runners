@@ -228,3 +228,34 @@ async def test_a_disk_that_cannot_be_read_is_not_a_check(config: Path) -> None:
     backend.load = HostLoad()
 
     assert await doctor_module._disk(backend, CapacityLimits(disk_high_water=85)) == []
+
+
+def test_no_io_mark_means_no_probe_check(config: Path) -> None:
+    """Nothing to be wrong about. A check reporting on a gate nobody asked for is noise."""
+    assert doctor_module._disk_io(CapacityLimits()) == []
+
+
+def test_a_configured_io_mark_names_the_device_it_reads(
+    config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(doctor_module, "describe_io_device", lambda: "dm-1")
+
+    checks = doctor_module._disk_io(CapacityLimits(io_high_water=90))
+
+    assert [check.ok for check in checks] == [True]
+    assert "dm-1" in checks[0].detail
+    assert "high water 90%" in checks[0].detail
+
+
+def test_an_io_mark_with_no_device_behind_it_fails(
+    config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure worth catching: a mark set on a host whose Docker device has no
+    `/proc/diskstats` row. The gate never fires, and nothing anywhere says so."""
+    monkeypatch.setattr(doctor_module, "describe_io_device", lambda: None)
+
+    checks = doctor_module._disk_io(CapacityLimits(io_high_water=90))
+
+    assert [check.ok for check in checks] == [False]
+    assert "/proc/diskstats" in checks[0].detail
+    assert "/proc/diskstats" in checks[0].remedy

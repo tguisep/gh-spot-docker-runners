@@ -36,6 +36,16 @@ Below the jobs comes a row per pool — what it holds, what the scaling policy a
 the host granted, and what held the rest back — then the host's own readings beside the
 limits they were judged against, and the tick's notes verbatim.
 
+```
+host cpu 71% / 85%  memory 88% / 90%  disk 54% / 85%  disk io 96% / 90%  containers 4/6
+```
+
+`disk` is how full the filesystem is; `disk io` is how busy the device under it is. They are
+[different failures](../../host/capacity/#full-is-not-the-same-as-busy) with different
+remedies, and a host can be comfortable on one while the other is why nothing finishes. A
+reading with no number was not measured — `disk io` is a rate, so a daemon's first tick never
+has one.
+
 The same thing lives on the dashboard's **queue** page and at `GET /queue`.
 
 ## What each status means
@@ -47,7 +57,7 @@ The same thing lives on the dashboard's **queue** page and at `GET /queue`.
 | `pool-at-capacity` | The pool is at `max_runners` | Raise `max_runners`, if the host has room |
 | `tick-limit` | `max_launch_per_tick` is spreading a burst over several ticks | Nothing; it clears in seconds. Raise it if bursts are routine |
 | `host-at-capacity` | A committed ceiling — `max_containers`, `max_cpus`, `max_memory` — refused the launch even though the pool had room | Raise the ceiling, or lower what a pool reserves |
-| `host-busy` | Backpressure: the machine is at a high-water mark and **nothing** starts until it recovers | Find what is loading the box. This is the one that is not about the pool |
+| `host-busy` | Backpressure: the machine is at a high-water mark and **nothing** starts until it recovers | Read the host line below the table — it names which of cpu, memory, disk or disk io is over, beside the mark it is judged against |
 | `contended` | Capacity existed and went to another pool this tick | Nothing, or raise this pool's `priority`. See [priority](../../pools/priority/) |
 | `no-pool` | No configured pool serves those labels in that repository | The only one that never clears on its own — it is a configuration answer |
 

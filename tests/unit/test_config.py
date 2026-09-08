@@ -712,6 +712,8 @@ max_cpus = 12.5
 max_memory = "24g"
 cpu_high_water = 85
 memory_high_water = 90
+disk_high_water = 85
+io_high_water = 90
 """
     )
 
@@ -721,6 +723,8 @@ memory_high_water = 90
     assert capacity.max_memory_bytes == 24 * 1024**3
     assert capacity.cpu_high_water == 85
     assert capacity.memory_high_water == 90
+    assert capacity.disk_high_water == 85
+    assert capacity.io_high_water == 90
 
 
 @pytest.mark.parametrize(
@@ -730,12 +734,22 @@ memory_high_water = 90
         "max_cpus = 0",
         "cpu_high_water = 0",
         "cpu_high_water = 140",
+        "io_high_water = 0",
+        "io_high_water = 101",
         'max_memory = "lots"',
     ],
 )
 def test_a_nonsense_limit_is_refused_at_load_time(written: str) -> None:
     with pytest.raises(ConfigError, match=r"(?i)capacity"):
         parse(MINIMAL + f"\n[capacity]\n{written}\n")
+
+
+def test_an_io_mark_alone_turns_the_probe_on() -> None:
+    """`has_backpressure` decides whether the host is measured at all, so a host watching
+    only its disk must still be measured — and one watching nothing must not pay for it."""
+    settings = parse(MINIMAL + "\n[capacity]\nio_high_water = 90\n")
+
+    assert settings.capacity.has_backpressure is True  # type: ignore[attr-defined]
 
 
 def test_a_pool_can_be_given_a_priority() -> None:

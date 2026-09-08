@@ -245,6 +245,10 @@ function HostFacts({ host }: { host: HostPressure | undefined }) {
         { name: 'cpu', value: host.cpu_percent, limit: host.cpu_high_water },
         { name: 'memory', value: host.memory_percent, limit: host.memory_high_water },
         { name: 'disk', value: host.disk_percent, limit: host.disk_high_water },
+        // Named apart from "disk" on purpose: one is how full the filesystem is, the other
+        // how busy the device under it is, and a host can be fine on one while the other is
+        // the reason nothing finishes.
+        { name: 'disk io', value: host.io_percent, limit: host.io_high_water },
     ];
     const measured = gauges.filter((gauge) => gauge.value !== null);
 
