@@ -15,12 +15,14 @@ from rich.text import Text
 from ghspot.application.dto import (
     HostPressureView,
     PoolView,
+    QueueEntryView,
     QueueView,
     RunnerView,
     StatsView,
     TickReport,
     UsageStats,
 )
+from ghspot.domain.model.job import WorkClass
 from ghspot.domain.model.queue import WaitReason
 from ghspot.domain.model.runner import RunnerState
 
@@ -221,6 +223,16 @@ def stats_tables(view: StatsView) -> list[Table | Text]:
     return blocks
 
 
+#: Only the two ends are coloured. A scale where every rung has its own colour is a legend
+#: to memorise; what the reader needs at a glance is "is the stuck work the shared branch, or
+#: is it somebody's draft".
+_CLASS_COLOUR = {
+    WorkClass.DEFAULT_BRANCH: "bold cyan",
+    WorkClass.MANUAL: "cyan",
+    WorkClass.DRAFT: "dim",
+    WorkClass.SCHEDULED: "dim",
+}
+
 _REASON_COLOUR = {
     WaitReason.ASSIGNABLE: "green",
     WaitReason.STARTING: "cyan",
@@ -306,8 +318,9 @@ def _queue_table(view: QueueView) -> Table:
     table.add_column("waiting", justify="right")
     table.add_column("job", style="bold", overflow="fold", min_width=16)
     table.add_column("repository", style="dim")
-    table.add_column("pool")
+    table.add_column("kind")
     table.add_column("prio", justify="right")
+    table.add_column("pool")
     table.add_column("#", justify="right")
     table.add_column("status")
     # The column the command exists for. Folded, never truncated: a reason cut off at the
@@ -317,15 +330,28 @@ def _queue_table(view: QueueView) -> Table:
     for entry in view.entries:
         table.add_row(
             duration(entry.waiting_seconds),
-            entry.title,
+            _job_cell(entry),
             entry.repository,
+            Text(entry.work_class.value, style=_CLASS_COLOUR.get(entry.work_class, "")),
+            str(entry.urgency),
             entry.pool or Text("—", style="red"),
-            str(entry.priority) if entry.pool else "—",
             str(entry.position) if entry.position else "—",
             Text(entry.reason.value, style=_REASON_COLOUR.get(entry.reason, "")),
             Text(entry.detail, style="dim") if entry.detail else "",
         )
     return table
+
+
+def _job_cell(entry: QueueEntryView) -> Text:
+    """The job's name, hyperlinked to its page on the forge where the terminal allows it.
+
+    An OSC 8 link rather than a column of URLs: the addresses are eighty characters of mostly
+    identical prefix, and a table wide enough to hold them is a table nobody can read. A
+    terminal without support renders the name plainly and loses nothing it had before.
+    """
+    if not entry.url:
+        return Text(entry.title)
+    return Text(entry.title, style=f"link {entry.url}")
 
 
 def _pressure_table(view: QueueView) -> Table:

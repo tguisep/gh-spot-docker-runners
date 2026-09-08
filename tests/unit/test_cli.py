@@ -133,6 +133,7 @@ def test_queue_names_the_limit_a_job_is_waiting_on(config: Path, tmp_path: Path)
     """The whole point of the command: not that five jobs are queued, but why."""
     import anyio
 
+    from ghspot.domain.model.job import WorkClass
     from ghspot.domain.model.queue import PoolPressure, QueueEntry, QueueSnapshot, WaitReason
     from ghspot.infrastructure.persistence.sqlite import SqliteQueueSnapshots
     from ghspot.infrastructure.system import SystemClock
@@ -152,6 +153,9 @@ def test_queue_names_the_limit_a_job_is_waiting_on(config: Path, tmp_path: Path)
                     job_name="test",
                     labels=("self-hosted", "linux"),
                     queued_at=now,
+                    url="https://github.com/tguisep/gh-spot-docker-runners/actions/runs/55/job/991",
+                    work_class=WorkClass.DEFAULT_BRANCH,
+                    urgency=10,
                     pool="default",
                     priority=1,
                     position=1,
@@ -182,6 +186,9 @@ def test_queue_names_the_limit_a_job_is_waiting_on(config: Path, tmp_path: Path)
     assert "ci / test" in result.stdout
     assert "pool-at-capacity" in result.stdout
     assert "max_runners=3" in result.stdout
+    # The classification, so a deep queue can be read as "work people are waiting on" rather
+    # than only as a number.
+    assert "default-branch" in result.stdout
 
 
 def test_pool_list_shows_the_queue_the_daemon_recorded(config: Path, tmp_path: Path) -> None:
