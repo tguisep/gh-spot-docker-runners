@@ -12,7 +12,9 @@ because they fail differently:
                 runners. Deterministic, needs no measurement, and cannot be wrong.
   backpressure  A gate on what is *measured* — the host's real load right now. Catches what
                 the arithmetic cannot: everything else on the box, a job using far more than
-                its pool reserved, a machine already struggling before ghspot woke up.
+                its pool reserved, a machine already struggling before ghspot woke up. Four
+                readings: processor, memory, how full Docker's filesystem is, and how busy
+                the device under it is.
 
 Priority decides who gets scarce capacity. There is no queue to persist: a pool that is
 refused this tick simply wants the same thing on the next one, and the next tick re-derives
@@ -63,12 +65,23 @@ class CapacityLimits:
     is committed; this is the one that catches what jobs *leave behind* — build caches, pulled
     images, volumes — which housekeeping reclaims on a schedule rather than under pressure."""
 
+    io_high_water: float | None = None
+    """Percent of the time the device under Docker's data directory is busy — `iostat`'s
+    `%util`. The other half of the disk story: `disk_high_water` catches a filesystem filling
+    up, this catches one that is keeping up with nothing.
+
+    Worth setting separately because a saturated device is invisible to every other mark. CPU
+    load average does pick up uninterruptible sleep, so heavy IO eventually shows there too —
+    but only once enough processes are stuck waiting, which is well after the point where
+    adding another runner makes every build on the box slower."""
+
     @property
     def has_backpressure(self) -> bool:
         return (
             self.cpu_high_water is not None
             or self.memory_high_water is not None
             or self.disk_high_water is not None
+            or self.io_high_water is not None
         )
 
 
@@ -266,6 +279,14 @@ def _backpressure(load: HostLoad, limits: CapacityLimits) -> str | None:
         return (
             f"docker filesystem {full:.0f}% full (high water {limits.disk_high_water:.0f}%); "
             "deferring every launch until housekeeping or an operator reclaims space"
+        )
+
+    busy = load.io_percent
+    if limits.io_high_water is not None and busy is not None and busy >= limits.io_high_water:
+        return (
+            f"docker disk busy {busy:.0f}% of the time "
+            f"(high water {limits.io_high_water:.0f}%); "
+            "deferring every launch until the device catches up"
         )
 
     return None

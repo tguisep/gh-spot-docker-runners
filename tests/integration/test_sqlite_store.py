@@ -289,7 +289,13 @@ def make_snapshot() -> QueueSnapshot:
                 blocked_by="pool is at max_runners=4 with 4 up",
             ),
         ),
-        host=HostPressure(cpu_percent=42.5, cpu_high_water=85.0, containers_running=4),
+        host=HostPressure(
+            cpu_percent=42.5,
+            cpu_high_water=85.0,
+            io_percent=96.0,
+            io_high_water=90.0,
+            containers_running=4,
+        ),
         notes=("[default] 1 queued job(s) with no runner available",),
         unreadable=("tguisep/private",),
     )

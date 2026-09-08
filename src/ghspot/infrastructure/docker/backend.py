@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -41,6 +43,10 @@ class DockerRunnerBackend:
 
     def __init__(self, client: Any | None = None) -> None:
         self._client = client or _connect()
+        # Disk utilisation is a rate, and /proc gives counters. The previous reading is what
+        # turns one into the other, so the backend has to remember it between probes — the
+        # only state on this adapter, and losing it costs one tick of one gauge.
+        self._io_sample: _IoSample | None = None
 
     async def create(self, spec: ContainerSpec) -> str:
         def run() -> str:
@@ -115,8 +121,9 @@ class DockerRunnerBackend:
                 containers = _positive(info.get("ContainersRunning"), allow_zero=True)
                 root = info.get("DockerRootDir")
 
+            path = str(root) if isinstance(root, str) else None
             used = _memory_used(total)
-            disk_used, disk_total = _disk(str(root) if isinstance(root, str) else None)
+            disk_used, disk_total = _disk(path)
             return HostLoad(
                 cpu_percent=_cpu_percent(cores),
                 memory_used_bytes=used,
@@ -125,9 +132,42 @@ class DockerRunnerBackend:
                 cores=cores,
                 disk_used_bytes=disk_used,
                 disk_total_bytes=disk_total,
+                io_percent=self._io_percent(path),
             )
 
         return await asyncio.to_thread(run)
+
+    def _io_percent(self, root: str | None) -> float | None:
+        """How busy Docker's disk has been since the last time this was asked.
+
+        `iostat`'s `%util`: the share of wall time the device spent with at least one request
+        in flight. The kernel counts that in `/proc/diskstats` as a monotonic millisecond
+        counter, so a percentage only exists between two readings — the first probe of a
+        process has nothing to subtract from and honestly says it does not know.
+
+        Never raises. Every failure path — no `/proc/diskstats`, a device that is not in it, a
+        window too short or too long to mean anything — returns ``None``, which the admission
+        policy treats as no reason to hold back.
+        """
+        taken = _io_sample(root)
+        previous, self._io_sample = self._io_sample, taken
+        if taken is None or previous is None:
+            return None
+
+        elapsed = taken.at - previous.at
+        if not _MIN_IO_WINDOW_SECONDS <= elapsed <= _MAX_IO_WINDOW_SECONDS:
+            return None
+
+        busy_ms = taken.io_ticks - previous.io_ticks
+        if busy_ms < 0:
+            # The counter went backwards: the device was replaced under us, or the machine
+            # was suspended. Nothing to report, and the sample just stored is the new base.
+            return None
+
+        # Clamped rather than trusted. io_ticks should never exceed wall time, but the clock
+        # this is measured against is not the one the kernel increments it with, and a gauge
+        # reading 104% is a gauge nobody believes.
+        return round(min(100.0, busy_ms / (elapsed * 1000.0) * 100.0), 1)
 
     async def usage(self, container_ids: Sequence[str]) -> Mapping[str, ContainerUsage]:
         """Sample CPU and memory for each container.
@@ -386,6 +426,21 @@ def _duration(delta: timedelta) -> str:
 
 PROC_LOADAVG = Path("/proc/loadavg")
 PROC_MEMINFO = Path("/proc/meminfo")
+PROC_DISKSTATS = Path("/proc/diskstats")
+
+#: Position of `ms doing I/O` in a /proc/diskstats line, after major, minor and name.
+#: The kernel has only ever appended to this format, so the index is stable.
+_IO_TICKS_FIELD = 12
+
+#: The shortest gap two readings may be taken over. Below it the ratio is mostly rounding:
+#: two forced reconciles a fifth of a second apart would report anything between 0 and 300%.
+_MIN_IO_WINDOW_SECONDS = 1.0
+
+#: The longest gap a reading may span. The probe only runs when a launch is wanted and a
+#: mark is set, so a quiet host can leave hours between samples — and an hour's average
+#: utilisation is not an answer to "is the disk busy now". Past this the sample becomes a
+#: fresh baseline and the reading is unknown, which never blocks.
+_MAX_IO_WINDOW_SECONDS = 300.0
 
 
 def _cpu_percent(cores: int | None) -> float | None:
@@ -428,6 +483,98 @@ def _disk(root: str | None) -> tuple[int | None, int | None]:
     usable = (stats.f_bavail + (stats.f_blocks - stats.f_bfree)) * stats.f_frsize
     used = (stats.f_blocks - stats.f_bfree) * stats.f_frsize
     return used, usable or None
+
+
+@dataclass(frozen=True, slots=True)
+class _IoSample:
+    """One reading of the busy counter, and when it was taken."""
+
+    at: float
+    io_ticks: int
+
+
+def _io_sample(root: str | None) -> _IoSample | None:
+    """Read the busy-time counter for the device holding Docker's data.
+
+    The device is found through the directory rather than by parsing `/proc/mounts`: `st_dev`
+    is already the answer the kernel would give, and it follows the filesystem wherever it
+    lives — a bind mount, LVM, a separate volume — without this having to understand any of
+    those arrangements.
+    """
+    path = root or "/var/lib/docker"
+    try:
+        device = Path(path).stat().st_dev
+        lines = PROC_DISKSTATS.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    major, minor = os.major(device), os.minor(device)
+    ticks = _io_ticks_for(lines, major, minor)
+    if ticks is None:
+        return None
+    # The monotonic clock, not the wall one: a machine that steps its clock mid-window would
+    # otherwise report a device 4000% busy, or negatively so.
+    return _IoSample(at=time.monotonic(), io_ticks=ticks)
+
+
+def _io_ticks_for(lines: Sequence[str], major: int, minor: int) -> int | None:
+    """The `ms doing I/O` counter for one device, falling back to the whole disk.
+
+    A filesystem on `sda1` reports minor 1, and partitions carry their own statistics on any
+    kernel this project runs on. The fallback to minor 0 is for the arrangements where they do
+    not — an answer about the whole disk is a slightly wider question than was asked, and much
+    better than reporting a busy device as idle.
+    """
+    whole_disk: int | None = None
+    for line in lines:
+        parts = line.split()
+        if len(parts) <= _IO_TICKS_FIELD:
+            continue
+        try:
+            line_major, line_minor = int(parts[0]), int(parts[1])
+            ticks = int(parts[_IO_TICKS_FIELD])
+        except ValueError:
+            continue
+        if line_major != major:
+            continue
+        if line_minor == minor:
+            return ticks
+        if line_minor == 0:
+            whole_disk = ticks
+    return whole_disk
+
+
+def describe_io_device(root: str | None = None) -> str | None:
+    """The device the busy probe would read, named as `/proc/diskstats` names it.
+
+    For `ghspot doctor`, which cannot usefully *measure* utilisation — that is a rate over a
+    window and doctor runs once — but can say whether there is anything to measure. A mark set
+    on a host with no matching row is a gate that never fires and never explains itself.
+    """
+    path = root or "/var/lib/docker"
+    try:
+        device = Path(path).stat().st_dev
+        lines = PROC_DISKSTATS.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    major, minor = os.major(device), os.minor(device)
+    fallback: str | None = None
+    for line in lines:
+        parts = line.split()
+        if len(parts) <= _IO_TICKS_FIELD:
+            continue
+        try:
+            line_major, line_minor = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        if line_major != major:
+            continue
+        if line_minor == minor:
+            return parts[2]
+        if line_minor == 0:
+            fallback = parts[2]
+    return fallback
 
 
 def _memory_used(total: int | None) -> int | None:
