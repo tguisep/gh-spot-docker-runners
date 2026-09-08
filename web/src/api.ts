@@ -5,7 +5,7 @@
  * proxies these paths to it. There is nothing to configure and no base URL to get wrong.
  */
 
-import type { Health, JobLogs, Logs, Pool, Runner, Stats, Tick } from './types';
+import type { Health, JobLogs, Logs, Pool, Queue, Runner, Stats, Tick } from './types';
 
 /** A failure the UI can show a person, rather than a stack trace or a bare `TypeError`. */
 export class ApiError extends Error {
@@ -52,6 +52,9 @@ async function detail(response: Response): Promise<string> {
 export const api = {
     health: () => request<Health>('/health'),
     pools: () => request<Pool[]>('/pools'),
+
+    queue: (pool?: string) =>
+        request<Queue>(pool ? `/queue?pool=${encodeURIComponent(pool)}` : '/queue'),
 
     runners: (options: { pool?: string; includeTerminal?: boolean; usage?: boolean } = {}) => {
         const query = new URLSearchParams();

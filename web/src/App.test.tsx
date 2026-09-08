@@ -10,7 +10,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
-import type { Health, Pool, Stats } from './types';
+import type { Health, Pool, Queue, Stats } from './types';
 
 const HEALTH: Health = {
     status: 'ok',
@@ -34,8 +34,66 @@ const POOL: Pool = {
     starting: 0,
     active: 3,
     queued_jobs: 5,
+    oldest_wait_seconds: 92,
     headroom: 1,
     runners: [],
+};
+
+const QUEUE: Queue = {
+    taken_at: '2026-08-28T12:00:00Z',
+    age_seconds: 3,
+    stale: false,
+    total: 1,
+    delayed: 1,
+    longest_wait_seconds: 92,
+    entries: [
+        {
+            job_id: 991,
+            run_id: 55,
+            repository: 'tguisep/gh-spot-docker-runners',
+            workflow: 'ci',
+            job_name: 'test',
+            title: 'ci / test',
+            labels: ['self-hosted', 'linux'],
+            pool: 'default',
+            priority: 1,
+            position: 1,
+            reason: 'pool-at-capacity',
+            detail: 'pool is at max_runners=4 with 4 up',
+            waiting_seconds: 92,
+            delayed: true,
+        },
+    ],
+    pools: [
+        {
+            pool: 'default',
+            repository: 'tguisep/gh-spot-docker-runners',
+            priority: 1,
+            queued: 1,
+            available: 0,
+            active: 4,
+            max_runners: 4,
+            launching: 0,
+            wanted: 1,
+            blocked_by: 'pool is at max_runners=4 with 4 up',
+            oldest_wait_seconds: 92,
+        },
+    ],
+    host: {
+        cpu_percent: 42,
+        memory_percent: 61,
+        disk_percent: null,
+        containers_running: 4,
+        cpu_high_water: 85,
+        memory_high_water: 90,
+        disk_high_water: null,
+        max_containers: 6,
+        max_cpus: null,
+        max_memory_bytes: null,
+        holding: '',
+    },
+    notes: [],
+    unreadable: [],
 };
 
 const EMPTY_STATS: Stats = {
@@ -74,6 +132,7 @@ beforeEach(() => {
             const path = String(input);
             if (path.startsWith('/health')) return answer(HEALTH);
             if (path.startsWith('/pools')) return answer([POOL]);
+            if (path.startsWith('/queue')) return answer(QUEUE);
             if (path.startsWith('/runners')) return answer([]);
             if (path.startsWith('/stats')) return answer(EMPTY_STATS);
             throw new Error(`unexpected request to ${path}`);
@@ -147,6 +206,52 @@ describe('the dashboard', () => {
 
         await waitFor(() => {
             expect(screen.getByText('no runners')).toBeTruthy();
+        });
+    });
+
+    it('says why a job is queued rather than only that it is', async () => {
+        // The number alone was the whole problem: an operator could see five queued and had
+        // no way to find out whether the fleet was full, the host was, or nothing served it.
+        render(
+            <MemoryRouter initialEntries={['/queue']}>
+                <App />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('ci / test')).toBeTruthy();
+        });
+        expect(screen.getByText('pool-at-capacity')).toBeTruthy();
+        expect(screen.getAllByText(/max_runners=4/).length).toBeGreaterThan(0);
+    });
+
+    it('warns that a stale reading is not the same as an empty queue', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async (input: RequestInfo | URL) => {
+                const path = String(input);
+                if (path.startsWith('/health')) return answer(HEALTH);
+                if (path.startsWith('/queue'))
+                    return answer({
+                        ...QUEUE,
+                        stale: true,
+                        age_seconds: 240,
+                        total: 0,
+                        delayed: 0,
+                        entries: [],
+                    });
+                return answer([]);
+            }),
+        );
+
+        render(
+            <MemoryRouter initialEntries={['/queue']}>
+                <App />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText(/This reading is 4m00s old/)).toBeTruthy();
         });
     });
 
