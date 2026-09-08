@@ -111,6 +111,114 @@ def test_pool_status_reports_an_empty_pool(config: Path) -> None:
     assert "no runners" in result.stdout
 
 
+def test_queue_says_the_daemon_has_not_looked_rather_than_showing_an_empty_queue(
+    config: Path,
+) -> None:
+    """The two are indistinguishable in a table, and mean opposite things: a fleet keeping up
+    against a daemon that is not running."""
+    result = runner.invoke(app, ["queue", "-c", str(config)])
+
+    assert result.exit_code == 0
+    assert "has not read the queue yet" in result.stdout
+
+
+def test_queue_works_without_a_token_or_docker(config: Path) -> None:
+    """Same terms as the rest of the read side: the daemon already paid for the request."""
+    result = runner.invoke(app, ["queue", "--pool", "default", "-c", str(config)])
+
+    assert result.exit_code == 0
+
+
+def test_queue_names_the_limit_a_job_is_waiting_on(config: Path, tmp_path: Path) -> None:
+    """The whole point of the command: not that five jobs are queued, but why."""
+    import anyio
+
+    from ghspot.domain.model.queue import PoolPressure, QueueEntry, QueueSnapshot, WaitReason
+    from ghspot.infrastructure.persistence.sqlite import SqliteQueueSnapshots
+    from ghspot.infrastructure.system import SystemClock
+
+    now = SystemClock().now()
+    store = SqliteQueueSnapshots(tmp_path / "state.db")
+    anyio.run(
+        store.record,
+        QueueSnapshot(
+            taken_at=now,
+            entries=(
+                QueueEntry(
+                    job_id=991,
+                    run_id=55,
+                    repository="tguisep/gh-spot-docker-runners",
+                    workflow="ci",
+                    job_name="test",
+                    labels=("self-hosted", "linux"),
+                    queued_at=now,
+                    pool="default",
+                    priority=1,
+                    position=1,
+                    reason=WaitReason.POOL_AT_CAPACITY,
+                    detail="pool is at max_runners=3 with 3 up",
+                ),
+            ),
+            pools=(
+                PoolPressure(
+                    pool="default",
+                    repository="tguisep/gh-spot-docker-runners",
+                    priority=1,
+                    queued=1,
+                    available=0,
+                    active=3,
+                    max_runners=3,
+                    launching=0,
+                    wanted=1,
+                    blocked_by="pool is at max_runners=3 with 3 up",
+                ),
+            ),
+        ),
+    )
+
+    result = runner.invoke(app, ["queue", "-c", str(config)], env={"COLUMNS": "200"})
+
+    assert result.exit_code == 0
+    assert "ci / test" in result.stdout
+    assert "pool-at-capacity" in result.stdout
+    assert "max_runners=3" in result.stdout
+
+
+def test_pool_list_shows_the_queue_the_daemon_recorded(config: Path, tmp_path: Path) -> None:
+    """The column that used to be hard-coded to zero."""
+    import anyio
+
+    from ghspot.domain.model.queue import PoolPressure, QueueSnapshot
+    from ghspot.infrastructure.persistence.sqlite import SqliteQueueSnapshots
+    from ghspot.infrastructure.system import SystemClock
+
+    store = SqliteQueueSnapshots(tmp_path / "state.db")
+    anyio.run(
+        store.record,
+        QueueSnapshot(
+            taken_at=SystemClock().now(),
+            pools=(
+                PoolPressure(
+                    pool="default",
+                    repository="tguisep/gh-spot-docker-runners",
+                    priority=1,
+                    queued=7,
+                    available=0,
+                    active=3,
+                    max_runners=3,
+                    launching=0,
+                    wanted=4,
+                ),
+            ),
+        ),
+    )
+
+    result = runner.invoke(app, ["pool", "list", "-c", str(config)], env={"COLUMNS": "200"})
+
+    assert result.exit_code == 0
+    assert "7" in result.stdout
+
+
 def test_runner_list_works_without_a_token_or_docker(config: Path) -> None:
     """This is the command you reach for when things are broken, so it must not need them."""
     result = runner.invoke(app, ["runner", "list", "-c", str(config)])
@@ -122,7 +230,7 @@ def test_runner_list_works_without_a_token_or_docker(config: Path) -> None:
 def test_help_lists_every_command_group() -> None:
     result = runner.invoke(app, ["--help"])
 
-    for command in ("daemon", "doctor", "pool", "runner", "config"):
+    for command in ("daemon", "doctor", "pool", "queue", "runner", "config"):
         assert command in result.stdout
 
 
