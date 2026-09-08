@@ -26,7 +26,11 @@ from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.policy.admission import CapacityLimits
 from ghspot.domain.ports.backend import RunnerBackend
 from ghspot.infrastructure.config.settings import ConfigError, Settings
-from ghspot.infrastructure.docker.backend import DOCKER_SOCKET, DockerRunnerBackend
+from ghspot.infrastructure.docker.backend import (
+    DOCKER_SOCKET,
+    DockerRunnerBackend,
+    describe_io_device,
+)
 from ghspot.infrastructure.github.client import GitHubClient
 from ghspot.interfaces.cli.render import console
 from ghspot.interfaces.cli.scaffold import SYSTEM_DIRECTORY as SYSTEM_CONFIG_DIRECTORY
@@ -135,6 +139,7 @@ async def _docker(settings: Settings) -> list[Check]:
 
     checks.append(Check(name="docker", ok=True, detail="daemon reachable"))
     checks.extend(await _disk(backend, settings.capacity))
+    checks.extend(_disk_io(settings.capacity))
 
     for pool in settings.pools:
         image = pool.template.image
@@ -192,6 +197,37 @@ async def _disk(backend: RunnerBackend, limits: CapacityLimits) -> list[Check]:
                 "reclaim space: ghspot daemon runs housekeeping on a schedule, or "
                 "docker system prune. Set [capacity].disk_high_water to defer launches "
                 "before it fills"
+            ),
+        )
+    ]
+
+
+def _disk_io(limits: CapacityLimits) -> list[Check]:
+    """That the disk-busy probe can actually see a device, when a mark depends on it.
+
+    Reported rather than measured. Utilisation is a rate over a window, and `doctor` runs once
+    — a single reading would be either meaningless or a lie. What is worth checking is the
+    thing that silently does nothing: `io_high_water` set on a host where `/proc/diskstats`
+    has no row for Docker's device, where the gate never fires and nothing ever says so.
+
+    Skipped entirely when no mark is set, because then there is nothing to be wrong.
+    """
+    if limits.io_high_water is None:
+        return []
+
+    device = describe_io_device()
+    return [
+        Check(
+            name="disk io probe",
+            ok=device is not None,
+            detail=(
+                f"reading {device} (high water {limits.io_high_water:.0f}%)"
+                if device is not None
+                else "no /proc/diskstats row for the device under Docker's data directory"
+            ),
+            remedy=(
+                "[capacity].io_high_water needs /proc/diskstats, which a container without "
+                "/proc from the host does not have. Unset it, or run the daemon on the host"
             ),
         )
     ]
