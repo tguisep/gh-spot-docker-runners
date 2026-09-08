@@ -55,6 +55,9 @@ const QUEUE: Queue = {
             job_name: 'test',
             title: 'ci / test',
             labels: ['self-hosted', 'linux'],
+            url: 'https://github.com/tguisep/gh-spot-docker-runners/actions/runs/55/job/991',
+            work_class: 'default-branch',
+            urgency: 10,
             pool: 'default',
             priority: 1,
             position: 1,
@@ -223,6 +226,24 @@ describe('the dashboard', () => {
         });
         expect(screen.getByText('pool-at-capacity')).toBeTruthy();
         expect(screen.getAllByText(/max_runners=4/).length).toBeGreaterThan(0);
+    });
+
+    it('links a queued job to its page on the forge, in a new tab', async () => {
+        render(
+            <MemoryRouter initialEntries={['/queue']}>
+                <App />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('ci / test')).toBeTruthy();
+        });
+        const link = screen.getByRole('link', { name: 'ci / test' });
+        expect(link.getAttribute('href')).toContain('/actions/runs/55/job/991');
+        // A new tab: the dashboard is a page you keep open while a burst drains.
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toContain('noreferrer');
+        expect(screen.getByText('default-branch')).toBeTruthy();
     });
 
     it('warns that a stale reading is not the same as an empty queue', async () => {

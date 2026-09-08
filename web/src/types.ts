@@ -148,6 +148,15 @@ export type WaitReason =
     | 'contended'
     | 'no-pool';
 
+/**
+ * What kind of work a queued job is. Mirrors `WorkClass` in the domain.
+ *
+ * Derived from the run — the branch it is on, the event that started it, whether the pull
+ * request behind it is a draft — never declared by the workflow itself.
+ */
+export type WorkClass =
+    'default-branch' | 'manual' | 'pull-request' | 'branch' | 'draft' | 'scheduled';
+
 export interface QueueEntry {
     job_id: number;
     run_id: number;
@@ -157,6 +166,11 @@ export interface QueueEntry {
     /** `workflow / job`, or whichever half GitHub gave us. */
     title: string;
     labels: string[];
+    /** The job's page on the forge, as the forge reported it. Empty if it gave none. */
+    url: string;
+    work_class: WorkClass;
+    /** What that class is worth. The job's own rank, not the pool's weight. */
+    urgency: number;
     /** Empty when no configured pool serves this job's labels. */
     pool: string;
     priority: number;
