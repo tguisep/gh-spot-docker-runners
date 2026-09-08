@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.9.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.8.0...v0.9.0) (2026-09-08)
+
+
+### Features
+
+* **api:** serve a queued job's link, class and urgency ([325a9b9](https://github.com/tguisep/gh-spot-docker-runners/commit/325a9b9d3d8ee267731019da6640c4eb997ad787))
+* **api:** serve the disk's busy reading and its mark ([7159838](https://github.com/tguisep/gh-spot-docker-runners/commit/7159838e404961ef10793ffdd7134776bbffa428))
+* **cli:** report the disk's busy reading beside its fullness ([27e6342](https://github.com/tguisep/gh-spot-docker-runners/commit/27e634294c147388170de415f1ad2095ff10c575))
+* **cli:** show a job's kind, and link its name to the forge ([7a069a1](https://github.com/tguisep/gh-spot-docker-runners/commit/7a069a18c016f8f2e5e837e78c4b05df78555faf))
+* **core:** defer launches when the disk cannot keep up ([b9e6ca0](https://github.com/tguisep/gh-spot-docker-runners/commit/b9e6ca09f7c6ff81b240032ad6ea0a9e3018289b))
+* **core:** rank a queued job by the kind of work it is ([d59c8af](https://github.com/tguisep/gh-spot-docker-runners/commit/d59c8af4438091f2334a792dec85210cd6a6d4ed))
+* **dashboard:** link each queued job, and show what kind it is ([7043256](https://github.com/tguisep/gh-spot-docker-runners/commit/7043256a54dd6a8646bfdadafc0026f2c594516c))
+* **dashboard:** show how busy Docker's disk is, not only how full ([8dcb8df](https://github.com/tguisep/gh-spot-docker-runners/commit/8dcb8df3c498d4780dc6ed5ea16b110588a6f877))
+* defer launches when the disk cannot keep up ([2671b81](https://github.com/tguisep/gh-spot-docker-runners/commit/2671b81d2eef87c5f7de0d6283090d720634c7c0))
+* rank queued jobs by kind, and link each one to the forge ([c17409a](https://github.com/tguisep/gh-spot-docker-runners/commit/c17409acf852505189ebbb98172a0b6408b1a6cd))
+
+
+### Documentation
+
+* document the classifier and the optional pull request permission ([0996068](https://github.com/tguisep/gh-spot-docker-runners/commit/099606863fe6344ab8979f6b28e23ee839187fe4))
+* separate a disk that is full from one that is busy ([1453c9f](https://github.com/tguisep/gh-spot-docker-runners/commit/1453c9f88f0e910d9288ae1b40651979359cbba0))
+
 ## [0.8.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.7.0...v0.8.0) (2026-09-08)
 
 
