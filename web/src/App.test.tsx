@@ -83,10 +83,12 @@ const QUEUE: Queue = {
         cpu_percent: 42,
         memory_percent: 61,
         disk_percent: null,
+        io_percent: 93,
         containers_running: 4,
         cpu_high_water: 85,
         memory_high_water: 90,
         disk_high_water: null,
+        io_high_water: 90,
         max_containers: 6,
         max_cpus: null,
         max_memory_bytes: null,
@@ -223,6 +225,23 @@ describe('the dashboard', () => {
         });
         expect(screen.getByText('pool-at-capacity')).toBeTruthy();
         expect(screen.getAllByText(/max_runners=4/).length).toBeGreaterThan(0);
+    });
+
+    it('shows a saturated disk beside the mark it is judged against', async () => {
+        // A disk can be a tenth full and completely busy. Without its own gauge that host
+        // looks healthy on every number the page shows.
+        render(
+            <MemoryRouter initialEntries={['/queue']}>
+                <App />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('disk io')).toBeTruthy();
+        });
+        const reading = screen.getByText('disk io').parentElement;
+        expect(reading?.textContent).toContain('93%');
+        expect(reading?.textContent).toContain('90%');
     });
 
     it('warns that a stale reading is not the same as an empty queue', async () => {
