@@ -184,11 +184,15 @@ export interface PoolPressure {
 export interface HostPressure {
     cpu_percent: number | null;
     memory_percent: number | null;
+    /** How *full* Docker's filesystem is. */
     disk_percent: number | null;
+    /** How *busy* the device under it is. Null on a daemon's first probe: it is a rate. */
+    io_percent: number | null;
     containers_running: number | null;
     cpu_high_water: number | null;
     memory_high_water: number | null;
     disk_high_water: number | null;
+    io_high_water: number | null;
     max_containers: number | null;
     max_cpus: number | null;
     max_memory_bytes: number | null;

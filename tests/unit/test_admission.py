@@ -279,3 +279,62 @@ def test_no_mark_means_the_disk_is_not_watched() -> None:
     result = admit([want("a", 3)], load, CapacityLimits())
 
     assert granted(result) == {"a": 3}
+
+
+# ---------------------------------------------------------------- the disk, busy
+
+
+def test_a_saturated_disk_defers_every_launch() -> None:
+    """The other half of the disk story. A device can be a tenth full and completely busy,
+    and adding a runner to that host makes every build already on it slower."""
+    result = admit([want("a", 3)], HostLoad(io_percent=97.0), CapacityLimits(io_high_water=90))
+
+    assert granted(result) == {}
+    assert result.deferred == 3
+    assert "docker disk busy 97% of the time" in result.reasons[0]
+    assert result.held_by == result.reasons[0]
+
+
+def test_a_disk_keeping_up_launches_normally() -> None:
+    result = admit([want("a", 3)], HostLoad(io_percent=40.0), CapacityLimits(io_high_water=90))
+
+    assert granted(result) == {"a": 3}
+
+
+def test_the_mark_bites_exactly_at_it() -> None:
+    """`>=`, like every other high-water mark here, so the documented number is the one that
+    stops a launch rather than one below the one that does."""
+    at_the_mark = admit([want("a", 1)], HostLoad(io_percent=90.0), CapacityLimits(io_high_water=90))
+    below = admit([want("a", 1)], HostLoad(io_percent=89.9), CapacityLimits(io_high_water=90))
+
+    assert granted(at_the_mark) == {}
+    assert granted(below) == {"a": 1}
+
+
+def test_an_unmeasured_disk_never_blocks() -> None:
+    """The first probe of a process has nothing to subtract from, so `io_percent` is None on
+    every daemon's first tick. That must not be a fleet-wide stop."""
+    result = admit([want("a", 3)], HostLoad(io_percent=None), CapacityLimits(io_high_water=90))
+
+    assert granted(result) == {"a": 3}
+
+
+def test_no_mark_means_the_disk_is_never_probed() -> None:
+    """`has_backpressure` is what decides whether the probe runs at all, so a host with only
+    an IO mark must still turn it on — and a host with none must not pay for it."""
+    assert CapacityLimits(io_high_water=90).has_backpressure
+    assert not CapacityLimits(max_containers=4).has_backpressure
+
+    busy = HostLoad(io_percent=99.0)
+    assert granted(admit([want("a", 3)], busy, CapacityLimits())) == {"a": 3}
+
+
+def test_a_full_disk_is_reported_before_a_busy_one() -> None:
+    """Both are true and only one is actionable now: space has to be reclaimed, whereas a
+    busy device recovers on its own. The remedy the operator reads should be the one that
+    needs them."""
+    load = HostLoad(disk_used_bytes=99, disk_total_bytes=100, io_percent=99.0)
+
+    result = admit([want("a", 1)], load, CapacityLimits(disk_high_water=90, io_high_water=90))
+
+    assert "% full" in result.reasons[0]

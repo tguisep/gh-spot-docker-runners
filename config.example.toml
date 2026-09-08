@@ -129,6 +129,19 @@ state_db = "~/.local/state/ghspot/state.db"
 # Docker its own volume is not the root filesystem.
 # disk_high_water = 85
 
+# The other half of the disk story: not how full it is, but how busy. This is the share of
+# time the device spends with a request in flight — what `iostat -x` prints as %util — over
+# the gap between two ticks.
+#
+# A disk can be a tenth full and completely saturated, and nothing else here notices: the
+# load average picks up IO wait eventually, but only once enough processes are stuck, which
+# is well past the point where another runner makes every build on the box slower.
+#
+# Leave it high. Sustained 100% on a single spinning disk means work is queueing; on an NVMe
+# with a deep queue it can mean the device is being used properly. 90 is a reasonable start,
+# and `ghspot doctor` names the device it reads once this is set.
+# io_high_water = 90
+
 [[pool]]
 name = "default"
 repository = "tguisep/my-project"

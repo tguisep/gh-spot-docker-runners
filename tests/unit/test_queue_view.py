@@ -149,13 +149,22 @@ async def test_filtering_by_pool_keeps_the_jobs_no_pool_serves() -> None:
 async def test_the_host_reading_is_carried_through_with_its_limits() -> None:
     snapshot = QueueSnapshot(
         taken_at=T0,
-        host=HostPressure(memory_percent=91.0, memory_high_water=90.0, holding="held"),
+        host=HostPressure(
+            memory_percent=91.0,
+            memory_high_water=90.0,
+            io_percent=97.0,
+            io_high_water=90.0,
+            holding="held",
+        ),
     )
 
     view = await GetQueue(await stored(snapshot), FakeClock(T0))()
 
     assert view.host.memory_percent == 91.0
     assert view.host.memory_high_water == 90.0
+    # Full and busy are different facts about the same disk, and both reach the reader.
+    assert view.host.io_percent == 97.0
+    assert view.host.io_high_water == 90.0
     assert view.host.holding == "held"
 
 

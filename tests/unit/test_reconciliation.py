@@ -820,3 +820,23 @@ async def test_a_reconciler_with_no_queue_store_still_ticks() -> None:
     report = await harness.service.tick()
 
     assert report.queued_jobs == 1
+
+
+@pytest.mark.anyio
+async def test_a_saturated_disk_defers_launches_and_says_so() -> None:
+    """The device is a tenth full and completely busy: every other ceiling is comfortable and
+    the machine still cannot take more work."""
+    harness = build(make_spec(max_runners=8), capacity=CapacityLimits(io_high_water=90))
+    harness.backend.load = HostLoad(io_percent=98.0)
+    harness.forge.queued[REPO] = [make_job(1)]
+
+    report = await harness.service.tick()
+
+    assert report.launched == 0
+    assert any("disk busy 98%" in note for note in report.notes)
+
+    snapshot = await harness.queue.latest()
+    assert snapshot is not None
+    assert snapshot.entries[0].reason.value == "host-busy"
+    assert snapshot.host.io_percent == 98.0
+    assert snapshot.host.io_high_water == 90.0

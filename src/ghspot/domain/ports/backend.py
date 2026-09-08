@@ -63,6 +63,18 @@ class HostLoad:
     volumes outlive the jobs that made them, and a full disk stops the Engine dead — every
     launch fails, and the failure names neither the disk nor the cause."""
 
+    io_percent: float | None = None
+    """How busy the device under Docker's data directory is: the share of wall time it spent
+    with at least one request in flight, which is what `iostat` prints as `%util`.
+
+    A rate rather than a level, so unlike everything else here it needs two readings to exist
+    at all — the first probe of a process has nothing to subtract from and reports ``None``.
+
+    Distinct from `disk_percent`, which is how *full* that filesystem is. A disk can be a
+    tenth full and completely saturated, and a machine in that state will take a new runner
+    and then serve every container on it badly.
+    """
+
     @property
     def disk_percent(self) -> float | None:
         """How full Docker's filesystem is, or ``None`` when it could not be read."""

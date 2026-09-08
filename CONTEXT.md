@@ -1335,3 +1335,48 @@ The same mechanism answers the question behind the report, which was never reall
   the entries would make the pools table quietly depend on the job list staying complete.
 - Recording is best-effort and swallows storage errors: a tick that did its real work must not
   be reported as failed because a note about it could not be filed.
+
+## 2026-09-08 — the disk can be empty and still be the bottleneck
+
+`[capacity]` watched three things: processor, memory, and how full Docker's filesystem was.
+Nothing watched how *busy* the device under it is, and those are different failures. A disk
+can be a tenth full and completely saturated, and every number on the dashboard looks fine
+while every build on the box crawls.
+
+`io_high_water` is the fourth backpressure mark, and it reads `iostat`'s `%util`: the share of
+wall time the device spent with at least one request in flight, taken from `/proc/diskstats`.
+
+### Decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Which device | The one `st_dev` reports for `DockerRootDir` | The same directory the fullness probe uses, and `st_dev` already follows the filesystem through LVM, a bind mount or its own volume without this having to understand any of them. |
+| How to get a rate | Keep the previous sample on the adapter and subtract | `/proc` gives monotonic counters. Sampling twice around a `sleep` would put that latency inside every tick. |
+| A first probe, or one over a bad window | Report unknown | Unknown never blocks, which is what the other three probes already promise. |
+| Whether `doctor` measures it | No — it reports what device it *would* read | Utilisation is a rate over a window and `doctor` runs once; a single reading would be meaningless. What is worth catching is a mark set where no device row exists. |
+
+### Notes for later
+
+- **Full and busy needed separate names in the UI**, not one "disk" gauge. `disk 54% / 85%
+  disk io 96% / 90%` says something a single number cannot, and the two have different
+  remedies: one is reclaimed, the other drains on its own.
+- Verified against the real machine rather than only against fixtures: idle read 2.6%, and a
+  600 MB `dd oflag=direct` read 99.4%. The device resolved to `dm-1` — an LVM mapper — through
+  `st_dev`, which is exactly the case that would have broken a `/proc/mounts` parser.
+- The window is bounded at both ends. Under a second the ratio is mostly rounding — two forced
+  reconciles a fifth of a second apart would swing between 0 and several hundred percent. Over
+  five minutes it stops being an answer to "is the disk busy now", because the probe only runs
+  when a launch is wanted and a mark is set, so a quiet host can leave hours between samples.
+- A failed read clears the stored sample rather than leaving it: otherwise the next probe would
+  compute a rate over a window nobody measured. There is a test for exactly that.
+- Partition rows carry their own `io_ticks` on any kernel this runs on, but the lookup falls
+  back to the whole disk (minor 0) when the exact row is missing. A slightly wider answer beats
+  reporting a saturated device as idle.
+- **`%util` is a weak signal on NVMe**, and the docs say so. It counts *any* request in flight
+  and says nothing about how many more the device could have taken, so a queue-depth-32 SSD can
+  sit at 100% while perfectly happy. Hence "leave it high" and a default suggestion of 90 —
+  this mark is for the host that is genuinely thrashing, not for tuning.
+- The Ansible role renders `ghspot_capacity` generically, so it needed no template change — and
+  would equally have passed a misspelled key straight through. The render check now asserts
+  `io_high_water` arrives, alongside `disk_high_water`, which was being rendered but never
+  asserted in the round-trip test.

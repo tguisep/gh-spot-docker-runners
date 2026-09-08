@@ -364,6 +364,10 @@ def _host_line(host: HostPressureView) -> Text | None:
         _gauge("cpu", host.cpu_percent, host.cpu_high_water),
         _gauge("memory", host.memory_percent, host.memory_high_water),
         _gauge("disk", host.disk_percent, host.disk_high_water),
+        # Last, and named separately from "disk": one is how full the filesystem is, the
+        # other how busy the device under it is, and a host can be comfortable on one while
+        # the other is the reason nothing is finishing.
+        _gauge("disk io", host.io_percent, host.io_high_water),
     ]
     measured = [part for part in parts if part is not None]
     if host.containers_running is not None:

@@ -85,6 +85,8 @@ ghspot_pools_directory: /etc/ghspot/pools.d
 #                                            them nothing new starts until the host recovers
 #   disk_high_water                          percent full of Docker's data directory — what
 #                                            jobs leave behind rather than what they reserve
+#   io_high_water                            percent of time that same disk is busy, which is
+#                                            a different failure: full versus keeping up
 ghspot_capacity: {}
 
 # The pools this host serves. At least one is required.
