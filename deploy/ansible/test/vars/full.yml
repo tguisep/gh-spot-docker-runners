@@ -21,6 +21,7 @@ ghspot_capacity:
   cpu_high_water: 85
   memory_high_water: 90
   disk_high_water: 85
+  io_high_water: 90
 
 ghspot_pools:
   - name: ubuntu

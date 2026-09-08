@@ -77,6 +77,7 @@ def test_the_capacity_block_carries_every_ceiling() -> None:
     assert capacity.cpu_high_water == 85
     assert capacity.memory_high_water == 90
     assert capacity.disk_high_water == 85
+    assert capacity.io_high_water == 90
 
 
 def test_the_host_is_named_when_set_and_left_to_the_system_when_not() -> None:
@@ -125,6 +126,8 @@ def test_everything_round_trips() -> None:
     check(limits.max_memory_bytes == 24 * 1024**3, "full: capacity.max_memory lost")
     check(limits.cpu_high_water == 85, "full: capacity.cpu_high_water lost")
     check(limits.memory_high_water == 90, "full: capacity.memory_high_water lost")
+    check(limits.disk_high_water == 85, "full: capacity.disk_high_water lost")
+    check(limits.io_high_water == 90, "full: capacity.io_high_water lost")
 
     keep = settings.housekeeping
     check(keep.every == timedelta(hours=6), "full: housekeeping.every lost")
