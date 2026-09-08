@@ -68,6 +68,7 @@ export default defineConfig({
                     label: 'Operating it',
                     items: [
                         { slug: 'guides/operate/monitoring' },
+                        { slug: 'guides/operate/queue' },
                         { slug: 'guides/operate/dashboard' },
                         { slug: 'guides/operate/api' },
                         { slug: 'guides/operate/own-ci' },

@@ -12,6 +12,7 @@ description: "Every CLI command, on one page."
 | `ghspot image list` | The variants, and the base image each starts from |
 | `ghspot pool list` | Pools and what they hold |
 | `ghspot pool status [name]` | One pool, with its runners |
+| `ghspot queue [--pool name]` | What is waiting for a runner, and what each job waits on |
 | `ghspot runner list [--all]` | Runners, from the local projection |
 | `ghspot runner logs <ref>` | Container output, or `--job` for GitHub's own |
 | `ghspot runner stop <ref>` | Retire on both sides |

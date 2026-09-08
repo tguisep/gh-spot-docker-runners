@@ -1271,3 +1271,67 @@ Two halves, following the shape that was already there:
 - The Ansible template renders `ghspot_capacity` generically, so the new key needed no template
   change — and would equally have passed a *misspelled* key straight through to be ignored.
   The render check now asserts every ceiling arrives.
+
+## 2026-09-08 — the queue column that was never written to
+
+Reported as "lots of CI queued on GitHub, and the queue shows empty in the CLI and the UI".
+
+`PoolView.queued_jobs` had existed since v0.1, and the CLI table, the API and the dashboard all
+rendered it. `GetPoolStatus` took the counts as an *optional argument* — and not one of the four
+call sites passed it. Every reader was showing a hard-coded zero, and had been the whole time.
+
+Nobody had passed it because nobody could. Only the daemon holds a GitHub token; the read side
+deliberately does not, so that an expired credential or a stopped Docker never takes away an
+operator's ability to see what the fleet was doing. The count simply was not reachable from
+where it was displayed.
+
+**The fix is to write the answer down.** The tick already reads the queue, decides which pool
+serves each job, and asks both policies what to do about it. That reasoning was thrown away
+every tick, surviving only as a `notes` line in the journal. It is now recorded into the
+projection as a `queue_snapshot` — one row, replaced each tick — and the read side reads it.
+
+The same mechanism answers the question behind the report, which was never really "how many":
+
+| Surface | What landed |
+|---|---|
+| `domain/policy/queue.py` | `explain_queue`: places every queued job in its pool's line and names the one limit in front of it — eight `WaitReason`s, each with the configured value in the sentence |
+| `ghspot queue` | The jobs with their wait, pool, weight and reason; a pressure row per pool; the host's readings beside the marks they are judged against |
+| `GET /queue` | The same, with `taken_at` / `stale` as part of the payload |
+| dashboard | A `queue` page; the overview's `queued` cell links into it |
+
+### Decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Where the queue view comes from | A snapshot the daemon writes each tick | The reader has no forge client by design. Polling GitHub from the CLI would mean a token in every read path and a rate limit spent per dashboard tab. |
+| How much history | One row, overwritten | The question asked of a queue is what is waiting *now*. Anything worth keeping longer is already in `events`. |
+| Where the reasoning lives | A pure policy, fed what the tick already computed | Re-deriving it would be a second opinion that could disagree with the one the loop acted on. |
+| A job two pools could serve | Counted once, against the heavier weight | Counting twice doubles the number an operator sizes a machine from. |
+
+### Notes for later
+
+- **Freshness is part of the answer, not metadata about it.** With the daemon stopped, a view
+  that hid its age shows an empty queue and a fleet keeping up perfectly — the most misleading
+  screen the project could produce. So the age is always in the heading, a reading older than
+  two poll intervals is called out in red, and "no tick has looked yet" is a distinct state from
+  "nothing is queued". Both the CLI and the dashboard render all three.
+- `no-pool` was invisible before this. A job asking for a label no pool carries appeared in no
+  count anywhere and waited until somebody cancelled it. It is the one reason that never clears
+  on its own, and it is now named with the labels that missed.
+- `_admit` used to compute the host load and discard it. It now returns the reading alongside
+  the decision: an operator told a launch was deferred needs the number that deferred it, and
+  sampling again to show them would be a different machine a moment later.
+- `Admission` gained `held_by` and `blocked`. The distinction they carry is the one that
+  matters to a reader: a ceiling stops one pool and the others carry on; backpressure stops the
+  machine. "Your pool is full" and "the box is full" need different things done about them.
+- A pool that raised during the tick is absent from the snapshot, and its repository is listed
+  in `unreadable` instead. An unread queue and an empty one look identical, and only one of them
+  means there is nothing to do.
+- The position in the line is a *model*. The daemon never assigns a job to a runner — it starts
+  runners and GitHub decides. Written into the policy's docstring so the next reader does not
+  take it for a guarantee.
+- `counts_by_pool` reads the pressure rows rather than counting entries. The two agree when the
+  snapshot is whole, and the pressure figure is the number the tick actually acted on — counting
+  the entries would make the pools table quietly depend on the job list staying complete.
+- Recording is best-effort and swallows storage errors: a tick that did its real work must not
+  be reported as failed because a note about it could not be filed.
