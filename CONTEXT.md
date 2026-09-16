@@ -1438,3 +1438,36 @@ The queue is read most urgent first, oldest first within a class.
   anyone, the pools column is the one to rename.
 - An unrecognised class from a newer writer reads back as `branch`, which claims nothing about
   who is waiting and so cannot mislead in either direction.
+
+## 2026-09-16 — how to add an image, written down
+
+**Why.** A recurring question from outside: "can I customise it for different runners?" The
+answer was yes and had been all along — a pool names any image tag, and the four variants are
+ordinary Dockerfiles — but nothing said so. Everything written about images described *the
+ones that exist*, which reads as the list of what is possible.
+
+Two audiences, deliberately separated on one page rather than split across two:
+
+- **Your own image**, which changes nothing in this repository: `FROM ghspot/runner:ubuntu-24.04`,
+  add tools, tag it under your own namespace, give it a pool with a label of its own.
+- **A new variant here**, which touches eight files because the variant name is the tag, the
+  label and the CI matrix entry all at once.
+
+### Notes for later
+
+- `verify.sh` already took `$REGISTRY`, so it checks a private image with no change —
+  `REGISTRY=mycorp/runner images/runner/verify.sh java21`. That was written for the CI
+  namespace split and turns out to be the thing that makes a custom image checkable. Worth
+  keeping when that script is next touched.
+- **`ghspot doctor` gives a wrong remedy for a custom image.** `build_command` is always
+  `ghspot image build <tag suffix>`, so a missing `mycorp/runner:java21` is reported with
+  `ghspot image build java21` — a variant that does not exist. The finding is right and the
+  remedy is not. Documented as a caveat rather than fixed: the fix is either a variant
+  lookup in `paths.build_command` or dropping the remedy when the namespace is not ours,
+  and neither is obviously worth it until someone hits it.
+- The contract an image owes the daemon was only ever implicit — spread between
+  `entrypoint.sh`, `verify.sh`'s assertions and the Dockerfiles. It is now stated as five
+  rows in one table. If a sixth is ever added to the code, that table is where it also goes.
+- The eight-file checklist for a new variant exists because six of those files are
+  documentation, and documentation is what nothing fails over. Same failure mode as the
+  Ansible role in CLAUDE.md, for the same reason.

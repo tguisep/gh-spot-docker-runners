@@ -60,6 +60,7 @@ export default defineConfig({
                     items: [
                         { slug: 'guides/host/capacity' },
                         { slug: 'guides/host/images' },
+                        { slug: 'guides/host/custom-images' },
                         { slug: 'guides/host/housekeeping' },
                         { slug: 'guides/host/tuning' },
                     ],

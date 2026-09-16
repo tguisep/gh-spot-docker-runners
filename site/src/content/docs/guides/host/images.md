@@ -38,6 +38,9 @@ the full list and the handful of tools unavailable on RHEL 10.
 The variant name is the image tag *and* the label. Keeping them the same string is what stops
 a pool from advertising an OS it is not actually running.
 
+Need something these do not carry — a toolchain, another distribution, your own base? See
+[Adding a runner image](../custom-images/).
+
 ## Choosing a RHEL rebuild
 
 `rhel-9` and `rhel-10` are built on AlmaLinux, a faithful RHEL rebuild with complete
