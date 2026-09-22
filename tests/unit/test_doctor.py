@@ -13,7 +13,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from ghspot.domain.errors import BackendError, ForgeAuthError
+from ghspot.domain.errors import BackendError, ForgeAuthError, ForgePermissionError
+from ghspot.domain.model.target import OrganizationTarget, RepositoryTarget
 from ghspot.domain.policy.admission import CapacityLimits
 from ghspot.domain.ports.backend import HostLoad
 from ghspot.infrastructure.config.settings import load
@@ -97,6 +98,33 @@ def test_a_stopped_daemon_is_told_to_start_it_not_to_change_groups() -> None:
 
     assert "systemctl start docker" in remedy
     assert "usermod" not in remedy
+
+
+async def test_a_forbidden_repository_names_the_repository_permissions() -> None:
+    class Forbidden:
+        async def list_runners(self, target: object) -> list[object]:
+            raise ForgePermissionError("forbidden")
+
+    check = await doctor_module._target(Forbidden(), RepositoryTarget("tguisep", "gh-spot"))  # type: ignore[arg-type]
+
+    assert check.ok is False
+    assert "Administration: read & write" in check.remedy
+    assert "organization" not in check.remedy
+
+
+async def test_a_forbidden_organization_names_the_organization_permission() -> None:
+    """A repository-shaped remedy would send an operator to widen the wrong permission —
+    'Administration' and 'Actions' on repositories do not grant this at all."""
+
+    class Forbidden:
+        async def list_runners(self, target: object) -> list[object]:
+            raise ForgePermissionError("forbidden")
+
+    check = await doctor_module._target(Forbidden(), OrganizationTarget("opentremor"))  # type: ignore[arg-type]
+
+    assert check.ok is False
+    assert "Self-hosted runners: read & write" in check.remedy
+    assert "organization permission" in check.remedy
 
 
 def test_a_missing_credential_is_reported_not_raised(

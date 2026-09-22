@@ -361,12 +361,14 @@ async def _target(forge: GitHubClient, target: GitHubTarget) -> Check:
             remedy="the token is invalid or expired; generate a new one",
         )
     except ForgePermissionError as error:
-        return Check(
-            name=f"target {name}",
-            ok=False,
-            detail=str(error),
-            remedy="the token needs 'Administration: read & write' and 'Actions: read'",
+        remedy = (
+            "the token needs 'Administration: read & write' and 'Actions: read' on this repository"
+            if isinstance(target, RepositoryTarget)
+            else "the token needs the organization permission 'Self-hosted runners: read & "
+            "write' — this is separate from any repository permissions, and is not granted "
+            "by having Administration or Actions on the repositories under it"
         )
+        return Check(name=f"target {name}", ok=False, detail=str(error), remedy=remedy)
     except ForgeError as error:
         return Check(name=f"target {name}", ok=False, detail=str(error))
 
