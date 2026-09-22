@@ -259,6 +259,52 @@ Credentials are never command-line arguments — that would put them in `ps` out
 
 ---
 
+## Serving multiple repositories or organizations with different credentials
+
+`[github]` is the default credential, and every pool uses it unless told otherwise. A pool
+needing a different one — a repository under another account, an organization with its own
+App installation — gets a named credential:
+
+```toml
+[github]
+token_file = "~/.config/ghspot/token"
+
+[[github.credentials]]
+name = "other-org"
+app_id = "234567"
+private_key_file = "~/.config/ghspot/other-org.pem"
+
+[[pool]]
+name = "other-org-pool"
+organization = "other-org"
+discover_repositories = true
+github = "other-org"          # names the credential above; omitted, a pool uses the default
+labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+```
+
+A named credential takes the same keys as `[github]` itself — `token_file` or
+`app_id`/`private_key_file`, `api_url`, `installation_id` — and follows the same permission
+rules as any other credential registering against that target: see
+[Organization-level pools](../../guides/pools/organizations/) if it serves an organization.
+
+**Environment variables get a suffix.** The unsuffixed `GHSPOT_GITHUB_TOKEN` and friends stay
+the default credential's alone; a named one reads its own, suffixed with the name — uppercased,
+anything that is not a letter or digit folded to `_`:
+
+| Credential name | Token variable |
+|---|---|
+| `other-org` | `GHSPOT_GITHUB_TOKEN_OTHER_ORG` |
+| `staging` | `GHSPOT_GITHUB_TOKEN_STAGING` |
+
+(and `GHSPOT_GITHUB_APP_ID_<NAME>` / `GHSPOT_GITHUB_APP_PRIVATE_KEY_<NAME>` for an App.)
+
+`ghspot doctor` checks every configured credential independently, labelling each beyond the
+default: `github auth [other-org]`.
+
+---
+
 ## Verifying
 
 ```bash

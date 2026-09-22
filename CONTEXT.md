@@ -1563,3 +1563,59 @@ that were bypassed rather than enforced, which is what let the push through at a
 `main` rather than reverted-and-redone through a PR, because the content is small, correct
 and already verified, and ceremony to re-land identical code serves no one — but worth writing
 down as what it was: an accident, not a policy about when direct commits to `main` are fine.
+
+## 2026-09-22 — more than one GitHub credential
+
+One `[github]` section served every pool. That breaks down the moment two pools need
+credentials that cannot overlap — a repository under a different account, an organization
+whose App installation is separate from another org's. `[[github.credentials]]` adds named
+ones alongside the default; a pool opts into one with `github = "name"`, and a pool that says
+nothing keeps using the default exactly as before — zero migration for every existing config.
+
+### The decision that shaped the whole implementation
+
+`[capacity]` bounds the *host*, not one pool: `admit()` (`domain/policy/admission.py`) takes
+every pool's `LaunchRequest` in one batch and enforces `max_containers` etc. across all of
+them at once. The obvious shape for multiple credentials — one `ReconciliationService` per
+credential, each ticking independently — would have quietly turned a host-wide ceiling into a
+per-credential one: `max_containers = 8` becomes 8 *per credential*, not 8 total, because each
+reconciler's `admit()` only ever sees its own pools.
+
+So there is still exactly one `ReconciliationService`, one tick, one admission pass, one
+`QueueSnapshot`, one `TickReport` — unchanged from before this landed. What changed is that it
+resolves *which* forge/provision/retire to use **per pool**, via a new `CredentialGroup` looked
+up by `PoolConfiguration.credential`, instead of holding one of each for the whole tick. The
+alternative was never implemented, because the reasoning above found the bug in it before any
+code was written — worth recording so nobody re-derives it by shipping the per-credential
+version and finding the ceiling doesn't work.
+
+### Notes for later
+
+- `Application.forge`/`.provision`/`.retire` (singular fields) became `Application.credentials:
+  Mapping[str, CredentialGroup]` plus `forge_for(pool_name)` and an async `retire(...)` method
+  that resolves internally. `retire`'s call signature is unchanged on purpose — every existing
+  call site (`operations.py`, the API's stop endpoint, `daemon.py`'s shutdown) needed no edits
+  at all, only the two spots that read `.forge` directly (job-logs, CLI and API) do.
+- A runner whose pool has since been removed from configuration falls back to the `"default"`
+  credential for its best-effort GitHub-side deletion — the same orphan case reconciliation
+  already handles by adopting from container labels, now also orphaned from a credential's
+  point of view. Container teardown happens regardless of forge; only the GitHub-side delete
+  could use the wrong one, and that was already wrapped in a swallowed `GhSpotError`.
+- Reload (`SIGHUP`) can swap pools and capacity without a restart, as before; it cannot
+  introduce a credential the daemon was not started with. `replace_pools` refuses a pool naming
+  an unknown one, the same boundary an App's own `app_id`/private key already had — caught at
+  reload time (logged, old settings kept) rather than at the next tick that touches it.
+- Per-credential environment variables are the name, uppercased, non-alphanumerics folded to
+  `_`, appended to the existing variable: `GHSPOT_GITHUB_TOKEN_OTHER_ORG`. The default
+  credential keeps the bare variable unchanged. The Ansible role's `env.j2` computes the same
+  suffix in Jinja (`regex_replace('[^A-Z0-9]+', '_')`) — the two have to be kept in step by
+  hand, there being no shared implementation between a systemd EnvironmentFile template and
+  Python.
+- The Ansible role's own secret delivery for the *default* credential turned out to already be
+  entirely environment-variable-based (`env.j2`), never `token_file` in the rendered TOML — so
+  named credentials follow the same path for consistency, not the file-based one a first pass
+  at this assumed the role already had.
+- `ForgeClient` gained `aclose()` on the port itself. `CredentialGroup.forge` is typed against
+  the port (application layer, correctly forge-agnostic), and `Application.aclose()` needed to
+  close every group's client — which the port could not do until closing was part of its
+  contract, not just `GitHubClient`'s.
