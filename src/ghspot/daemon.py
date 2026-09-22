@@ -22,7 +22,7 @@ from collections.abc import Callable
 
 from ghspot.application.dto import TickReport
 from ghspot.composition import Application
-from ghspot.infrastructure.config.settings import ConfigError
+from ghspot.domain.errors import GhSpotError
 from ghspot.infrastructure.config.settings import load as load_settings
 from ghspot.infrastructure.logging.setup import get_logger
 
@@ -158,12 +158,17 @@ class Daemon:
 
         A file that no longer parses leaves the daemon on what it already had. Refusing to
         reload is recoverable; exiting on a typo is a fleet down for as long as nobody notices.
+        The same holds for a pool naming a credential this daemon was not started with — a new
+        credential needs a restart, and `replace_pools` refuses it rather than crashing the
+        next tick that touches it.
         """
         self._reloading.clear()
         source = self._application.settings.source
         try:
             fresh = load_settings(source) if source is not None else None
-        except (ConfigError, OSError) as error:
+            if fresh is not None:
+                self._application.reconciler.replace_pools(fresh.pools, fresh.capacity)
+        except (GhSpotError, OSError) as error:
             log.error("reload.rejected", error=str(error), source=str(source))
             return
 
@@ -171,7 +176,6 @@ class Daemon:
             return
 
         self._application.settings = fresh
-        self._application.reconciler.replace_pools(fresh.pools, fresh.capacity)
         self._interval = fresh.daemon.poll_interval.total_seconds()
         self.reloads += 1
         log.info("reload.applied", pools=[pool.spec.name for pool in fresh.pools])

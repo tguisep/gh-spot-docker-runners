@@ -377,6 +377,105 @@ def test_an_installation_id_is_read_as_an_integer(tmp_path: Path) -> None:
     assert parse(text).github.installation_id == 98765  # type: ignore[attr-defined]
 
 
+# ---------------------------------------------------------------- multiple credentials
+
+
+TWO_CREDENTIALS = """
+[github]
+token_file = "/tmp/token"
+
+[[github.credentials]]
+name = "other"
+token_file = "/tmp/other-token"
+
+[[pool]]
+name = "default"
+repository = "tguisep/gh-spot-docker-runners"
+labels = ["self-hosted", "linux"]
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+
+[[pool]]
+name = "second"
+repository = "tguisep/second-repo"
+labels = ["self-hosted", "linux"]
+github = "other"
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+"""
+
+
+def test_a_pool_can_name_a_second_credential() -> None:
+    settings = parse(TWO_CREDENTIALS)
+
+    by_name = {pool.spec.name: pool for pool in settings.pools}  # type: ignore[attr-defined]
+    assert by_name["default"].credential == "default"
+    assert by_name["second"].credential == "other"
+    assert settings.github_credentials[0].name == "other"  # type: ignore[attr-defined]
+
+
+def test_a_pool_naming_an_undefined_credential_is_refused() -> None:
+    text = TWO_CREDENTIALS.replace('github = "other"', 'github = "nope"')
+
+    with pytest.raises(ConfigError, match="'github' names 'nope', not one of"):
+        parse(text)
+
+
+def test_a_named_credential_needs_a_name() -> None:
+    text = TWO_CREDENTIALS.replace('name = "other"\n', "")
+
+    with pytest.raises(ConfigError, match="'name' is required"):
+        parse(text)
+
+
+def test_a_second_credential_cannot_be_named_default() -> None:
+    text = TWO_CREDENTIALS.replace('name = "other"', 'name = "default"')
+
+    with pytest.raises(ConfigError, match="reserved for the default"):
+        parse(text)
+
+
+def test_two_credentials_cannot_share_a_name() -> None:
+    text = TWO_CREDENTIALS.replace(
+        '[[github.credentials]]\nname = "other"',
+        '[[github.credentials]]\nname = "other"\ntoken_file = "/tmp/a"\n'
+        '[[github.credentials]]\nname = "other"',
+    )
+
+    with pytest.raises(ConfigError, match="is used by another credential"):
+        parse(text)
+
+
+def test_a_named_credential_s_token_comes_from_its_own_environment_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`GHSPOT_GITHUB_TOKEN` (no suffix) must not leak into a named credential — each one
+    reads its own variable, or the default's env var would silently win for every pool."""
+    other_token = tmp_path / "other-token"
+    other_token.write_text("from-file")
+    other_token.chmod(0o600)
+    text = TWO_CREDENTIALS.replace("/tmp/other-token", str(other_token))
+
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    monkeypatch.delenv(f"{TOKEN_ENV}_OTHER", raising=False)
+    other = parse(text).credential("other")  # type: ignore[attr-defined]
+
+    monkeypatch.setenv(f"{TOKEN_ENV}_OTHER", "from-env")
+    assert other.resolve_token() == "from-env"
+
+    monkeypatch.delenv(f"{TOKEN_ENV}_OTHER")
+    assert other.resolve_token() == "from-file"  # falls back to its own token_file
+
+
+def test_credential_lookup_by_name() -> None:
+    settings = parse(TWO_CREDENTIALS)
+
+    assert settings.credential("default").name == "default"  # type: ignore[attr-defined]
+    assert settings.credential("other").name == "other"  # type: ignore[attr-defined]
+    with pytest.raises(ConfigError, match="no credential named 'ghost'"):
+        settings.credential("ghost")  # type: ignore[attr-defined]
+
+
 # ---------------------------------------------------------------- gpus
 
 

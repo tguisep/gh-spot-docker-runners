@@ -11,6 +11,7 @@ from typing import cast
 from ghspot.application.commands.housekeeping import ReclaimHostSpace
 from ghspot.application.commands.retire import RetireRunner
 from ghspot.application.dto import TickReport
+from ghspot.application.reconciliation import CredentialGroup
 from ghspot.composition import Application
 from ghspot.daemon import Daemon
 from ghspot.domain.model.runner import RunnerId, RunnerState
@@ -76,9 +77,17 @@ def build_daemon(
     backend = FakeBackend(now=T0)
     repository = InMemoryRunnerRepository()
     events = RecordingPublisher()
+    forge = FakeForge()
+    credentials = {
+        "default": CredentialGroup(
+            forge=forge,  # type: ignore[arg-type]
+            provision=None,  # type: ignore[arg-type]
+            retire=RetireRunner(forge, backend, repository, clock, events),
+        )
+    }
     application = Application(
         settings=settings,
-        forge=FakeForge(),  # type: ignore[arg-type]
+        credentials=credentials,
         backend=backend,  # type: ignore[arg-type]
         runners=repository,  # type: ignore[arg-type]
         events=events,  # type: ignore[arg-type]
@@ -92,8 +101,6 @@ def build_daemon(
             request=PruneRequest(),
         ),
         clock=clock,  # type: ignore[arg-type]
-        provision=None,  # type: ignore[arg-type]
-        retire=RetireRunner(FakeForge(), backend, repository, clock, events),
     )
     return Daemon(application)
 

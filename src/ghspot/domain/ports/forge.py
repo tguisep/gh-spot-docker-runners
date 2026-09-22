@@ -124,3 +124,7 @@ class ForgeClient(Protocol):
     async def rate_limit_reset_at(self) -> datetime | None:
         """When the current rate-limit window resets, if the forge reports one."""
         ...
+
+    async def aclose(self) -> None:
+        """Release whatever connection this client holds open."""
+        ...

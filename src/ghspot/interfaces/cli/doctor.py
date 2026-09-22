@@ -14,7 +14,7 @@ from pathlib import Path
 
 from rich.markup import escape
 
-from ghspot.composition import build_forge
+from ghspot.composition import build_forge, discovery_target_for
 from ghspot.domain.errors import (
     ForgeError,
     ForgeNotFoundError,
@@ -25,7 +25,12 @@ from ghspot.domain.errors import (
 from ghspot.domain.model.target import GitHubTarget, RepositoryTarget
 from ghspot.domain.policy.admission import CapacityLimits
 from ghspot.domain.ports.backend import RunnerBackend
-from ghspot.infrastructure.config.settings import ConfigError, Settings
+from ghspot.infrastructure.config.settings import (
+    DEFAULT_CREDENTIAL,
+    ConfigError,
+    GitHubSettings,
+    Settings,
+)
 from ghspot.infrastructure.docker.backend import (
     DOCKER_SOCKET,
     DockerRunnerBackend,
@@ -289,49 +294,63 @@ def _socket_check(pool: str) -> Check:
 
 
 async def _github(settings: Settings) -> list[Check]:
-    # Only the forge client, never the whole application: the GitHub checks do not need
-    # Docker, and building it here would make an unreachable daemon abort the report that
-    # is supposed to tell you the daemon is unreachable.
-    try:
-        forge = build_forge(settings)
-    except (ConfigError, GhSpotError) as error:
-        return [
-            Check(
-                name="github auth",
-                ok=False,
-                detail=str(error),
-                remedy=(
-                    "set GHSPOT_GITHUB_TOKEN, or configure [github].app_id with "
-                    "private_key_file for a GitHub App"
-                ),
-            )
-        ]
+    checks: list[Check] = []
+    for credential in settings.all_credentials:
+        checks.extend(await _credential(settings, credential))
+    return checks
 
-    checks: list[Check] = [Check(name="github auth", ok=True, detail=forge.describe_auth())]
+
+async def _credential(settings: Settings, credential: GitHubSettings) -> list[Check]:
+    """Every check for one configured GitHub credential.
+
+    Only the forge client, never the whole application: the GitHub checks do not need Docker,
+    and building it here would make an unreachable daemon abort the report that is supposed to
+    tell you the daemon is unreachable.
+    """
+    label = (
+        "github auth"
+        if credential.name == DEFAULT_CREDENTIAL
+        else f"github auth [{credential.name}]"
+    )
+    try:
+        forge = build_forge(credential, discovery_target_for(settings, credential.name))
+    except (ConfigError, GhSpotError) as error:
+        remedy = (
+            "set GHSPOT_GITHUB_TOKEN, or configure [github].app_id with "
+            "private_key_file for a GitHub App"
+            if credential.name == DEFAULT_CREDENTIAL
+            else f"configure credential {credential.name!r} under [[github.credentials]] "
+            "with a token_file, or app_id with private_key_file for a GitHub App"
+        )
+        return [Check(name=label, ok=False, detail=str(error), remedy=remedy)]
+
+    checks: list[Check] = [Check(name=label, ok=True, detail=forge.describe_auth())]
     try:
         # For a GitHub App this is the first call that actually signs a JWT and exchanges it,
         # so a bad key or a wrong app id surfaces here rather than an hour into a run.
-        for target in settings.all_targets:
+        for target in settings.targets_for_credential(credential.name):
             checks.append(await _target(forge, target))
         # An organization pool's explicit `repositories` list exercises a different
         # permission ('Actions: read' on each repo) from listing the organization's own
         # runners ('Administration' at the org level) — the check above cannot see whether
         # this half works too.
-        for repository in _watched_repositories(settings):
+        for repository in _watched_repositories(settings, credential.name):
             checks.append(await _queue(forge, repository))
     finally:
         await forge.aclose()
     return checks
 
 
-def _watched_repositories(settings: Settings) -> list[RepositoryTarget]:
-    """Every repository an organization pool explicitly names, deduplicated.
+def _watched_repositories(settings: Settings, credential_name: str) -> list[RepositoryTarget]:
+    """Every repository an organization pool on this credential explicitly names, deduplicated.
 
     `discover_repositories` pools are not included: what they watch is only known by asking
     the forge at tick time, which is exactly the call `doctor` cannot make ahead of one.
     """
     seen: dict[RepositoryTarget, None] = {}
     for pool in settings.pools:
+        if pool.credential != credential_name:
+            continue
         for repository in pool.spec.repositories:
             seen.setdefault(repository, None)
     return list(seen)

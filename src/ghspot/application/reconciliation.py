@@ -83,32 +83,47 @@ class PoolConfiguration:
 
     spec: PoolSpec
     template: RunnerTemplate
+    credential: str = "default"
+    """Which configured GitHub credential this pool's forge calls go through — the name of a
+    `[github]` or `[[github.credentials]]` entry."""
+
+
+@dataclass(frozen=True, slots=True)
+class CredentialGroup:
+    """Everything built from one GitHub credential: its client and the machinery that acts
+    through it.
+
+    Every pool names one of these by `PoolConfiguration.credential`. There is still exactly
+    one `ReconciliationService` and one tick — this is what lets a pool on one credential and
+    a pool on another still compete for the same host capacity ceiling in the same admission
+    pass, rather than each silently getting its own `max_containers`.
+    """
+
+    forge: ForgeClient
+    provision: ProvisionRunner
+    retire: RetireRunner
 
 
 class ReconciliationService:
     def __init__(
         self,
         pools: Sequence[PoolConfiguration],
-        forge: ForgeClient,
+        credentials: Mapping[str, CredentialGroup],
         backend: RunnerBackend,
         runners: RunnerRepository,
         clock: Clock,
         events: EventPublisher,
-        provision: ProvisionRunner,
-        retire: RetireRunner,
         capacity: CapacityLimits | None = None,
         host: str = "",
         queue: QueueSnapshots | None = None,
     ) -> None:
         self._pools = list(pools)
         self._host = host
-        self._forge = forge
+        self._credentials = dict(credentials)
         self._backend = backend
         self._runners = runners
         self._clock = clock
         self._events = events
-        self._provision = provision
-        self._retire_runner = retire
         self._capacity = capacity or CapacityLimits()
         self._queue = queue
 
@@ -120,9 +135,22 @@ class ReconciliationService:
         Only what a tick re-derives anyway. Runners are untouched: a pool removed here stops
         being reconciled, and the runners it left behind are adopted or reaped by the next
         tick from their own container labels — the same path a restart takes.
+
+        A pool naming a credential this service was not built with is refused: reload swaps
+        pools and capacity without a restart, but a *new* credential needs one, the same
+        boundary an App's own `app_id` or private key already have.
         """
+        missing = {pool.credential for pool in pools} - set(self._credentials)
+        if missing:
+            raise GhSpotError(
+                f"reload refused: {', '.join(sorted(missing))} is not a credential this "
+                "daemon was started with — new credentials need a restart"
+            )
         self._pools = list(pools)
         self._capacity = capacity or CapacityLimits()
+
+    def _group(self, configuration: PoolConfiguration) -> CredentialGroup:
+        return self._credentials[configuration.credential]
 
     async def tick(self) -> TickReport:
         """One reconciliation pass over every configured pool.
@@ -167,7 +195,9 @@ class ReconciliationService:
         for configuration in self._pools:
             spec = configuration.spec
             try:
-                demand = await self._demand_for(spec, demand_by_repository, repositories_by_org)
+                demand = await self._demand_for(
+                    configuration, demand_by_repository, repositories_by_org
+                )
                 pool, repairs = await self._observe(configuration, containers)
                 repaired += repairs
 
@@ -178,11 +208,15 @@ class ReconciliationService:
                 notes.extend(f"[{spec.name}] {reason}" for reason in plan.reasons)
 
                 for runner_id in plan.terminate:
-                    if await self._retire_by_id(pool, runner_id, "job overran", force=True):
+                    if await self._retire_by_id(
+                        configuration, pool, runner_id, "job overran", force=True
+                    ):
                         terminated += 1
 
                 for runner_id in plan.retire:
-                    if await self._retire_by_id(pool, runner_id, "idle timeout", force=False):
+                    if await self._retire_by_id(
+                        configuration, pool, runner_id, "idle timeout", force=False
+                    ):
                         retired += 1
 
                 planned.append((configuration, pool, plan))
@@ -208,7 +242,7 @@ class ReconciliationService:
             if allowed == 0:
                 continue
             try:
-                launched += await self._launch(spec, configuration.template, allowed)
+                launched += await self._launch(configuration, allowed)
             except GhSpotError as error:
                 errors.append(f"[{spec.name}] {error}")
 
@@ -320,6 +354,7 @@ class ReconciliationService:
         Returns the reconstructed pool and how many divergences were corrected.
         """
         spec = configuration.spec
+        group = self._group(configuration)
         now = self._clock.now()
         repaired = 0
 
@@ -329,7 +364,7 @@ class ReconciliationService:
             if not runner.is_terminal
         }
         forge_runners = {
-            runner.id: runner for runner in await self._forge.list_runners(spec.target)
+            runner.id: runner for runner in await group.forge.list_runners(spec.target)
         }
         pool_containers = {
             runner_id: status
@@ -354,16 +389,17 @@ class ReconciliationService:
                 if runner.github_runner_id is not None
                 else None
             )
-            if await self._settle(runner, container, listed, now):
+            if await self._settle(group, runner, container, listed, now):
                 repaired += 1
             if not runner.is_terminal:
                 pool.admit(runner)
 
-        repaired += await self._delete_stray_registrations(spec, forge_runners, records)
+        repaired += await self._delete_stray_registrations(group, spec, forge_runners, records)
         return pool, repaired
 
     async def _settle(
         self,
+        group: CredentialGroup,
         runner: Runner,
         status: ContainerStatus | None,
         listed: ForgeRunner | None,
@@ -379,31 +415,31 @@ class ReconciliationService:
         # to be run by hand to clear.
         if runner.state is RunnerState.REGISTERED and status is None:
             if runner.time_in_state(now) > REGISTRATION_GRACE.total_seconds():
-                await self._retire(runner, "registered but never started")
+                await self._retire(group, runner, "registered but never started")
                 return True
             return False
 
         if runner.state is RunnerState.PENDING:
             if runner.time_in_state(now) > REGISTRATION_GRACE.total_seconds():
-                await self._retire(runner, "never registered")
+                await self._retire(group, runner, "never registered")
                 return True
             return False
 
         if status is None:
             # The container is gone. If GitHub has also dropped the runner, the job finished
             # normally; otherwise something removed the container behind our back.
-            await self._retire(runner, "container gone" if listed else "job finished")
+            await self._retire(group, runner, "container gone" if listed else "job finished")
             return listed is not None
 
         if status.has_exited:
-            await self._retire(runner, "container exited")
+            await self._retire(group, runner, "container exited")
             return False
 
         if listed is None:
             # Running container, but GitHub no longer lists the runner: a just-in-time runner
             # de-registers itself the moment its job ends, so this is the normal end of life
             # seen a moment before the process exits.
-            await self._retire(runner, "de-registered by the forge")
+            await self._retire(group, runner, "de-registered by the forge")
             return False
 
         if listed.busy:
@@ -417,6 +453,7 @@ class ReconciliationService:
 
     async def _delete_stray_registrations(
         self,
+        group: CredentialGroup,
         spec: PoolSpec,
         forge_runners: Mapping[int, ForgeRunner],
         records: Mapping[RunnerId, Runner],
@@ -445,7 +482,7 @@ class ReconciliationService:
             if listed.is_online or listed.busy:
                 continue
             try:
-                await self._forge.delete_runner(spec.target, listed.id)
+                await group.forge.delete_runner(spec.target, listed.id)
                 repaired += 1
             except GhSpotError:
                 pass
@@ -493,7 +530,7 @@ class ReconciliationService:
 
     async def _demand_for(
         self,
-        spec: PoolSpec,
+        configuration: PoolConfiguration,
         demand: dict[RepositoryTarget, Sequence[QueuedJob]],
         repositories_by_org: dict[OrganizationTarget, Sequence[RepositoryTarget]],
     ) -> Sequence[QueuedJob]:
@@ -505,13 +542,14 @@ class ReconciliationService:
         organization per tick the same way a repository's queue is fetched once however many
         pools share it.
         """
-        watched = await self._resolve_watched(spec, repositories_by_org)
+        group = self._group(configuration)
+        watched = await self._resolve_watched(group, configuration.spec, repositories_by_org)
 
         combined: list[QueuedJob] = []
         seen: set[int] = set()
         for repository in watched:
             if repository not in demand:
-                demand[repository] = await self._forge.list_queued_jobs(repository)
+                demand[repository] = await group.forge.list_queued_jobs(repository)
             for job in demand[repository]:
                 if job.id not in seen:
                     seen.add(job.id)
@@ -520,6 +558,7 @@ class ReconciliationService:
 
     async def _resolve_watched(
         self,
+        group: CredentialGroup,
         spec: PoolSpec,
         repositories_by_org: dict[OrganizationTarget, Sequence[RepositoryTarget]],
     ) -> Sequence[RepositoryTarget]:
@@ -529,10 +568,10 @@ class ReconciliationService:
             return spec.repositories
         org = spec.target
         if org not in repositories_by_org:
-            repositories_by_org[org] = await self._forge.list_organization_repositories(org)
+            repositories_by_org[org] = await group.forge.list_organization_repositories(org)
         return repositories_by_org[org]
 
-    async def _launch(self, spec: PoolSpec, template: RunnerTemplate, count: int) -> int:
+    async def _launch(self, configuration: PoolConfiguration, count: int) -> int:
         """Start ``count`` runners, together rather than one after another.
 
         Each one is a round trip to mint its configuration and another to create its
@@ -546,24 +585,33 @@ class ReconciliationService:
         if count <= 0:
             return 0
 
+        provision = self._group(configuration).provision
         outcomes = await asyncio.gather(
-            *(self._provision(spec, template) for _ in range(count)),
+            *(provision(configuration.spec, configuration.template) for _ in range(count)),
             return_exceptions=True,
         )
         return sum(1 for outcome in outcomes if not isinstance(outcome, BaseException))
 
     async def _retire_by_id(
-        self, pool: RunnerPool, runner_id: RunnerId, reason: str, *, force: bool
+        self,
+        configuration: PoolConfiguration,
+        pool: RunnerPool,
+        runner_id: RunnerId,
+        reason: str,
+        *,
+        force: bool,
     ) -> bool:
         runner = pool.get(runner_id)
         if runner is None:
             return False
-        await self._retire(runner, reason, force=force)
+        await self._retire(self._group(configuration), runner, reason, force=force)
         pool.discard(runner_id)
         return True
 
-    async def _retire(self, runner: Runner, reason: str, *, force: bool = False) -> None:
-        await self._retire_runner(runner, reason, force=force)
+    async def _retire(
+        self, group: CredentialGroup, runner: Runner, reason: str, *, force: bool = False
+    ) -> None:
+        await group.retire(runner, reason, force=force)
 
     async def _flush(self, runner: Runner) -> None:
         events = runner.pull_events()
