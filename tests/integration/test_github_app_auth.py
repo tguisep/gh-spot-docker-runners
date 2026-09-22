@@ -154,9 +154,7 @@ async def test_the_installation_is_discovered_from_the_first_repository(
         return_value=httpx.Response(200, json={"id": 42})
     )
     respx.post(TOKEN_URL).mock(return_value=token_response())
-    provider = GitHubAppTokenProvider(
-        app_id="1", private_key=private_key, discovery_target=REPO
-    )
+    provider = GitHubAppTokenProvider(app_id="1", private_key=private_key, discovery_target=REPO)
 
     assert await provider.token() == "ghs_installation"
     assert "installation 42" in provider.describe()
@@ -167,9 +165,7 @@ async def test_an_app_not_installed_on_the_repository_says_so(private_key: str) 
     respx.get(f"{BASE}/repos/tguisep/gh-spot-docker-runners/installation").mock(
         return_value=httpx.Response(404, json={"message": "Not Found"})
     )
-    provider = GitHubAppTokenProvider(
-        app_id="1", private_key=private_key, discovery_target=REPO
-    )
+    provider = GitHubAppTokenProvider(app_id="1", private_key=private_key, discovery_target=REPO)
 
     with pytest.raises(ForgeAuthError, match="app is installed"):
         await provider.token()
