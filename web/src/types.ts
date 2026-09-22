@@ -14,7 +14,7 @@ export interface Runner {
     id: string;
     name: string;
     pool: string;
-    repository: string;
+    target: string;
     state: RunnerState;
     labels: string[];
     created_at: string;
@@ -33,7 +33,7 @@ export interface Runner {
 
 export interface Pool {
     name: string;
-    repository: string;
+    target: string;
     labels: string[];
     min_idle: number;
     max_runners: number;
@@ -117,7 +117,7 @@ export interface Stats {
     until: string;
     events_read: number;
     total: Usage;
-    by_repository: Usage[];
+    by_target: Usage[];
     by_pool: Usage[];
     failures: { reason: string; count: number }[];
 }
@@ -183,7 +183,7 @@ export interface QueueEntry {
 
 export interface PoolPressure {
     pool: string;
-    repository: string;
+    target: string;
     priority: number;
     queued: number;
     available: number;
@@ -227,6 +227,6 @@ export interface Queue {
     pools: PoolPressure[];
     host: HostPressure;
     notes: string[];
-    /** Repositories whose queue the last tick could not read. */
+    /** Pool targets whose queue the last tick could not read. */
     unreadable: string[];
 }

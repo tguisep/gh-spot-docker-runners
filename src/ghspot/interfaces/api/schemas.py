@@ -28,7 +28,7 @@ class RunnerResponse(BaseModel):
     id: str
     name: str
     pool: str
-    repository: str
+    target: str
     state: str
     labels: list[str]
     created_at: datetime
@@ -52,7 +52,7 @@ class RunnerResponse(BaseModel):
             id=view.id,
             name=view.name,
             pool=view.pool,
-            repository=view.repository,
+            target=view.target,
             state=view.state.value,
             labels=view.labels,
             created_at=view.created_at,
@@ -71,7 +71,7 @@ class RunnerResponse(BaseModel):
 
 class PoolResponse(BaseModel):
     name: str
-    repository: str
+    target: str
     labels: list[str]
     min_idle: int
     max_runners: int
@@ -88,7 +88,7 @@ class PoolResponse(BaseModel):
     def of(cls, view: PoolView) -> PoolResponse:
         return cls(
             name=view.name,
-            repository=view.repository,
+            target=view.target,
             labels=view.labels,
             min_idle=view.min_idle,
             max_runners=view.max_runners,
@@ -179,7 +179,7 @@ class StatsResponse(BaseModel):
     until: datetime
     events_read: int
     total: UsageResponse
-    by_repository: list[UsageResponse]
+    by_target: list[UsageResponse]
     by_pool: list[UsageResponse]
     failures: list[FailureCount]
 
@@ -191,7 +191,7 @@ class StatsResponse(BaseModel):
             until=view.until,
             events_read=view.events_read,
             total=UsageResponse.of(view.total),
-            by_repository=[UsageResponse.of(row) for row in view.by_repository],
+            by_target=[UsageResponse.of(row) for row in view.by_target],
             by_pool=[UsageResponse.of(row) for row in view.by_pool],
             failures=[FailureCount(reason=reason, count=count) for reason, count in view.failures],
         )
@@ -318,7 +318,7 @@ class QueueEntryResponse(BaseModel):
 
 class PoolPressureResponse(BaseModel):
     pool: str
-    repository: str
+    target: str
     priority: int
     queued: int
     available: int
@@ -333,7 +333,7 @@ class PoolPressureResponse(BaseModel):
     def of(cls, view: PoolPressureView) -> PoolPressureResponse:
         return cls(
             pool=view.pool,
-            repository=view.repository,
+            target=view.target,
             priority=view.priority,
             queued=view.queued,
             available=view.available,
@@ -403,7 +403,7 @@ class QueueResponse(BaseModel):
     host: HostPressureResponse = Field(default_factory=HostPressureResponse)
     notes: list[str] = Field(default_factory=list)
     unreadable: list[str] = Field(default_factory=list)
-    """Repositories whose queue the last tick could not read."""
+    """Pool targets whose queue the last tick could not read."""
 
     @classmethod
     def of(cls, view: QueueView) -> QueueResponse:

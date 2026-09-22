@@ -30,15 +30,16 @@ from ghspot.domain.errors import (
 )
 from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.labels import LabelSet
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import GitHubTarget, OrganizationTarget, RepositoryTarget
 from ghspot.domain.ports.forge import ForgeRunner, JitRegistration
 from ghspot.infrastructure.github.auth import StaticTokenProvider, TokenProvider
 
 API_VERSION = "2022-11-28"
 DEFAULT_BASE_URL = "https://api.github.com"
 
-#: Runner groups other than the default need an org plan, so repository-scoped runners always
-#: land in group 1.
+#: Runner groups other than the default need an org plan, so a repository target — which never
+#: has one — always lands in group 1. An organization's own "Default" group is also always
+#: id 1, so this doubles as the fallback when a pool leaves `runner_group` unset.
 DEFAULT_RUNNER_GROUP_ID = 1
 
 #: How many job listings to fetch at once. Bounded rather than unlimited: a backlog can mean
@@ -134,17 +135,22 @@ class GitHubClient:
 
     async def create_jit_registration(
         self,
-        repository: RepositoryTarget,
+        target: GitHubTarget,
         name: str,
         labels: LabelSet,
         work_folder: str = "_work",
+        runner_group: str | None = None,
     ) -> JitRegistration:
+        group_id = DEFAULT_RUNNER_GROUP_ID
+        if isinstance(target, OrganizationTarget) and runner_group is not None:
+            group_id = await self._resolve_runner_group(target, runner_group)
+
         payload = await self._request(
             "POST",
-            f"/{repository.api_path}/actions/runners/generate-jitconfig",
+            f"/{target.api_path}/actions/runners/generate-jitconfig",
             json={
                 "name": name,
-                "runner_group_id": DEFAULT_RUNNER_GROUP_ID,
+                "runner_group_id": group_id,
                 "labels": labels.as_list(),
                 "work_folder": work_folder,
             },
@@ -163,19 +169,47 @@ class GitHubClient:
             encoded_config=str(encoded),
         )
 
-    async def list_runners(self, repository: RepositoryTarget) -> Sequence[ForgeRunner]:
-        items = await self._paginate(f"/{repository.api_path}/actions/runners", key="runners")
+    async def _resolve_runner_group(
+        self, organization: OrganizationTarget, runner_group: str
+    ) -> int:
+        """A configured `runner_group` (name or numeric id) to the id GitHub's API wants."""
+        text = runner_group.strip()
+        if text.isdigit():
+            return int(text)
+
+        groups = await self._paginate(
+            f"/{organization.api_path}/actions/runner-groups", key="runner_groups"
+        )
+        for group in groups:
+            if str(group.get("name", "")).casefold() == text.casefold():
+                return int(group["id"])
+
+        raise ForgeError(
+            f"organization {organization.name!r} has no runner group named {runner_group!r}"
+        )
+
+    async def list_runners(self, target: GitHubTarget) -> Sequence[ForgeRunner]:
+        items = await self._paginate(f"/{target.api_path}/actions/runners", key="runners")
         return [_parse_runner(item) for item in items]
 
-    async def delete_runner(self, repository: RepositoryTarget, github_runner_id: int) -> None:
+    async def delete_runner(self, target: GitHubTarget, github_runner_id: int) -> None:
         try:
-            await self._request(
-                "DELETE", f"/{repository.api_path}/actions/runners/{github_runner_id}"
-            )
+            await self._request("DELETE", f"/{target.api_path}/actions/runners/{github_runner_id}")
         except ForgeNotFoundError:
             # Already gone. The port promises this is quiet, because the reconciler calls it
             # on anything that looks stale and must not care who got there first.
             return
+
+    async def list_organization_repositories(
+        self, organization: OrganizationTarget
+    ) -> Sequence[RepositoryTarget]:
+        items = await self._paginate(f"/{organization.api_path}/repos", key=None)
+        found: list[RepositoryTarget] = []
+        for item in items:
+            full_name = item.get("full_name")
+            if isinstance(full_name, str) and "/" in full_name:
+                found.append(RepositoryTarget.parse(full_name))
+        return found
 
     async def list_queued_jobs(self, repository: RepositoryTarget) -> Sequence[QueuedJob]:
         """Jobs waiting for a runner.
@@ -386,25 +420,37 @@ class GitHubClient:
         self,
         path: str,
         *,
-        key: str,
+        key: str | None,
         params: Mapping[str, str] | None = None,
         limit: int | None = None,
         per_page: int = 100,
     ) -> list[dict[str, Any]]:
-        """Walk a paginated list endpoint, yielding items from the envelope's ``key``."""
+        """Walk a paginated list endpoint.
+
+        Most list endpoints answer with an envelope object and ``key`` names the array inside
+        it (``{"runners": [...], "total_count": N}``). A few — ``GET /orgs/{org}/repos`` among
+        them — answer with the array itself; ``key=None`` reads the payload directly instead.
+        """
         collected: list[dict[str, Any]] = []
         page = 1
 
         while True:
             query = {**(params or {}), "per_page": str(per_page), "page": str(page)}
             payload = await self._request("GET", path, params=query)
-            if not isinstance(payload, dict):
-                break
 
-            items = payload.get(key) or []
+            if key is None:
+                if not isinstance(payload, list):
+                    break
+                items = payload
+                total: Any = None
+            else:
+                if not isinstance(payload, dict):
+                    break
+                items = payload.get(key) or []
+                total = payload.get("total_count")
+
             collected.extend(item for item in items if isinstance(item, dict))
 
-            total = payload.get("total_count")
             reached_limit = limit is not None and len(collected) >= limit
             exhausted = len(items) < per_page or (
                 isinstance(total, int) and len(collected) >= total
@@ -489,7 +535,8 @@ class GitHubClient:
                 return ForgeTokenRejectedError(f"{where}: the token was rejected ({detail})")
             return ForgePermissionError(
                 f"{where}: forbidden ({detail}). The token likely lacks "
-                "'Administration: read & write' on this repository."
+                "'Administration: read & write' (or, for an organization, "
+                "'Self-hosted runners: read & write') on this target."
             )
         if status == 404:
             return ForgeNotFoundError(f"{where}: not found ({detail})")

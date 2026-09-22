@@ -33,11 +33,15 @@ from ghspot.domain.model.queue import (
     WaitReason,
 )
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import OrganizationTarget, RepositoryTarget, parse_target
 
 SCHEMA_VERSION = 2
 
 _SCHEMA = """
+-- `repository` keeps its name from before organization-scoped pools existed, even though it
+-- now holds either shape of target (an owner/name pair or a bare organization name,
+-- unambiguous by the presence of "/" — see `target.parse_target`). Renaming the column is a
+-- real migration for no operator-visible benefit; nothing outside this file reads it directly.
 CREATE TABLE IF NOT EXISTS runners (
     id                TEXT PRIMARY KEY,
     name              TEXT NOT NULL,
@@ -370,7 +374,7 @@ def _to_row(runner: Runner) -> dict[str, Any]:
         "id": str(runner.id),
         "name": runner.name,
         "pool": runner.pool,
-        "repository": str(runner.repository),
+        "repository": str(runner.target),
         "labels": json.dumps(runner.labels.as_list()),
         "state": runner.state.value,
         "created_at": runner.created_at.isoformat(),
@@ -387,7 +391,7 @@ def _from_row(row: sqlite3.Row) -> Runner:
         id=RunnerId(row["id"]),
         name=row["name"],
         pool=row["pool"],
-        repository=RepositoryTarget.parse(row["repository"]),
+        target=parse_target(row["repository"]),
         labels=LabelSet.from_iterable(json.loads(row["labels"])),
         created_at=_time(row["created_at"]),
         state=RunnerState(row["state"]),
@@ -418,10 +422,14 @@ def _event_from_row(row: sqlite3.Row) -> DomainEvent | None:
     if not isinstance(kind, type) or not issubclass(kind, DomainEvent):
         return None
     payload = json.loads(row["payload"])
+    if "target" not in payload and "repository" in payload:
+        # RunnerRegistered.repository was renamed to .target; events written before that
+        # still carry the old key.
+        payload["target"] = payload.pop("repository")
     known = {field.name for field in dataclass_fields(kind)}
     arguments = {key: value for key, value in payload.items() if key in known}
-    if "repository" in arguments and isinstance(arguments["repository"], str):
-        arguments["repository"] = RepositoryTarget.parse(arguments["repository"])
+    if "target" in arguments and isinstance(arguments["target"], str):
+        arguments["target"] = parse_target(arguments["target"])
     try:
         return kind(occurred_at=_time(row["occurred_at"]), **arguments)
     except (TypeError, ValueError):
@@ -431,7 +439,7 @@ def _event_from_row(row: sqlite3.Row) -> DomainEvent | None:
 
 
 def _encode(value: Any) -> Any:
-    if isinstance(value, RepositoryTarget):
+    if isinstance(value, RepositoryTarget | OrganizationTarget):
         return str(value)
     if isinstance(value, datetime):
         return value.isoformat()
@@ -475,7 +483,7 @@ def _snapshot_document(snapshot: QueueSnapshot) -> dict[str, Any]:
         "pools": [
             {
                 "pool": pressure.pool,
-                "repository": pressure.repository,
+                "target": pressure.target,
                 "priority": pressure.priority,
                 "queued": pressure.queued,
                 "available": pressure.available,
@@ -520,7 +528,7 @@ def _snapshot_from_document(document: Any) -> QueueSnapshot:
         pools=tuple(
             PoolPressure(
                 pool=str(item["pool"]),
-                repository=str(item.get("repository", "")),
+                target=str(item.get("target") or item.get("repository", "")),
                 priority=int(item.get("priority", 0)),
                 queued=int(item.get("queued", 0)),
                 available=int(item.get("available", 0)),

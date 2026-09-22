@@ -22,7 +22,7 @@ from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.pool import PoolSpec, RunnerPool
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState, owner_prefix
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import OrganizationTarget, RepositoryTarget
 from ghspot.domain.policy.admission import (
     Admission,
     CapacityLimits,
@@ -57,6 +57,24 @@ def _memory_bytes(memory: str | None) -> int | None:
         return parse_size(memory)
     except ValueError:
         return None
+
+
+def _known_watch_list(
+    spec: PoolSpec,
+    repositories_by_org: Mapping[OrganizationTarget, Sequence[RepositoryTarget]],
+) -> Sequence[RepositoryTarget]:
+    """What this pool watches, without asking the forge again.
+
+    Used only to decide whether a failed tick left a pool's queue completely unread. A
+    repository pool always knows its one target; an organization pool with an explicit list
+    knows it outright; a discovering one knows only what an *earlier*, successful resolution
+    already cached — which is the honest answer when discovery itself is what just failed.
+    """
+    if isinstance(spec.target, RepositoryTarget):
+        return (spec.target,)
+    if spec.repositories:
+        return spec.repositories
+    return repositories_by_org.get(spec.target, ())
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +156,7 @@ class ReconciliationService:
             )
 
         demand_by_repository: dict[RepositoryTarget, Sequence[QueuedJob]] = {}
+        repositories_by_org: dict[OrganizationTarget, Sequence[RepositoryTarget]] = {}
         unreadable: list[str] = []
 
         # Every pool is planned before anything acts, because how many runners the host can
@@ -148,7 +167,7 @@ class ReconciliationService:
         for configuration in self._pools:
             spec = configuration.spec
             try:
-                demand = await self._demand_for(spec.repository, demand_by_repository)
+                demand = await self._demand_for(spec, demand_by_repository, repositories_by_org)
                 pool, repairs = await self._observe(configuration, containers)
                 repaired += repairs
 
@@ -170,11 +189,15 @@ class ReconciliationService:
 
             except GhSpotError as error:
                 errors.append(f"[{spec.name}] {error}")
-                if spec.repository not in demand_by_repository:
-                    # The queue for this repository was never read, so anything waiting in it
-                    # is invisible to this tick. Said out loud in the snapshot, because an
-                    # empty queue view and an unread one look identical to whoever reads it.
-                    unreadable.append(str(spec.repository))
+                # Whether *anything* this pool watches was actually read this tick. A pool
+                # whose repositories were all already cached by an earlier pool has no gap —
+                # only a pool that found nothing readable does.
+                watched = _known_watch_list(spec, repositories_by_org)
+                if not any(repo in demand_by_repository for repo in watched):
+                    # The queue was never read, so anything waiting in it is invisible to this
+                    # tick. Said out loud in the snapshot, because an empty queue view and an
+                    # unread one look identical to whoever reads it.
+                    unreadable.append(str(spec.target))
 
         admission, load = await self._admit(planned)
         notes.extend(admission.reasons)
@@ -306,7 +329,7 @@ class ReconciliationService:
             if not runner.is_terminal
         }
         forge_runners = {
-            runner.id: runner for runner in await self._forge.list_runners(spec.repository)
+            runner.id: runner for runner in await self._forge.list_runners(spec.target)
         }
         pool_containers = {
             runner_id: status
@@ -422,7 +445,7 @@ class ReconciliationService:
             if listed.is_online or listed.busy:
                 continue
             try:
-                await self._forge.delete_runner(spec.repository, listed.id)
+                await self._forge.delete_runner(spec.target, listed.id)
                 repaired += 1
             except GhSpotError:
                 pass
@@ -441,7 +464,7 @@ class ReconciliationService:
             id=runner_id,
             name=status.name,
             pool=spec.name,
-            repository=spec.repository,
+            target=spec.target,
             labels=spec.labels,
             created_at=bookkeeping.created_at_from(status.labels) or now,
             state=RunnerState.IDLE if status.is_running else RunnerState.FAILED,
@@ -470,13 +493,44 @@ class ReconciliationService:
 
     async def _demand_for(
         self,
-        repository: RepositoryTarget,
-        cache: dict[RepositoryTarget, Sequence[QueuedJob]],
+        spec: PoolSpec,
+        demand: dict[RepositoryTarget, Sequence[QueuedJob]],
+        repositories_by_org: dict[OrganizationTarget, Sequence[RepositoryTarget]],
     ) -> Sequence[QueuedJob]:
-        """Queued jobs for a repository, fetched once however many pools serve it."""
-        if repository not in cache:
-            cache[repository] = await self._forge.list_queued_jobs(repository)
-        return cache[repository]
+        """Queued jobs across everything this pool watches.
+
+        A repository-scoped pool watches just itself. An organization pool watches its
+        `repositories` list, or — with `discover_repositories` — every repository
+        `list_organization_repositories` currently reports for the org, resolved once per
+        organization per tick the same way a repository's queue is fetched once however many
+        pools share it.
+        """
+        watched = await self._resolve_watched(spec, repositories_by_org)
+
+        combined: list[QueuedJob] = []
+        seen: set[int] = set()
+        for repository in watched:
+            if repository not in demand:
+                demand[repository] = await self._forge.list_queued_jobs(repository)
+            for job in demand[repository]:
+                if job.id not in seen:
+                    seen.add(job.id)
+                    combined.append(job)
+        return combined
+
+    async def _resolve_watched(
+        self,
+        spec: PoolSpec,
+        repositories_by_org: dict[OrganizationTarget, Sequence[RepositoryTarget]],
+    ) -> Sequence[RepositoryTarget]:
+        if isinstance(spec.target, RepositoryTarget):
+            return (spec.target,)
+        if spec.repositories:
+            return spec.repositories
+        org = spec.target
+        if org not in repositories_by_org:
+            repositories_by_org[org] = await self._forge.list_organization_repositories(org)
+        return repositories_by_org[org]
 
     async def _launch(self, spec: PoolSpec, template: RunnerTemplate, count: int) -> int:
         """Start ``count`` runners, together rather than one after another.

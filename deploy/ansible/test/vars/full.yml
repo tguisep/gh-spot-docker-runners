@@ -59,3 +59,12 @@ ghspot_pools:
     container:
       image: ghspot/runner:rhel-9
       gpus: ["0", "1"]
+  - name: org
+    organization: tguisep-org
+    repositories: [tguisep-org/api, tguisep-org/web]
+    runner_group: Default
+    labels: [self-hosted, linux, x64, ubuntu-24.04]
+    max_runners: 2
+    container:
+      image: ghspot/runner:ubuntu-24.04
+      docker_socket: true

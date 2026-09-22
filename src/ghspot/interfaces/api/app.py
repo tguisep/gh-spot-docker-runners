@@ -29,6 +29,7 @@ from ghspot.application.queries.views import GetPoolStatus, ListRunners, to_view
 from ghspot.composition import Application
 from ghspot.domain.errors import GhSpotError, RunnerBusyError, RunnerNotFoundError
 from ghspot.domain.model.runner import Runner, RunnerState
+from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.config.settings import changed_on_disk, unconfigured
 from ghspot.interfaces.api import dashboard
 from ghspot.interfaces.api.schemas import (
@@ -238,8 +239,8 @@ def create_app(application: Application) -> FastAPI:
         job_id = await FindJobForRunner(app.forge, app.runners)(runner)
 
         lines = None
-        if job_id is not None:
-            lines = await app.forge.job_logs(runner.repository, job_id, tail=tail)
+        if job_id is not None and isinstance(runner.target, RepositoryTarget):
+            lines = await app.forge.job_logs(runner.target, job_id, tail=tail)
         return JobLogsResponse(
             runner_id=str(runner.id),
             job_id=job_id,

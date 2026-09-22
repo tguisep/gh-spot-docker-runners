@@ -22,7 +22,7 @@ from ghspot.domain.errors import (
     ForgeTokenRejectedError,
     GhSpotError,
 )
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import GitHubTarget, RepositoryTarget
 from ghspot.domain.policy.admission import CapacityLimits
 from ghspot.domain.ports.backend import RunnerBackend
 from ghspot.infrastructure.config.settings import ConfigError, Settings
@@ -311,49 +311,94 @@ async def _github(settings: Settings) -> list[Check]:
     try:
         # For a GitHub App this is the first call that actually signs a JWT and exchanges it,
         # so a bad key or a wrong app id surfaces here rather than an hour into a run.
-        for repository in settings.repositories:
-            checks.append(await _repository(forge, repository))
+        for target in settings.all_targets:
+            checks.append(await _target(forge, target))
+        # An organization pool's explicit `repositories` list exercises a different
+        # permission ('Actions: read' on each repo) from listing the organization's own
+        # runners ('Administration' at the org level) — the check above cannot see whether
+        # this half works too.
+        for repository in _watched_repositories(settings):
+            checks.append(await _queue(forge, repository))
     finally:
         await forge.aclose()
     return checks
 
 
-async def _repository(forge: GitHubClient, repository: RepositoryTarget) -> Check:
+def _watched_repositories(settings: Settings) -> list[RepositoryTarget]:
+    """Every repository an organization pool explicitly names, deduplicated.
+
+    `discover_repositories` pools are not included: what they watch is only known by asking
+    the forge at tick time, which is exactly the call `doctor` cannot make ahead of one.
+    """
+    seen: dict[RepositoryTarget, None] = {}
+    for pool in settings.pools:
+        for repository in pool.spec.repositories:
+            seen.setdefault(repository, None)
+    return list(seen)
+
+
+async def _target(forge: GitHubClient, target: GitHubTarget) -> Check:
     """Prove the token can actually do the two things the daemon needs.
 
     Listing runners exercises 'Administration: read'; it is the cheapest call that fails in
     the same way a real registration would.
     """
-    name = str(repository)
+    name = str(target)
     try:
-        runners = await forge.list_runners(repository)
+        runners = await forge.list_runners(target)
     except ForgeNotFoundError:
         return Check(
-            name=f"repository {name}",
+            name=f"target {name}",
             ok=False,
             detail="not found, or the token cannot see it",
-            remedy="check the repository name and that the token is scoped to it",
+            remedy="check the name and that the token is scoped to it",
         )
     except ForgeTokenRejectedError as error:
         return Check(
-            name=f"repository {name}",
+            name=f"target {name}",
             ok=False,
             detail=str(error),
             remedy="the token is invalid or expired; generate a new one",
         )
     except ForgePermissionError as error:
         return Check(
-            name=f"repository {name}",
+            name=f"target {name}",
             ok=False,
             detail=str(error),
             remedy="the token needs 'Administration: read & write' and 'Actions: read'",
         )
     except ForgeError as error:
-        return Check(name=f"repository {name}", ok=False, detail=str(error))
+        return Check(name=f"target {name}", ok=False, detail=str(error))
 
     ours = sum(1 for runner in runners if runner.name.startswith("ghspot-"))
     return Check(
-        name=f"repository {name}",
+        name=f"target {name}",
         ok=True,
         detail=f"reachable — {len(runners)} runner(s) registered, {ours} ours",
     )
+
+
+async def _queue(forge: GitHubClient, repository: RepositoryTarget) -> Check:
+    """Prove the token can read this repository's queue — what an organization pool's
+    `repositories` list actually needs at every tick."""
+    name = str(repository)
+    try:
+        await forge.list_queued_jobs(repository)
+    except ForgeNotFoundError:
+        return Check(
+            name=f"queue {name}",
+            ok=False,
+            detail="not found, or the token cannot see it",
+            remedy="check the repository name and that the token is scoped to it",
+        )
+    except ForgePermissionError as error:
+        return Check(
+            name=f"queue {name}",
+            ok=False,
+            detail=str(error),
+            remedy="the token needs 'Actions: read' on this repository",
+        )
+    except ForgeError as error:
+        return Check(name=f"queue {name}", ok=False, detail=str(error))
+
+    return Check(name=f"queue {name}", ok=True, detail="reachable")

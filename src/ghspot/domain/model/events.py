@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import GitHubTarget
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +27,7 @@ class RunnerRegistered(DomainEvent):
     runner_id: str
     runner_name: str
     github_runner_id: int
-    repository: RepositoryTarget
+    target: GitHubTarget
     pool: str = ""
     """Defaulted so that events written before this field existed still load. They group
     under an empty pool in `ghspot stats` rather than breaking `ghspot history` entirely."""

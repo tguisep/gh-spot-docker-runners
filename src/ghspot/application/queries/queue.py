@@ -68,7 +68,7 @@ class GetQueue:
         pools = [
             PoolPressureView(
                 pool=pressure.pool,
-                repository=pressure.repository,
+                target=pressure.target,
                 priority=pressure.priority,
                 queued=pressure.queued,
                 available=pressure.available,

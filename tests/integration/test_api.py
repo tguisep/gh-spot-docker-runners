@@ -303,7 +303,7 @@ def test_stats_reports_what_the_fleet_did(client: TestClient, harness: Harness) 
             runner_id="r1",
             runner_name="ghspot-default-r1",
             github_runner_id=1,
-            repository=REPO,
+            target=REPO,
             pool="default",
         ),
         domain_events.RunnerTookJob(
@@ -322,7 +322,7 @@ def test_stats_reports_what_the_fleet_did(client: TestClient, harness: Harness) 
     assert body["total"]["jobs"] == 1
     assert body["total"]["busy_seconds"] == 600.0
     assert body["total"]["mean_wait_seconds"] == 60.0
-    assert [row["key"] for row in body["by_repository"]] == [str(REPO)]
+    assert [row["key"] for row in body["by_target"]] == [str(REPO)]
     assert [row["key"] for row in body["by_pool"]] == ["default"]
     assert body["failures"] == []
 
@@ -337,7 +337,7 @@ def test_stats_honours_a_window(client: TestClient, harness: Harness) -> None:
             runner_id="old",
             runner_name="ghspot-default-old",
             github_runner_id=1,
-            repository=REPO,
+            target=REPO,
             pool="default",
         )
     )

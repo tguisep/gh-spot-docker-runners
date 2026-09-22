@@ -19,7 +19,7 @@ def to_view(runner: Runner, now: datetime) -> RunnerView:
         id=str(runner.id),
         name=runner.name,
         pool=runner.pool,
-        repository=str(runner.repository),
+        target=str(runner.target),
         state=runner.state,
         labels=runner.labels.as_list(),
         created_at=runner.created_at,
@@ -137,7 +137,7 @@ class GetPoolStatus:
             views.append(
                 PoolView(
                     name=spec.name,
-                    repository=str(spec.repository),
+                    target=str(spec.target),
                     labels=spec.labels.as_list(),
                     min_idle=spec.min_idle,
                     max_runners=spec.max_runners,

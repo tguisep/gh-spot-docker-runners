@@ -69,9 +69,9 @@ def build_auth(settings: Settings) -> TokenProvider:
         private_key=github.resolve_private_key(),
         installation_id=github.installation_id,
         base_url=github.api_url,
-        # Falling back to the first configured repository lets an operator skip
+        # Falling back to the first configured pool's target lets an operator skip
         # installation_id entirely in the common single-installation case.
-        discovery_repository=next(iter(settings.repositories), None),
+        discovery_target=next(iter(settings.all_targets), None),
     )
 
 

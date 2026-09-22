@@ -50,6 +50,7 @@ export default defineConfig({
                     label: 'Pools',
                     items: [
                         { slug: 'guides/pools/labels' },
+                        { slug: 'guides/pools/organizations' },
                         { slug: 'guides/pools/pm' },
                         { slug: 'guides/pools/priority' },
                         { slug: 'guides/pools/gpus' },
