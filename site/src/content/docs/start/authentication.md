@@ -15,7 +15,10 @@ just-in-time config blob and nothing else, in both modes. See
 ## Which permissions, and why
 
 Both modes need exactly the same two repository permissions. Nothing else — no organisation
-permissions, no account permissions, no webhooks.
+permissions, no account permissions, no webhooks — **unless a pool in your `config.toml` uses
+`organization` instead of `repository`**, which needs one more. See
+[Organization-level pools](../../guides/pools/organizations/) for what that pool itself needs
+to be configured; this page covers only the credential.
 
 | Permission | Level | |
 |---|---|---|
@@ -163,7 +166,9 @@ Under **Repository permissions**:
 | Pull requests | **Read-only** *(optional — draft detection in the queue view)* |
 | Metadata | Read-only *(mandatory, pre-selected)* |
 
-Leave **Organization permissions** and **Account permissions** entirely alone. Subscribe to
+Leave **Account permissions** entirely alone. Leave **Organization permissions** alone too,
+**unless a pool will use `organization`** — that needs **Self-hosted runners: Read and write**
+under Organization permissions, in addition to the repository permissions above. Subscribe to
 **no events** — with webhooks off there is nothing to subscribe to.
 
 Under **Where can this GitHub App be installed?**, choose **Only on this account**.
@@ -279,7 +284,7 @@ permission that registration does, so if it passes, registration will too.
 | What you see | What it means |
 |---|---|
 | `the token was rejected (Bad credentials)` | The token is invalid, expired, or revoked. Generate a new one — this is not a permissions problem |
-| `forbidden ... token likely lacks 'Administration: read & write'` | The credential is valid but under-permissioned. Set Administration to **Read and write** |
+| `forbidden ... token likely lacks 'Administration: read & write'` | The credential is valid but under-permissioned. Set Administration to **Read and write** — or, for an `organization` pool, **Self-hosted runners: Read and write** under Organization permissions |
 | `not found, or the token cannot see it` | The repository is not in the token's selected repositories, or not in the App's installation. Also check the `owner/name` spelling |
 | `GitHub rejected the app assertion` | `app_id` does not match the private key, **or** the host clock is wrong. GitHub refuses a JWT dated in the future — check `timedatectl`. Confirm you used the numeric **App ID**, not the Client ID |
 | `the app is not installed on OWNER/REPO` | The app exists but that repository is not in its installation. Add it under **Install App → gear → Repository access** |

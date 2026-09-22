@@ -1438,3 +1438,72 @@ The queue is read most urgent first, oldest first within a class.
   anyone, the pools column is the one to rename.
 - An unrecognised class from a newer writer reads back as `branch`, which claims nothing about
   who is waiting and so cannot mislead in either direction.
+
+## 2026-09-22 — organization-level pools
+
+"Org and enterprise scope are modelled but not implemented" has sat in the decisions table
+since inception (2026-08-26) and never got any truer — there was no model, just the sentence.
+A pool can now register its runners at the organization instead of one repository, so they are
+shared across every repository under it.
+
+`RepositoryTarget` was a concrete leaf type wherever "which GitHub target" mattered — `PoolSpec`,
+`Runner`, the `ForgeClient` port, the GitHub client's path building, config parsing, SQLite,
+the REST API, the dashboard. `OrganizationTarget` sits beside it now, and `GitHubTarget` is the
+union the same fields carry: `PoolSpec.repository` and `Runner.repository` are `.target`.
+`QueuedJob.repository` is **not** touched — a queued job is always one concrete repository's
+job, org or not, because that is what GitHub's API gives.
+
+### The demand-signal problem
+
+Registering at the organization is the easy half. GitHub has no `GET /orgs/{org}/actions/runs`
+— queued-job visibility is inherently per-repository — so an organization pool still has to
+say which repositories' queues to watch. Two ways, and it needs exactly one:
+
+| | Cost | Upkeep |
+|---|---|---|
+| `repositories = [...]` | Bounded — scales with the list | Manual |
+| `discover_repositories = true` | Scales with the organization | None — polls `GET /orgs/{org}/repos` every tick |
+
+Chosen over "just discover always": on a large organization that is an unbounded cost nobody
+asked for, on the daemon's own steady-state poll. Explicit-by-default, discovery opt-in.
+
+### Runner groups
+
+Org-scoped JIT registration takes a `runner_group_id`; a repository-scoped one does not need
+one — only an organization plan has more than the implicit default. `runner_group` is optional
+on a pool (name or numeric id), resolved to an id by the GitHub client, defaulting to the
+organization's own "Default" group — which, like a repository's implicit group, is always id 1.
+
+### What stays repository-only
+
+- `find_job_for_runner` and `job_logs`: no organization-scoped equivalent exists, and an
+  organization runner could have taken a job in any repository it watches — there is no single
+  repository to search. `FindJobForRunner` returns `None` for these rather than guessing, so
+  the GitHub-log pane and `ghspot runner logs --job` simply stay empty; the container's own
+  live log is unaffected.
+- The wizard (`ghspot setup`) still only asks for one repository. Consistent with how it
+  already treats every other advanced pool shape — GPUs, volumes, multiple pools — hand-edit
+  `config.toml` for those, and now for organization pools too.
+
+### Notes for later
+
+- The SQLite `runners.repository` column keeps its name and holds either shape of string now —
+  renaming a real column for no operator-visible benefit felt like the wrong trade, so the
+  mismatch between the column's name and what it holds is called out in a comment instead of
+  hidden by a migration nobody would have asked for.
+- A repository target's string always has a `/`; an organization's name never can. That is the
+  whole of `parse_target`'s dispatch, and it is what let the Docker bookkeeping label and the
+  SQLite column keep round-tripping through one string column with no separate "which kind"
+  field.
+- The event log's `RunnerRegistered.repository` became `.target` in the JSON payload, with a
+  read-side fallback to the old key — the same shape the `pool` field's own default took when
+  it was added (2026-08-28), so events written before this change still load.
+- `_paginate` in the GitHub client only understood an enveloped list (`{"runners": [...],
+  "total_count": N}`). `GET /orgs/{org}/repos` answers with the bare array, the same shape
+  `_draft_branches`' one-off pull-request listing already had to special-case — `_paginate`
+  now takes `key=None` for that shape generically, rather than a third ad hoc reader.
+- `PoolPressure.repository` (the pool's own target) and `QueueEntry.repository` (a queued
+  job's, always concrete) look identical before this and are not the same field. Only the
+  first became `.target` — `PoolPressureResponse` and the dashboard's pools table with it;
+  `QueueEntryResponse` and the queue table keep `repository`, correctly, since a queue entry
+  is never about an organization.
