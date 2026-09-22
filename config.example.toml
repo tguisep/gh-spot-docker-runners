@@ -51,6 +51,23 @@ token_file = "~/.config/ghspot/token"
 # api_url = "https://api.github.com"       # change for GitHub Enterprise Server
 # request_timeout = "20s"
 
+# --- Serving more than one credential -------------------------------------------------
+# A pool needing a different token or App than the one above — a repository under another
+# account, an organization with its own installation — gets a named credential here, in the
+# same shape as [github] itself:
+#
+# [[github.credentials]]
+# name = "other-org"
+# token_file = "~/.config/ghspot/other-org-token"          # or app_id + private_key_file
+#
+# Environment variables work the same way, suffixed with the name (uppercased, non-letters
+# folded to "_"): GHSPOT_GITHUB_TOKEN_OTHER_ORG, GHSPOT_GITHUB_APP_ID_OTHER_ORG,
+# GHSPOT_GITHUB_APP_PRIVATE_KEY_OTHER_ORG. The unsuffixed variables stay the default
+# credential's, exactly as above.
+#
+# A pool then opts into it with `github = "other-org"`; a pool with no `github` key keeps
+# using the default credential above.
+
 [daemon]
 poll_interval = "15s"
 state_db = "~/.local/state/ghspot/state.db"
@@ -272,6 +289,20 @@ docker_socket = true
 # in, since only an organization plan has more than one.
 # runner_group = "Default"
 #
+# labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
+# max_runners = 2
+# [pool.container]
+# image = "ghspot/runner:ubuntu-24.04"
+# docker_socket = true
+
+# A fourth pool, using the named credential from [[github.credentials]] above instead of the
+# default [github] one — `github` names it. Left out, a pool always uses the default.
+#
+# [[pool]]
+# name = "other-org-shared"
+# organization = "other-org"
+# discover_repositories = true
+# github = "other-org"
 # labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
 # max_runners = 2
 # [pool.container]

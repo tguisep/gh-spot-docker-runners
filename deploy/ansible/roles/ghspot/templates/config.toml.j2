@@ -11,6 +11,21 @@ api_url = "{{ ghspot_api_url }}"
 {% if ghspot_github_app_id | length > 0 %}
 app_id = "{{ ghspot_github_app_id }}"
 {% endif %}
+{# Secrets for every credential — default and named alike — are never written here; they
+   go to env.j2 as GHSPOT_GITHUB_* variables, which is what lets this file be world-readable
+   without being a credential itself. Only the public shape (name, api_url, app_id) lives
+   in the TOML. #}
+{% for credential in ghspot_github_credentials | default([]) %}
+
+[[github.credentials]]
+name = "{{ credential.name }}"
+{% if credential.api_url is defined and credential.api_url %}
+api_url = "{{ credential.api_url }}"
+{% endif %}
+{% if credential.app_id is defined and credential.app_id %}
+app_id = "{{ credential.app_id }}"
+{% endif %}
+{% endfor %}
 
 [daemon]
 poll_interval = "{{ ghspot_poll_interval }}"

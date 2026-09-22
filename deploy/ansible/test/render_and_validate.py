@@ -135,8 +135,19 @@ def test_everything_round_trips() -> None:
     check(keep.volumes is False, "full: housekeeping.volumes lost")
     check(keep.keep_build_cache == "5g", "full: keep_build_cache lost")
 
+    named = {credential.name: credential for credential in settings.github_credentials}
+    check(set(named) == {"other-org", "token-based"}, f"full: credentials are {sorted(named)}")
+    check(named["other-org"].app_id == "234567", "full: named credential app_id lost")
+    check(
+        named["token-based"].api_url == "https://github.example.com/api/v3",
+        "full: named credential api_url lost",
+    )
+
     pools = {pool.spec.name: pool for pool in settings.pools}
-    check(set(pools) == {"ubuntu", "gpu", "rhel", "org"}, f"full: pools are {sorted(pools)}")
+    check(
+        set(pools) == {"ubuntu", "gpu", "rhel", "org", "other-org-pool"},
+        f"full: pools are {sorted(pools)}",
+    )
 
     ubuntu = pools["ubuntu"]
     check(ubuntu.spec.pm.value == "dynamic", f"full: pm is {ubuntu.spec.pm}")
@@ -177,6 +188,13 @@ def test_everything_round_trips() -> None:
     )
     check(org.spec.discover_repositories is False, "full: discover_repositories should be unset")
     check(org.spec.runner_group == "Default", "full: runner_group lost")
+
+    other_org_pool = pools["other-org-pool"]
+    check(other_org_pool.credential == "other-org", "full: pool's 'github' key lost")
+    check(
+        other_org_pool.spec.discover_repositories is True,
+        "full: other-org-pool discover_repositories lost",
+    )
 
 
 def test_housekeeping_can_be_turned_off() -> None:
@@ -221,6 +239,42 @@ def test_the_credential_file_takes_both_forms() -> None:
         check("GHSPOT_GITHUB_TOKEN" not in body, "env: token written alongside an App")
 
 
+def test_named_credentials_get_their_own_environment_variables() -> None:
+    """A named credential's secret is never `GHSPOT_GITHUB_TOKEN` unsuffixed — that variable
+    belongs to the default credential alone, and a named one reusing it would silently steal
+    every pool's traffic that meant to use the default."""
+    with tempfile.TemporaryDirectory() as directory:
+        variables = Path(directory) / "named.yml"
+        variables.write_text(
+            "ghspot_github_token: default-token\n"
+            "ghspot_github_app_id: ''\n"
+            "ghspot_github_app_private_key: ''\n"
+            "ghspot_github_credentials:\n"
+            "  - name: other-org\n"
+            "    token: other-org-token\n"
+            "  - name: app-based\n"
+            '    app_id: "234567"\n'
+            '    private_key: "-----BEGIN PRIVATE KEY-----\\nSECOND\\n"\n'
+        )
+        rendered = Path(directory) / "env"
+        render("env.j2", variables, rendered)
+        body = rendered.read_text()
+
+        check("GHSPOT_GITHUB_TOKEN=default-token" in body, "env: default token lost")
+        check(
+            "GHSPOT_GITHUB_TOKEN_OTHER_ORG=other-org-token" in body,
+            "env: named token-based credential lost or wrongly suffixed",
+        )
+        check(
+            "GHSPOT_GITHUB_APP_ID_APP_BASED=234567" in body,
+            "env: named app-based credential's app_id lost or wrongly suffixed",
+        )
+        check(
+            "GHSPOT_GITHUB_APP_PRIVATE_KEY_APP_BASED=" in body and "\\n" in body,
+            "env: named app-based credential's key lost or not escaped",
+        )
+
+
 def test_pools_can_be_rendered_one_file_each() -> None:
     """Directory mode: the main file carries only `include`, and each pool is its own file.
 
@@ -248,7 +302,7 @@ def test_pools_can_be_rendered_one_file_each() -> None:
         check("[capacity]" in body, "directory: the host's capacity limits were lost")
 
         # The role loops the template over each pool; here that loop is the test's.
-        for name in ("ubuntu", "gpu", "rhel", "org"):
+        for name in ("ubuntu", "gpu", "rhel", "org", "other-org-pool"):
             one = root / f"{name}.yml"
             one.write_text(
                 (VARS / "full.yml").read_text()
@@ -259,7 +313,10 @@ def test_pools_can_be_rendered_one_file_each() -> None:
 
         settings = load(main)
         found = {pool.spec.name for pool in settings.pools}
-        check(found == {"ubuntu", "gpu", "rhel", "org"}, f"directory: pools are {sorted(found)}")
+        check(
+            found == {"ubuntu", "gpu", "rhel", "org", "other-org-pool"},
+            f"directory: pools are {sorted(found)}",
+        )
 
         # Compared against the inline form key by key, because two templates for one schema
         # is two chances to drift — and the drift is silent: a pool file missing `pm` still
@@ -269,6 +326,11 @@ def test_pools_can_be_rendered_one_file_each() -> None:
 
         for name, expected in inline.items():
             got = from_files[name]
+            check(
+                got.credential == expected.credential,
+                f"directory: {name}'s credential is {got.credential!r}, but the inline form "
+                f"gives {expected.credential!r}",
+            )
             for attribute in (
                 "pm",
                 "min_idle",
@@ -321,6 +383,7 @@ def main() -> int:
         test_everything_round_trips,
         test_housekeeping_can_be_turned_off,
         test_the_credential_file_takes_both_forms,
+        test_named_credentials_get_their_own_environment_variables,
         test_pools_can_be_rendered_one_file_each,
         test_the_dashboard_location_is_only_written_when_set,
         test_the_host_is_named_when_set_and_left_to_the_system_when_not,

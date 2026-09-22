@@ -1,6 +1,13 @@
 # Everything the template can emit, so a key that stops round-tripping is caught.
 ghspot_api_url: https://github.example.com/api/v3
 ghspot_github_app_id: "123456"
+ghspot_github_credentials:
+  - name: other-org
+    app_id: "234567"
+    private_key: "not-a-real-key"
+  - name: token-based
+    token: "ghp_example"
+    api_url: https://github.example.com/api/v3
 ghspot_poll_interval: 30s
 ghspot_state_db: /srv/ghspot/state.db
 ghspot_log_level: DEBUG
@@ -68,3 +75,11 @@ ghspot_pools:
     container:
       image: ghspot/runner:ubuntu-24.04
       docker_socket: true
+  - name: other-org-pool
+    organization: other-org
+    discover_repositories: true
+    github: other-org
+    labels: [self-hosted, linux, x64, ubuntu-24.04]
+    max_runners: 1
+    container:
+      image: ghspot/runner:ubuntu-24.04

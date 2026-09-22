@@ -31,6 +31,21 @@ ghspot_github_token: ""
 ghspot_github_app_id: ""
 ghspot_github_app_private_key: ""
 
+# Additional named credentials, for pools that need a different token or App than the
+# default above — a repository under a different account, an organization with its own
+# installation. Each entry supplies exactly one of token / (app_id + private_key), the same
+# rule as the default. A pool picks one with `github: <name>` (see ghspot_pools below); a
+# pool with no `github` key keeps using the default.
+#
+# ghspot_github_credentials:
+#   - name: other-org
+#     token: "{{ vault_ghspot_other_org_token }}"
+# or
+#   - name: other-org
+#     app_id: "234567"
+#     private_key: "{{ vault_ghspot_other_org_app_key }}"
+ghspot_github_credentials: []
+
 # Daemon configuration, rendered into /etc/ghspot/config.toml.
 ghspot_api_url: https://api.github.com
 ghspot_poll_interval: 15s
@@ -130,6 +145,18 @@ ghspot_capacity: {}
 #     container:
 #       image: ghspot/runner:ubuntu-24.04
 #       docker_socket: true
+#
+# A pool routes through a credential other than the default above with `github: <name>`,
+# naming an entry in ghspot_github_credentials:
+#
+# ghspot_pools:
+#   - name: other-org-pool
+#     organization: other-org
+#     discover_repositories: true
+#     github: other-org
+#     labels: [self-hosted, linux, x64, ubuntu-24.04]
+#     container:
+#       image: ghspot/runner:ubuntu-24.04
 ghspot_pools: []
 
 # Whether to start the service. Set false to configure a host without running it yet.
