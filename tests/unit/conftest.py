@@ -38,7 +38,7 @@ def make_runner(
         id=RunnerId(name),
         name=f"ghspot-{pool}-{name}",
         pool=pool,
-        repository=REPO,
+        target=REPO,
         labels=labels,
         created_at=T0,
         state=state,
@@ -53,7 +53,7 @@ def make_runner(
 def make_spec(**overrides: object) -> PoolSpec:
     defaults: dict[str, object] = {
         "name": "default",
-        "repository": REPO,
+        "target": REPO,
         "labels": LABELS,
         "min_idle": 0,
         "max_runners": 4,

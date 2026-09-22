@@ -19,6 +19,10 @@ class InvalidRepositoryTargetError(DomainError):
     """A repository reference is not a well-formed ``owner/name`` pair."""
 
 
+class InvalidOrganizationTargetError(DomainError):
+    """An organization reference is not a well-formed GitHub organization name."""
+
+
 class InvalidLabelSetError(DomainError):
     """A label set is empty or contains a label GitHub would reject."""
 

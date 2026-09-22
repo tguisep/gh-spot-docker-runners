@@ -41,7 +41,7 @@ rather than dropped: hiding it would make the totals disagree with the rows."""
 class _Story:
     """One runner's life, assembled as the events arrive."""
 
-    repository: str = UNKNOWN
+    target: str = UNKNOWN
     pool: str = UNKNOWN
     registered_at: datetime | None = None
     took_job_at: datetime | None = None
@@ -100,7 +100,7 @@ def stories(events: Sequence[DomainEvent]) -> dict[str, _Story]:
         story = found.setdefault(runner_id, _Story())
 
         if isinstance(event, RunnerRegistered):
-            story.repository = str(event.repository)
+            story.target = str(event.target)
             story.pool = event.pool or UNKNOWN
             story.registered_at = event.occurred_at
         elif isinstance(event, RunnerTookJob):
@@ -156,12 +156,12 @@ class GatherStats:
         recorded = await self._events.since(since)
         told = stories(recorded)
 
-        by_repository: dict[str, _Tally] = {}
+        by_target: dict[str, _Tally] = {}
         by_pool: dict[str, _Tally] = {}
         total = _Tally()
 
         for story in told.values():
-            _add(by_repository.setdefault(story.repository, _Tally()), story)
+            _add(by_target.setdefault(story.target, _Tally()), story)
             _add(by_pool.setdefault(story.pool, _Tally()), story)
             _add(total, story)
 
@@ -169,7 +169,7 @@ class GatherStats:
         # no end event, so the log cannot see it at all.
         for runner in await self._runners.list_active():
             total.live += 1
-            by_repository.setdefault(str(runner.repository), _Tally()).live += 1
+            by_target.setdefault(str(runner.target), _Tally()).live += 1
             by_pool.setdefault(runner.pool, _Tally()).live += 1
 
         return StatsView(
@@ -177,7 +177,7 @@ class GatherStats:
             since=since,
             until=self._clock.now(),
             total=total.finish(""),
-            by_repository=_ranked(by_repository),
+            by_target=_ranked(by_target),
             by_pool=_ranked(by_pool),
             failures=_failures(recorded),
             events_read=len(recorded),

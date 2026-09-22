@@ -143,7 +143,7 @@ def test_state_changed_at_defaults_to_creation() -> None:
         id="x",  # type: ignore[arg-type]
         name="ghspot-default-x",
         pool="default",
-        repository=REPO,
+        target=REPO,
         labels=make_runner().labels,
         created_at=at(),
     )

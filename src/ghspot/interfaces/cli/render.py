@@ -116,7 +116,7 @@ def _memory_cell(runner: RunnerView) -> str:
 def pools_table(pools: Sequence[PoolView]) -> Table:
     table = Table(header_style="bold", expand=False)
     table.add_column("pool", style="bold")
-    table.add_column("repository")
+    table.add_column("target")
     table.add_column("labels", style="dim")
     table.add_column("idle", justify="right")
     table.add_column("busy", justify="right")
@@ -130,7 +130,7 @@ def pools_table(pools: Sequence[PoolView]) -> Table:
     for pool in pools:
         table.add_row(
             pool.name,
-            pool.repository,
+            pool.target,
             ", ".join(pool.labels),
             str(pool.idle),
             str(pool.busy),
@@ -199,7 +199,7 @@ def stats_tables(view: StatsView) -> list[Table | Text]:
     heading.append((f"— {window}, {view.events_read} event(s) read", "dim"))
     blocks: list[Table | Text] = [Text.assemble(*heading)]
 
-    if not view.by_repository:
+    if not view.by_target:
         blocks.append(
             Text(
                 "nothing recorded in this window",
@@ -208,7 +208,7 @@ def stats_tables(view: StatsView) -> list[Table | Text]:
         )
         return blocks
 
-    blocks.append(_usage_table(view.by_repository, view.total, "repository"))
+    blocks.append(_usage_table(view.by_target, view.total, "target"))
     if len(view.by_pool) > 1 or (view.by_pool and view.by_pool[0].key):
         blocks.append(_usage_table(view.by_pool, view.total, "pool"))
 
@@ -264,10 +264,10 @@ def queue_tables(view: QueueView) -> list[Table | Text]:
 
     blocks: list[Table | Text] = [_queue_heading(view)]
 
-    for repository in view.unreadable:
+    for target in view.unreadable:
         blocks.append(
             Text(
-                f"! {repository} could not be read this tick — anything queued there is "
+                f"! {target} could not be read this tick — anything queued there is "
                 "missing from this table",
                 style="red",
             )

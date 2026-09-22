@@ -12,6 +12,7 @@ from ghspot.application.queries.resolve import ResolveRunner
 from ghspot.composition import build
 from ghspot.domain.errors import RunnerBusyError
 from ghspot.domain.model.runner import RunnerState
+from ghspot.domain.model.target import RepositoryTarget
 from ghspot.infrastructure.config.settings import Settings
 
 
@@ -50,9 +51,9 @@ async def job_logs(settings: Settings, reference: str, tail: int) -> tuple[int |
     try:
         runner = await ResolveRunner(application.runners)(reference)
         job_id = await FindJobForRunner(application.forge, application.runners)(runner)
-        if job_id is None:
-            return None, None
-        found = await application.forge.job_logs(runner.repository, job_id, tail=tail)
+        if job_id is None or not isinstance(runner.target, RepositoryTarget):
+            return job_id, None
+        found = await application.forge.job_logs(runner.target, job_id, tail=tail)
         return job_id, found
     finally:
         await application.aclose()

@@ -17,7 +17,7 @@ from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.queue import QueueSnapshot
 from ghspot.domain.model.runner import Runner, RunnerId
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import GitHubTarget, OrganizationTarget, RepositoryTarget
 from ghspot.domain.ports.backend import (
     ContainerSpec,
     ContainerStatus,
@@ -108,11 +108,19 @@ class FakeForge:
     runners: dict[int, ForgeRunner] = field(default_factory=dict)
     queued: dict[RepositoryTarget, list[QueuedJob]] = field(default_factory=dict)
     fail_on: set[str] = field(default_factory=set)
-    unreachable: set[RepositoryTarget] = field(default_factory=set)
-    """Repositories that answer with an error — a deleted repo, or a token missing a scope."""
+    unreachable: set[GitHubTarget] = field(default_factory=set)
+    """Targets that answer with an error — a deleted repo, or a token missing a scope."""
+
+    organization_repositories: dict[OrganizationTarget, list[RepositoryTarget]] = field(
+        default_factory=dict
+    )
+    """What `list_organization_repositories` answers, for `discover_repositories` pools."""
 
     deleted: list[int] = field(default_factory=list)
     minted: list[str] = field(default_factory=list)
+    minted_runner_groups: list[str | None] = field(default_factory=list)
+    """The `runner_group` passed to every `create_jit_registration` call, in order."""
+
     job_output: dict[int, str] = field(default_factory=dict)
 
     job_by_runner_name: dict[str, int] = field(default_factory=dict)
@@ -124,18 +132,19 @@ class FakeForge:
 
     _next_id: itertools.count[int] = field(default_factory=lambda: itertools.count(100))
 
-    def _guard(self, method: str, repository: RepositoryTarget | None = None) -> None:
+    def _guard(self, method: str, target: GitHubTarget | None = None) -> None:
         if method in self.fail_on:
             raise GhSpotError(f"fake forge failure in {method}")
-        if repository is not None and repository in self.unreachable:
-            raise GhSpotError(f"repository {repository} is not reachable")
+        if target is not None and target in self.unreachable:
+            raise GhSpotError(f"{target} is not reachable")
 
     async def create_jit_registration(
         self,
-        repository: RepositoryTarget,
+        target: GitHubTarget,
         name: str,
         labels: LabelSet,
         work_folder: str = "_work",
+        runner_group: str | None = None,
     ) -> JitRegistration:
         self._guard("create_jit_registration")
         github_id = next(self._next_id)
@@ -143,15 +152,16 @@ class FakeForge:
             id=github_id, name=name, status="offline", busy=False, labels=labels
         )
         self.minted.append(name)
+        self.minted_runner_groups.append(runner_group)
         return JitRegistration(
             github_runner_id=github_id, name=name, encoded_config=f"jit-{github_id}"
         )
 
-    async def list_runners(self, repository: RepositoryTarget) -> Sequence[ForgeRunner]:
-        self._guard("list_runners", repository)
+    async def list_runners(self, target: GitHubTarget) -> Sequence[ForgeRunner]:
+        self._guard("list_runners", target)
         return list(self.runners.values())
 
-    async def delete_runner(self, repository: RepositoryTarget, github_runner_id: int) -> None:
+    async def delete_runner(self, target: GitHubTarget, github_runner_id: int) -> None:
         self._guard("delete_runner")
         self.runners.pop(github_runner_id, None)
         self.deleted.append(github_runner_id)
@@ -159,6 +169,12 @@ class FakeForge:
     async def list_queued_jobs(self, repository: RepositoryTarget) -> Sequence[QueuedJob]:
         self._guard("list_queued_jobs", repository)
         return list(self.queued.get(repository, []))
+
+    async def list_organization_repositories(
+        self, organization: OrganizationTarget
+    ) -> Sequence[RepositoryTarget]:
+        self._guard("list_organization_repositories", organization)
+        return list(self.organization_repositories.get(organization, []))
 
     async def find_job_for_runner(
         self, repository: RepositoryTarget, runner_name: str, limit: int = 30

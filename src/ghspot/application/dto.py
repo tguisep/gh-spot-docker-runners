@@ -21,7 +21,7 @@ class RunnerView:
     id: str
     name: str
     pool: str
-    repository: str
+    target: str
     state: RunnerState
     labels: list[str]
     created_at: datetime
@@ -55,7 +55,7 @@ class PoolView:
     """One pool's declared shape and what it currently holds."""
 
     name: str
-    repository: str
+    target: str
     labels: list[str]
     min_idle: int
     max_runners: int
@@ -82,7 +82,8 @@ class PoolView:
 
 @dataclass(frozen=True, slots=True)
 class UsageStats:
-    """What a repository, or a pool, cost and delivered over a window.
+    """What a target — a repository or an organization — or a pool, cost and delivered over a
+    window.
 
     Counted from the event log rather than from the runners table: the table is pruned and
     its rows are deleted as runners retire, so anything derived from it would quietly stop
@@ -90,7 +91,7 @@ class UsageStats:
     """
 
     key: str
-    """The repository or pool these numbers are for. Empty for the total row."""
+    """The target or pool these numbers are for. Empty for the total row."""
 
     runners: int = 0
     """Registered with GitHub. Every runner starts here, so it is the denominator."""
@@ -160,7 +161,7 @@ class StatsView:
     cannot put beside another.
     """
 
-    by_repository: list[UsageStats] = field(default_factory=list)
+    by_target: list[UsageStats] = field(default_factory=list)
     by_pool: list[UsageStats] = field(default_factory=list)
     failures: list[tuple[str, int]] = field(default_factory=list)
     """Failure reasons, commonest first. The point of the whole report when something is
@@ -231,7 +232,7 @@ class PoolPressureView:
     """One pool's share of the queue, and what is holding it back."""
 
     pool: str
-    repository: str
+    target: str
     priority: int
     queued: int
     available: int

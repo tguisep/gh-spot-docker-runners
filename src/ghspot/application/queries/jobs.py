@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ghspot.domain.model.runner import Runner
+from ghspot.domain.model.target import RepositoryTarget
 from ghspot.domain.ports.forge import ForgeClient
 from ghspot.domain.ports.repository import RunnerRepository
 
@@ -29,8 +30,14 @@ class FindJobForRunner:
             # Never registered, so it cannot have been handed a job. Searching would be a
             # walk through recent history to prove something the record already knows.
             return None
+        if not isinstance(runner.target, RepositoryTarget):
+            # GitHub has no organization-scoped equivalent of this search, and an
+            # organization runner could have taken a job in any repository under it — there
+            # is no single repository to search. The GitHub log pane stays empty for these;
+            # the container's own log is unaffected.
+            return None
 
-        found = await self._forge.find_job_for_runner(runner.repository, runner.name)
+        found = await self._forge.find_job_for_runner(runner.target, runner.name)
         if found is None:
             return None
 

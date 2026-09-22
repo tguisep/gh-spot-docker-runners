@@ -18,7 +18,7 @@ NAMESPACE = "io.ghspot"
 MANAGED = f"{NAMESPACE}.managed"
 RUNNER_ID = f"{NAMESPACE}.runner-id"
 POOL = f"{NAMESPACE}.pool"
-REPOSITORY = f"{NAMESPACE}.repository"
+TARGET = f"{NAMESPACE}.target"
 GITHUB_RUNNER_ID = f"{NAMESPACE}.github-runner-id"
 CREATED_AT = f"{NAMESPACE}.created-at"
 
@@ -32,7 +32,7 @@ def labels_for(runner: Runner) -> dict[str, str]:
         MANAGED: "true",
         RUNNER_ID: str(runner.id),
         POOL: runner.pool,
-        REPOSITORY: str(runner.repository),
+        TARGET: str(runner.target),
         CREATED_AT: runner.created_at.isoformat(),
     }
     if runner.github_runner_id is not None:

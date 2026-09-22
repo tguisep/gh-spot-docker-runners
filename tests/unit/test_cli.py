@@ -86,7 +86,7 @@ def test_a_broken_config_names_the_problem(tmp_path: Path) -> None:
     result = runner.invoke(app, ["config", "validate", "-c", str(path)])
 
     assert result.exit_code == 2
-    assert "'repository' is required" in result.output
+    assert "needs either 'repository' or 'organization'" in result.output
 
 
 def test_pool_list_shows_configured_pools(config: Path) -> None:
@@ -166,7 +166,7 @@ def test_queue_names_the_limit_a_job_is_waiting_on(config: Path, tmp_path: Path)
             pools=(
                 PoolPressure(
                     pool="default",
-                    repository="tguisep/gh-spot-docker-runners",
+                    target="tguisep/gh-spot-docker-runners",
                     priority=1,
                     queued=1,
                     available=0,
@@ -207,7 +207,7 @@ def test_pool_list_shows_the_queue_the_daemon_recorded(config: Path, tmp_path: P
             pools=(
                 PoolPressure(
                     pool="default",
-                    repository="tguisep/gh-spot-docker-runners",
+                    target="tguisep/gh-spot-docker-runners",
                     priority=1,
                     queued=7,
                     available=0,
@@ -298,7 +298,7 @@ def test_stats_reads_the_log_the_daemon_wrote(config: Path, tmp_path: Path) -> N
                     runner_id="r1",
                     runner_name="ghspot-default-r1",
                     github_runner_id=1,
-                    repository=RepositoryTarget("tguisep", "gh-spot-docker-runners"),
+                    target=RepositoryTarget("tguisep", "gh-spot-docker-runners"),
                     pool="default",
                 ),
                 domain_events.RunnerTookJob(occurred_at=at(minutes=1), runner_id="r1", job_id=7),

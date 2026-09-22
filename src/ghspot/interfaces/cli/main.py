@@ -517,7 +517,7 @@ def config_validate(config: ConfigOption = None) -> None:
     console.print(f"[green]ok[/green] {settings.source}")
     console.print(f"  poll interval  {settings.daemon.poll_interval.total_seconds():.0f}s")
     console.print(f"  state database {settings.daemon.state_db}")
-    console.print(f"  repositories   {', '.join(str(r) for r in settings.repositories)}")
+    console.print(f"  targets        {', '.join(str(t) for t in settings.all_targets)}")
     console.print(f"  api            {_api_summary(settings)}")
     console.print()
     console.print(pools_table([_declared(pool.spec) for pool in settings.pools]))
@@ -543,7 +543,7 @@ def _declared(spec: PoolSpec) -> PoolView:
     """A pool as configured, before any runner exists — what `validate` has to show."""
     return PoolView(
         name=spec.name,
-        repository=str(spec.repository),
+        target=str(spec.target),
         labels=spec.labels.as_list(),
         min_idle=spec.min_idle,
         max_runners=spec.max_runners,

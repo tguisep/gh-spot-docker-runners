@@ -29,7 +29,7 @@ import httpx
 import jwt
 
 from ghspot.domain.errors import ForgeAuthError, ForgeError
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import GitHubTarget
 
 #: GitHub rejects a JWT whose lifetime exceeds ten minutes. Nine leaves room for drift.
 JWT_LIFETIME = timedelta(minutes=9)
@@ -96,7 +96,7 @@ class GitHubAppTokenProvider:
         installation_id: int | None = None,
         base_url: str = "https://api.github.com",
         client: httpx.AsyncClient | None = None,
-        discovery_repository: RepositoryTarget | None = None,
+        discovery_target: GitHubTarget | None = None,
     ) -> None:
         if not app_id:
             raise ForgeAuthError("a GitHub App needs an app_id")
@@ -106,7 +106,7 @@ class GitHubAppTokenProvider:
         self._app_id = str(app_id)
         self._private_key = private_key
         self._installation_id = installation_id
-        self._discovery_repository = discovery_repository
+        self._discovery_target = discovery_target
         self._base_url = base_url.rstrip("/")
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(base_url=self._base_url, timeout=20.0)
@@ -189,16 +189,16 @@ class GitHubAppTokenProvider:
 
         Cached for the process: an app is installed once and the id does not change.
         """
-        if self._discovery_repository is not None:
+        if self._discovery_target is not None:
             payload = await self._call(
-                "GET", f"/{self._discovery_repository.api_path}/installation", assertion
+                "GET", f"/{self._discovery_target.api_path}/installation", assertion
             )
             found = payload.get("id")
             if isinstance(found, int):
                 self._installation_id = found
                 return found
             raise ForgeAuthError(
-                f"the app is not installed on {self._discovery_repository}. "
+                f"the app is not installed on {self._discovery_target}. "
                 "Install it there, or set [github].installation_id."
             )
 

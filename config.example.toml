@@ -245,3 +245,35 @@ docker_socket = true
 # [pool.container]
 # image = "ghspot/runner:rhel-9"
 # docker_socket = true
+
+# A third pool, registered at the organization rather than one repository — its runners are
+# shared across every repository named below, instead of pinned to one. Use `organization`
+# in place of `repository`; the two are mutually exclusive.
+#
+# GitHub has no organization-scoped "queued jobs" endpoint, so this still has to be told, one
+# way or the other, which repositories to watch for work:
+#
+# [[pool]]
+# name = "org-shared"
+# organization = "tguisep-org"
+#
+# The bounded, predictable choice: only these repositories are polled each tick. Cost scales
+# with the length of this list, not with the size of the organization.
+# repositories = ["tguisep-org/api", "tguisep-org/web"]
+#
+# The zero-config alternative: poll `GET /orgs/{org}/repos` every tick and watch whatever it
+# returns. Nothing to keep in sync as repositories come and go, at a cost that scales with the
+# organization instead of with a list you maintain — exactly one of `repositories` or
+# `discover_repositories` is required for an organization pool.
+# discover_repositories = true
+#
+# Which organization runner group new registrations join, by name or numeric id. Unset uses
+# the organization's "Default" group — the same group a repository pool's runners always land
+# in, since only an organization plan has more than one.
+# runner_group = "Default"
+#
+# labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
+# max_runners = 2
+# [pool.container]
+# image = "ghspot/runner:ubuntu-24.04"
+# docker_socket = true

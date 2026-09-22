@@ -110,6 +110,26 @@ ghspot_capacity: {}
 # `priority: 10` on a pool is its share of contested capacity when ghspot_capacity bites —
 # a weight, not a rank. Against another pool at 5 it takes two thirds of the contested slots,
 # interleaved, not all of them. From 1, which is the default.
+#
+# A pool may register at the organization level instead of one repository — its runners are
+# then shared across every repository named below, rather than pinned to one. Use
+# `organization` in place of `repository`; the two are mutually exclusive. GitHub has no
+# organization-scoped "queued jobs" endpoint, so an organization pool also needs exactly one
+# of `repositories` (an explicit, bounded-cost list to poll) or `discover_repositories: true`
+# (poll the organization for every repository it has, at a cost that scales with its size).
+# `runner_group` is optional and names the organization runner group new registrations join,
+# by name or numeric id — unset uses the organization's "Default" group.
+#
+# ghspot_pools:
+#   - name: org-shared
+#     organization: tguisep-org
+#     repositories: [tguisep-org/api, tguisep-org/web]
+#     runner_group: Default
+#     labels: [self-hosted, linux, x64, ubuntu-24.04]
+#     max_runners: 2
+#     container:
+#       image: ghspot/runner:ubuntu-24.04
+#       docker_socket: true
 ghspot_pools: []
 
 # Whether to start the service. Set false to configure a host without running it yet.

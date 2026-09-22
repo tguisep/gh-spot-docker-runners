@@ -45,7 +45,7 @@ def test_it_writes_a_configuration_the_daemon_accepts(tmp_path: Path) -> None:
     assert result.exit_code == 0
     settings = load(config)
     assert [pool.spec.name for pool in settings.pools] == ["builders"]
-    assert str(settings.pools[0].spec.repository) == "tguisep/my-project"
+    assert str(settings.pools[0].spec.target) == "tguisep/my-project"
     assert settings.pools[0].spec.max_runners == 3
 
 
@@ -118,7 +118,7 @@ def test_a_repository_that_is_not_owner_slash_name_is_asked_again(tmp_path: Path
     )
 
     assert result.exit_code == 0
-    assert str(load(config).pools[0].spec.repository) == "tguisep/second-try"
+    assert str(load(config).pools[0].spec.target) == "tguisep/second-try"
 
 
 @pytest.mark.parametrize(("answer", "expected"), [("y", True), ("n", False)])

@@ -49,7 +49,7 @@ def make_runner(runner_id: str = "r1", **overrides: object) -> Runner:
         "id": RunnerId(runner_id),
         "name": f"ghspot-default-{runner_id}",
         "pool": "default",
-        "repository": REPO,
+        "target": REPO,
         "labels": LabelSet.of("self-hosted", "linux", "x64"),
         "created_at": T0,
         "state": RunnerState.IDLE,
@@ -70,7 +70,7 @@ async def test_a_runner_survives_a_round_trip(repository: SqliteRunnerRepository
     assert restored is not None
     assert restored.id == original.id
     assert restored.name == original.name
-    assert restored.repository == REPO
+    assert restored.target == REPO
     assert restored.labels.as_list() == ["self-hosted", "linux", "x64"]
     assert restored.state is RunnerState.IDLE
     assert restored.created_at == T0
@@ -182,7 +182,7 @@ async def test_events_round_trip_with_their_fields(events: SqliteEventLog) -> No
                 runner_id="r1",
                 runner_name="ghspot-default-r1",
                 github_runner_id=42,
-                repository=REPO,
+                target=REPO,
             ),
             RunnerRetired(occurred_at=T0, runner_id="r1", reason="job finished"),
         ]
@@ -194,7 +194,7 @@ async def test_events_round_trip_with_their_fields(events: SqliteEventLog) -> No
     registered = recent[1]
     assert isinstance(registered, RunnerRegistered)
     assert registered.github_runner_id == 42
-    assert registered.repository == REPO
+    assert registered.target == REPO
     assert registered.occurred_at == T0
 
 
@@ -282,7 +282,7 @@ def make_snapshot() -> QueueSnapshot:
         pools=(
             PoolPressure(
                 pool="default",
-                repository=str(REPO),
+                target=str(REPO),
                 priority=7,
                 queued=1,
                 available=0,

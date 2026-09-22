@@ -119,7 +119,7 @@ def explain_queue(
         pressures.append(
             PoolPressure(
                 pool=spec.name,
-                repository=str(spec.repository),
+                target=str(spec.target),
                 priority=spec.priority,
                 queued=len(waiting),
                 available=standing.available,

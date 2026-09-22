@@ -12,7 +12,7 @@ from ghspot.domain.errors import InvalidPoolSpecError, PoolAtCapacityError
 from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import GitHubTarget, RepositoryTarget
 
 _POOL_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$")
 
@@ -47,7 +47,7 @@ class PoolSpec:
     """
 
     name: str
-    repository: RepositoryTarget
+    target: GitHubTarget
     labels: LabelSet
     pm: ProcessManager = ProcessManager.DYNAMIC
     """How runners are kept.
@@ -94,6 +94,26 @@ class PoolSpec:
 
     Naming a label here inverts the rule for that label: the job must have asked."""
 
+    repositories: tuple[RepositoryTarget, ...] = ()
+    """Organization pools only: the repositories whose queues this pool watches.
+
+    GitHub has no organization-scoped "queued jobs" endpoint — that demand signal is
+    inherently per-repository regardless of what a runner is registered against. Mutually
+    exclusive with ``discover_repositories``: an organization pool sets exactly one of them,
+    naming its cost either explicitly (this list) or by polling for it every tick."""
+
+    discover_repositories: bool = False
+    """Organization pools only: poll ``GET /orgs/{org}/repos`` each tick and watch every
+    repository found, instead of a fixed ``repositories`` list.
+
+    Zero-config coverage of the whole organization, at a cost that scales with its size — an
+    explicit ``repositories`` list is bounded and predictable; this is not."""
+
+    runner_group: str | None = None
+    """Organization pools only: the runner group new registrations join, by name or numeric
+    id. Unset uses the organization's Default group (id 1) — the same group a repository
+    pool's runners always land in, since only an organization plan has more than one."""
+
     def __post_init__(self) -> None:
         if not _POOL_NAME.match(self.name):
             raise InvalidPoolSpecError(
@@ -126,13 +146,47 @@ class PoolSpec:
                 "not carry, so it could never serve anything"
             )
 
+        if isinstance(self.target, RepositoryTarget):
+            org_only = [
+                key
+                for key, value in (
+                    ("repositories", self.repositories),
+                    ("discover_repositories", self.discover_repositories),
+                    ("runner_group", self.runner_group),
+                )
+                if value
+            ]
+            if org_only:
+                raise InvalidPoolSpecError(
+                    f"pool {self.name!r}: {', '.join(org_only)} does nothing for a repository "
+                    "pool — it only applies when 'organization' is set"
+                )
+        else:
+            if bool(self.repositories) == bool(self.discover_repositories):
+                raise InvalidPoolSpecError(
+                    f"pool {self.name!r}: an organization pool needs exactly one of "
+                    "'repositories' (an explicit list to watch) or 'discover_repositories = "
+                    "true' (poll the organization for every repository it has), because "
+                    "GitHub has no organization-scoped queued-jobs endpoint"
+                )
+            org_name = self.target.name.casefold()
+            foreign = [repo for repo in self.repositories if repo.owner.casefold() != org_name]
+            if foreign:
+                raise InvalidPoolSpecError(
+                    f"pool {self.name!r}: repositories {[str(repo) for repo in foreign]} do "
+                    f"not belong to organization {self.target.name!r}"
+                )
+
     def can_serve(self, job: QueuedJob) -> bool:
         """Whether a job belongs to this pool.
 
-        Same repository, labels this pool carries, and — if the pool demands any — labels the
-        job asked for explicitly.
+        Same repository (or, for an organization pool, the same organization), labels this
+        pool carries, and — if the pool demands any — labels the job asked for explicitly.
         """
-        if job.repository != self.repository:
+        if isinstance(self.target, RepositoryTarget):
+            if job.repository != self.target:
+                return False
+        elif job.repository.owner.casefold() != self.target.name.casefold():
             return False
         if not self.labels.satisfies(job.labels):
             return False

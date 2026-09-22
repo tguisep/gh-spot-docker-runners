@@ -92,7 +92,7 @@ def test_discard_is_quiet_about_unknown_runners() -> None:
 
 
 def test_pool_specs_carry_the_repository_they_serve() -> None:
-    assert make_spec().repository == REPO
+    assert make_spec().target == REPO
 
 
 def test_a_pool_exposes_its_name_and_iterates_its_runners() -> None:
