@@ -100,18 +100,19 @@ class HousekeepingSettings:
 
 
 DEFAULT_CREDENTIAL = "default"
-"""The name reserved for the implicit `[github]` credential — every pool that does not set
-`github = "..."` uses this one, exactly as if named credentials did not exist."""
+"""The name a `[[github.credentials]]` entry needs for a pool that sets no `github` key to
+find it — not otherwise special. Every credential, this one included, is declared the same
+way."""
 
 
 def _credential_env(base: str, name: str) -> str:
-    """The environment variable a named credential reads, alongside its ``token_file`` /
+    """The environment variable a credential reads, alongside its ``token_file`` /
     ``private_key_file``.
 
-    The default credential keeps the bare variable (``GHSPOT_GITHUB_TOKEN``) unchanged, so a
-    single-credential config needs no migration. A named one gets a suffix: the name,
-    uppercased, with anything that is not alphanumeric folded to ``_`` — deterministic and
-    documentable without inventing per-credential escaping rules.
+    The credential named ``"default"`` keeps the bare variable (``GHSPOT_GITHUB_TOKEN``)
+    unchanged — the one every existing single-credential deployment already sets. Any other
+    name gets a suffix: the name, uppercased, with anything that is not alphanumeric folded to
+    ``_`` — deterministic and documentable without inventing per-credential escaping rules.
     """
     if name == DEFAULT_CREDENTIAL:
         return base
@@ -129,8 +130,9 @@ class GitHubSettings:
     """
 
     name: str = DEFAULT_CREDENTIAL
-    """This credential's name — `"default"` for the implicit `[github]` one, or whatever a
-    `[[github.credentials]]` entry called itself. What a pool's `github` key refers to."""
+    """This credential's name, as declared on its `[[github.credentials]]` entry — what a
+    pool's `github` key refers to. A pool that sets no `github` key uses whichever credential
+    is named `"default"`."""
 
     api_url: str = "https://api.github.com"
     token_file: Path | None = None
@@ -154,12 +156,10 @@ class GitHubSettings:
             return from_env.replace("\\n", "\n")
 
         if self.private_key_file is None:
-            where = (
-                "[github].private_key_file"
-                if self.name == DEFAULT_CREDENTIAL
-                else f"private_key_file on credential {self.name!r}"
+            raise ConfigError(
+                f"a GitHub App needs a private key: set {env_name} or private_key_file on "
+                f"credential {self.name!r}"
             )
-            raise ConfigError(f"a GitHub App needs a private key: set {env_name} or {where}")
 
         path = self.private_key_file.expanduser()
         try:
@@ -186,12 +186,10 @@ class GitHubSettings:
             return from_env
 
         if self.token_file is None:
-            where = (
-                "[github].token_file"
-                if self.name == DEFAULT_CREDENTIAL
-                else f"token_file on credential {self.name!r}"
+            raise ConfigError(
+                f"no GitHub token: set {env_name} or point token_file at a file on "
+                f"credential {self.name!r}"
             )
-            raise ConfigError(f"no GitHub token: set {env_name} or point {where} at a file")
 
         path = self.token_file.expanduser()
         try:
@@ -209,11 +207,11 @@ class GitHubSettings:
 class Settings:
     """Everything the daemon needs, validated."""
 
-    github: GitHubSettings
-    daemon: DaemonSettings
-    github_credentials: tuple[GitHubSettings, ...] = ()
-    """Named credentials beyond the default `[github]` one, from `[[github.credentials]]`."""
+    credentials: tuple[GitHubSettings, ...]
+    """Every configured GitHub credential, from `[[github.credentials]]`. Always at least one;
+    a pool with no `github` key uses whichever is named `"default"`."""
 
+    daemon: DaemonSettings
     housekeeping: HousekeepingSettings = field(default_factory=HousekeepingSettings)
     capacity: CapacityLimits = field(default_factory=CapacityLimits)
     pools: tuple[PoolConfiguration, ...] = field(default=())
@@ -255,15 +253,10 @@ class Settings:
             seen.setdefault(pool.spec.target, None)
         return list(seen)
 
-    @property
-    def all_credentials(self) -> tuple[GitHubSettings, ...]:
-        """Every configured credential, the default first."""
-        return (self.github, *self.github_credentials)
-
     def credential(self, name: str) -> GitHubSettings:
         """The credential a pool's `github` key names. Only fails for a name nothing at load
-        time already validated — see `_target` in `_pool()`."""
-        for candidate in self.all_credentials:
+        time already validated — see `_pool_credential` in `_pool()`."""
+        for candidate in self.credentials:
             if candidate.name == name:
                 return candidate
         raise ConfigError(f"no credential named {name!r} is configured")
@@ -301,7 +294,7 @@ def unconfigured(settings: Settings) -> str | None:
         if isinstance(target, RepositoryTarget) and str(target) == PLACEHOLDER_REPOSITORY:
             return f"pool {pool.spec.name!r} still points at the packaged {PLACEHOLDER_REPOSITORY}"
 
-    for github in settings.all_credentials:
+    for github in settings.credentials:
         try:
             if github.uses_app:
                 github.resolve_private_key()
@@ -375,8 +368,7 @@ def from_mapping(
     _reject_duplicate_names(pools, [origin for _table, origin in defined])
 
     return Settings(
-        github=credentials[0],
-        github_credentials=credentials[1:],
+        credentials=credentials,
         daemon=daemon,
         housekeeping=housekeeping,
         capacity=_capacity(_section(raw, "capacity")),
@@ -490,20 +482,39 @@ def _matches(pattern: str, source: Path) -> list[Path]:
 
 
 def _github(table: dict[str, Any]) -> tuple[GitHubSettings, ...]:
-    """The default `[github]` credential, plus any `[[github.credentials]]` named ones.
+    """Every configured credential, from `[[github.credentials]]`.
 
-    Named credentials are validated here rather than left to fail at first use, the same as
-    everything else in this module: a pool naming an unknown one is a load-time `ConfigError`,
-    not something that surfaces an hour into a run.
+    There is no separate "default" shape any more: every credential, including the one a pool
+    uses when it sets no `github` key, is an entry here — one of them just has to be named
+    `"default"`. Named credentials are validated here rather than left to fail at first use,
+    the same as everything else in this module: a pool naming an unknown one is a load-time
+    `ConfigError`, not something that surfaces an hour into a run.
     """
-    default = _one_credential(table, DEFAULT_CREDENTIAL, "[github]")
+    legacy = {
+        "token_file",
+        "app_id",
+        "private_key_file",
+        "installation_id",
+        "api_url",
+        "request_timeout",
+    } & table.keys()
+    if legacy:
+        raise ConfigError(
+            f"[github] no longer takes credential fields directly ({', '.join(sorted(legacy))}) "
+            "— declare every credential, including the default, as [[github.credentials]] "
+            'with name = "default"'
+        )
 
     entries = table.get("credentials", [])
     if not isinstance(entries, list):
         raise ConfigError("[github].credentials must be a list of tables")
+    if not entries:
+        raise ConfigError(
+            'at least one [[github.credentials]] must be configured, with name = "default"'
+        )
 
-    named: list[GitHubSettings] = []
-    seen = {DEFAULT_CREDENTIAL}
+    found: list[GitHubSettings] = []
+    seen: set[str] = set()
     for index, entry in enumerate(entries):
         where = f"[github].credentials[{index}]"
         if not isinstance(entry, dict):
@@ -513,16 +524,11 @@ def _github(table: dict[str, Any]) -> tuple[GitHubSettings, ...]:
             raise ConfigError(f"{where}: 'name' is required")
         name = str(name)
         if name in seen:
-            reason = (
-                "is reserved for the default [github] credential"
-                if name == "default"
-                else "is used by another credential"
-            )
-            raise ConfigError(f"{where}: the name {name!r} {reason}")
+            raise ConfigError(f"{where}: the name {name!r} is used by another credential")
         seen.add(name)
-        named.append(_one_credential(entry, name, f"{where} ({name})"))
+        found.append(_one_credential(entry, name, f"{where} ({name})"))
 
-    return (default, *named)
+    return tuple(found)
 
 
 def _one_credential(table: dict[str, Any], name: str, where: str) -> GitHubSettings:
@@ -761,12 +767,19 @@ def _pool_credential(
 ) -> str:
     """Which configured credential this pool's forge calls go through.
 
-    Defaults to `"default"` — the implicit `[github]` credential — exactly as if named
-    credentials did not exist. An explicit `github` naming an undefined credential is a
-    load-time error, not a tick-time 401 the operator has to trace back to a typo.
+    Defaults to `"default"` when the pool sets nothing — which only works if one of the
+    declared `[[github.credentials]]` is actually named that; a config with named credentials
+    but none called "default" would otherwise fail with a KeyError at tick time instead of at
+    load time. An explicit `github` naming an undefined credential is caught the same way.
     """
     value = table.get("github")
     if value in (None, ""):
+        if DEFAULT_CREDENTIAL not in credential_names:
+            raise ConfigError(
+                f"{where} ({name}): no 'github' key set, and no [[github.credentials]] is "
+                f"named \"{DEFAULT_CREDENTIAL}\" — add one, or set 'github' explicitly on "
+                "this pool"
+            )
         return DEFAULT_CREDENTIAL
     name_str = str(value)
     if name_str not in credential_names:

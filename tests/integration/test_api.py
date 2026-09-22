@@ -67,14 +67,14 @@ class Harness:
         # A fixed host, so the API's answers do not vary with whatever machine runs the
         # suite — and so a test can assert on the name the daemon reports for itself.
         settings = Settings(
-            github=GitHubSettings(),
+            credentials=(GitHubSettings(),),
             daemon=DaemonSettings(poll_interval=timedelta(seconds=15), host="builders-01"),
             pools=(PoolConfiguration(spec=self.spec, template=TEMPLATE),),
         )
         self.settings = settings
         credentials = {
             "default": CredentialGroup(
-                forge=self.forge,  # type: ignore[arg-type]
+                forge=self.forge,
                 provision=provision,
                 retire=retire,
             )

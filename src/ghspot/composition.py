@@ -141,7 +141,7 @@ def build(settings: Settings, *, backend: DockerRunnerBackend | None = None) -> 
     queue = SqliteQueueSnapshots(settings.daemon.state_db)
 
     credentials: dict[str, CredentialGroup] = {}
-    for credential in settings.all_credentials:
+    for credential in settings.credentials:
         forge = build_forge(credential, discovery_target_for(settings, credential.name))
         provision = ProvisionRunner(
             forge=forge,

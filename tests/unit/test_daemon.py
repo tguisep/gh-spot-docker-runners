@@ -29,7 +29,8 @@ from tests.fakes.adapters import (
 from tests.unit.conftest import T0, make_runner
 
 CONFIG = """
-[github]
+[[github.credentials]]
+name = "default"
 token_file = "/tmp/token"
 
 [[pool]]
@@ -68,7 +69,7 @@ def build_daemon(
 ) -> Daemon:
     """A daemon over fakes. Shutdown retires the fleet, so the repository has to be real."""
     settings = Settings(
-        github=GitHubSettings(),
+        credentials=(GitHubSettings(),),
         daemon=DaemonSettings(poll_interval=timedelta(seconds=interval_seconds)),
         pools=(),
         source=source,
@@ -80,7 +81,7 @@ def build_daemon(
     forge = FakeForge()
     credentials = {
         "default": CredentialGroup(
-            forge=forge,  # type: ignore[arg-type]
+            forge=forge,
             provision=None,  # type: ignore[arg-type]
             retire=RetireRunner(forge, backend, repository, clock, events),
         )

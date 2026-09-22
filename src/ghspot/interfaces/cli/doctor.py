@@ -75,7 +75,7 @@ SERVICE_USER = "ghspot"
 
 
 def _service_account(settings: Settings) -> list[Check]:
-    """Whether the account the unit runs as can read the credential this check just read.
+    """Whether the account the unit runs as can read every credential file this check just read.
 
     Run under sudo — which is how the wizard tells you to run it — every file check here
     passes as root and the daemon still cannot start, because it runs as `ghspot`. This is
@@ -87,28 +87,36 @@ def _service_account(settings: Settings) -> list[Check]:
     if settings.source is None or Path(settings.source).parent != SYSTEM_CONFIG_DIRECTORY:
         return []
 
-    credential = settings.github.token_file or settings.github.private_key_file
-    if credential is None:
-        return []  # the credential comes from the environment; systemd supplies its own
-
-    path = Path(credential).expanduser()
     try:
         entry = pwd.getpwnam(SERVICE_USER)
     except KeyError:
         return []  # not a packaged host, so nothing runs as anybody else
 
-    readable = _readable_by(path, uid=entry.pw_uid, gid=entry.pw_gid)
-    return [
-        Check(
-            name=f"credential readable by {SERVICE_USER}",
-            ok=readable,
-            detail=str(path) if readable else f"{path} cannot be read by {SERVICE_USER}",
-            remedy=(
-                f"the unit runs as {SERVICE_USER}, not as you: "
-                f"sudo chown root:{SERVICE_USER} {path} && sudo chmod 640 {path}"
-            ),
+    checks: list[Check] = []
+    for credential in settings.credentials:
+        file = credential.token_file or credential.private_key_file
+        if file is None:
+            continue  # this credential comes from the environment; systemd supplies its own
+
+        path = Path(file).expanduser()
+        readable = _readable_by(path, uid=entry.pw_uid, gid=entry.pw_gid)
+        label = (
+            "credential readable by"
+            if credential.name == DEFAULT_CREDENTIAL
+            else f"credential [{credential.name}] readable by"
         )
-    ]
+        checks.append(
+            Check(
+                name=f"{label} {SERVICE_USER}",
+                ok=readable,
+                detail=str(path) if readable else f"{path} cannot be read by {SERVICE_USER}",
+                remedy=(
+                    f"the unit runs as {SERVICE_USER}, not as you: "
+                    f"sudo chown root:{SERVICE_USER} {path} && sudo chmod 640 {path}"
+                ),
+            )
+        )
+    return checks
 
 
 def _readable_by(path: Path, *, uid: int, gid: int) -> bool:
@@ -295,7 +303,7 @@ def _socket_check(pool: str) -> Check:
 
 async def _github(settings: Settings) -> list[Check]:
     checks: list[Check] = []
-    for credential in settings.all_credentials:
+    for credential in settings.credentials:
         checks.extend(await _credential(settings, credential))
     return checks
 

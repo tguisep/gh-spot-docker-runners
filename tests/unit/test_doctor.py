@@ -25,7 +25,8 @@ from tests.fakes.adapters import FakeBackend
 runner = CliRunner()
 
 CONFIG = """
-[github]
+[[github.credentials]]
+name = "default"
 token_file = "{token}"
 
 [daemon]
