@@ -114,7 +114,7 @@ class PoolPressure:
     """One pool's side of the queue: what it is holding and what is holding it."""
 
     pool: str
-    repository: str
+    target: str
     priority: int
     queued: int
     available: int
@@ -178,7 +178,7 @@ class QueueSnapshot:
     """The scaling and admission reasons from the tick, verbatim, for the whole picture."""
 
     unreadable: tuple[str, ...] = ()
-    """Repositories whose queue could not be read this tick. An empty queue and an unread one
+    """Pool targets whose queue could not be read this tick. An empty queue and an unread one
     look identical from the outside, and only one of them means there is nothing to do."""
 
     @property

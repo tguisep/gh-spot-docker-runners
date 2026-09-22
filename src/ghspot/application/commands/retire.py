@@ -68,7 +68,7 @@ class RetireRunner:
         # runs unconditionally rather than guessing whether the runner de-registered itself.
         if runner.github_runner_id is not None:
             with suppress(GhSpotError):
-                await self._forge.delete_runner(runner.repository, runner.github_runner_id)
+                await self._forge.delete_runner(runner.target, runner.github_runner_id)
 
         now = self._clock.now()
         if runner.state is not RunnerState.RETIRED:

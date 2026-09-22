@@ -1,4 +1,4 @@
-"""The repository a pool of runners serves."""
+"""The GitHub target a pool of runners serves: one repository, or a whole organization."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Self
 
-from ghspot.domain.errors import InvalidRepositoryTargetError
+from ghspot.domain.errors import InvalidOrganizationTargetError, InvalidRepositoryTargetError
 
 # GitHub allows alphanumerics, hyphens, underscores and dots in repository names, and
 # alphanumerics with single hyphens in owner names. Being strict here keeps malformed
@@ -43,3 +43,43 @@ class RepositoryTarget:
 
     def __str__(self) -> str:
         return f"{self.owner}/{self.name}"
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class OrganizationTarget:
+    """A whole GitHub organization: a pool's runners serve every repository under it.
+
+    Registered separately from any one repository's runners, using GitHub's org-scoped
+    endpoints. There is no organization-scoped equivalent of "queued jobs" — that demand
+    signal stays per-repository regardless of what a runner is registered against, which is
+    why a pool needs to say which repositories it watches (see ``PoolSpec.repositories`` and
+    ``discover_repositories``).
+    """
+
+    name: str
+
+    def __post_init__(self) -> None:
+        if not _OWNER.match(self.name):
+            raise InvalidOrganizationTargetError(
+                f"{self.name!r} is not a valid GitHub organization"
+            )
+
+    @property
+    def api_path(self) -> str:
+        """The path segment used by the organization-scoped REST endpoints."""
+        return f"orgs/{self.name}"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+#: A pool registers its runners against one of these. A repository target always contains a
+#: ``/`` (``owner/name``); an organization name never can — which is what lets a single stored
+#: string (a SQLite column, a Docker label) round-trip through :func:`parse_target` without a
+#: separate column saying which kind it is.
+GitHubTarget = RepositoryTarget | OrganizationTarget
+
+
+def parse_target(value: str) -> GitHubTarget:
+    """Parse a stored or configured string back into whichever target it names."""
+    return RepositoryTarget.parse(value) if "/" in value else OrganizationTarget(value.strip())

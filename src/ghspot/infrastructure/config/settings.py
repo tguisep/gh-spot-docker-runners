@@ -26,7 +26,7 @@ from ghspot.application.reconciliation import PoolConfiguration
 from ghspot.domain.errors import GhSpotError
 from ghspot.domain.model.labels import LabelSet
 from ghspot.domain.model.pool import PoolSpec, ProcessManager
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import GitHubTarget, OrganizationTarget, RepositoryTarget
 from ghspot.domain.policy.admission import CapacityLimits
 
 TOKEN_ENV = "GHSPOT_GITHUB_TOKEN"
@@ -192,9 +192,32 @@ class Settings:
 
     @property
     def repositories(self) -> list[RepositoryTarget]:
+        """Repository-scoped pools' targets, deduplicated in declaration order."""
         seen: dict[RepositoryTarget, None] = {}
         for pool in self.pools:
-            seen.setdefault(pool.spec.repository, None)
+            if isinstance(pool.spec.target, RepositoryTarget):
+                seen.setdefault(pool.spec.target, None)
+        return list(seen)
+
+    @property
+    def organizations(self) -> list[OrganizationTarget]:
+        """Organization-scoped pools' targets, deduplicated in declaration order."""
+        seen: dict[OrganizationTarget, None] = {}
+        for pool in self.pools:
+            if isinstance(pool.spec.target, OrganizationTarget):
+                seen.setdefault(pool.spec.target, None)
+        return list(seen)
+
+    @property
+    def all_targets(self) -> list[GitHubTarget]:
+        """Every pool's target, whichever kind, deduplicated in declaration order.
+
+        What installation discovery falls back to: an operator with a single repository or
+        organization configured should never need to set `installation_id` by hand.
+        """
+        seen: dict[GitHubTarget, None] = {}
+        for pool in self.pools:
+            seen.setdefault(pool.spec.target, None)
         return list(seen)
 
 
@@ -217,7 +240,8 @@ def unconfigured(settings: Settings) -> str | None:
     be pointing at OWNER/REPOSITORY.
     """
     for pool in settings.pools:
-        if str(pool.spec.repository) == PLACEHOLDER_REPOSITORY:
+        target = pool.spec.target
+        if isinstance(target, RepositoryTarget) and str(target) == PLACEHOLDER_REPOSITORY:
             return f"pool {pool.spec.name!r} still points at the packaged {PLACEHOLDER_REPOSITORY}"
 
     github = settings.github
@@ -590,7 +614,7 @@ def _capacity(table: dict[str, Any]) -> CapacityLimits:
 def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
     where = f"pool[{index}]"
     name = _required(table, "name", where)
-    repository = _required(table, "repository", where)
+    target = _target(table, where, str(name))
     labels = table.get("labels")
     if not isinstance(labels, list) or not labels:
         raise ConfigError(f"{where} ({name}): 'labels' must be a non-empty list")
@@ -606,7 +630,7 @@ def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
     try:
         spec = PoolSpec(
             name=str(name),
-            repository=RepositoryTarget.parse(str(repository)),
+            target=target,
             labels=LabelSet.from_iterable(str(label) for label in labels),
             max_runners=int(table.get("max_runners", 2)),
             idle_timeout=parse_duration(table.get("idle_timeout", "10m"), f"{where}.idle_timeout"),
@@ -617,6 +641,11 @@ def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
             **_process_manager(table, where, str(name)),
             priority=_priority(table.get("priority"), where, str(name)),
             requires_labels=_required_labels(table.get("requires_labels"), where, str(name)),
+            repositories=_repositories(table.get("repositories"), where, str(name)),
+            discover_repositories=bool(table.get("discover_repositories", False)),
+            runner_group=(
+                str(table["runner_group"]) if table.get("runner_group") not in (None, "") else None
+            ),
         )
     except GhSpotError as error:
         raise ConfigError(f"{where}: {error}") from error
@@ -624,6 +653,35 @@ def _pool(table: dict[str, Any], index: int) -> PoolConfiguration:
         raise ConfigError(f"{where} ({name}): {error}") from error
 
     return PoolConfiguration(spec=spec, template=_template(container, where, str(name)))
+
+
+def _target(table: dict[str, Any], where: str, name: str) -> RepositoryTarget | OrganizationTarget:
+    """Read a pool's ``repository`` or ``organization`` key — exactly one is required."""
+    repository = table.get("repository")
+    organization = table.get("organization")
+    if repository and organization:
+        raise ConfigError(
+            f"{where} ({name}): set only one of 'repository' or 'organization', not both"
+        )
+    try:
+        if repository:
+            return RepositoryTarget.parse(str(repository))
+        if organization:
+            return OrganizationTarget(str(organization).strip())
+    except GhSpotError as error:
+        raise ConfigError(f"{where} ({name}): {error}") from error
+    raise ConfigError(f"{where} ({name}): needs either 'repository' or 'organization'")
+
+
+def _repositories(value: Any, where: str, name: str) -> tuple[RepositoryTarget, ...]:
+    """The explicit repository list an organization pool watches for queued jobs."""
+    if value in (None, False, "", []):
+        return ()
+    if not isinstance(value, list):
+        raise ConfigError(
+            f"{where} ({name}): 'repositories' must be a list of 'owner/name' strings"
+        )
+    return tuple(RepositoryTarget.parse(str(item)) for item in value)
 
 
 def _template(container: dict[str, Any], where: str, name: str) -> RunnerTemplate:

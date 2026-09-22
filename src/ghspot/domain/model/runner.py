@@ -21,7 +21,7 @@ from ghspot.domain.model.events import (
     RunnerRetired as RunnerRetiredEvent,
 )
 from ghspot.domain.model.labels import LabelSet
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import GitHubTarget
 
 #: Our own identity for a runner, independent of GitHub's numeric id and Docker's container id.
 #: It exists before either of those do, which is what makes crash recovery possible.
@@ -166,7 +166,7 @@ class Runner:
     id: RunnerId
     name: str
     pool: str
-    repository: RepositoryTarget
+    target: GitHubTarget
     labels: LabelSet
     created_at: datetime
     state: RunnerState = RunnerState.PENDING
@@ -193,7 +193,7 @@ class Runner:
                 runner_id=self.id,
                 runner_name=self.name,
                 github_runner_id=github_runner_id,
-                repository=self.repository,
+                target=self.target,
                 pool=self.pool,
             )
         )

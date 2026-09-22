@@ -284,7 +284,7 @@ async def test_a_registration_orphaned_by_a_hard_kill_is_reaped(harness: Harness
         id=RunnerId("orphan"),
         name="ghspot-default-orphan",
         pool="default",
-        repository=REPO,
+        target=REPO,
         labels=LABELS,
         created_at=T0,
     )
@@ -392,10 +392,10 @@ async def test_a_hung_job_is_killed(harness: Harness) -> None:
 
 async def test_one_broken_pool_does_not_stop_the_others() -> None:
     """A repository that is unreachable must not starve every other pool on the host."""
-    broken = make_spec(name="broken", repository=RepositoryTarget("someone", "gone"))
+    broken = make_spec(name="broken", target=RepositoryTarget("someone", "gone"))
     working = make_spec(name="working")
     harness_ = build(broken, working)
-    harness_.forge.unreachable.add(broken.repository)
+    harness_.forge.unreachable.add(broken.target)
     harness_.forge.queued[REPO] = [make_job(1)]
 
     report = await harness_.service.tick()

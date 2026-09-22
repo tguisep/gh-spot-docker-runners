@@ -74,7 +74,7 @@ class ProvisionRunner:
             id=runner_id,
             name=runner_name_for(spec.name, runner_id, self._host),
             pool=spec.name,
-            repository=spec.repository,
+            target=spec.target,
             labels=spec.labels,
             created_at=now,
         )
@@ -83,9 +83,10 @@ class ProvisionRunner:
         await self._runners.save(runner)
 
         registration = await self._forge.create_jit_registration(
-            repository=spec.repository,
+            target=spec.target,
             name=runner.name,
             labels=spec.labels,
+            runner_group=spec.runner_group,
         )
         runner.register(registration.github_runner_id, at=self._clock.now())
         # Persisted *before* the container exists. This is the crash-critical window: GitHub
@@ -132,7 +133,7 @@ class ProvisionRunner:
         """
         if runner.github_runner_id is not None:
             with suppress(GhSpotError):
-                await self._forge.delete_runner(runner.repository, runner.github_runner_id)
+                await self._forge.delete_runner(runner.target, runner.github_runner_id)
         runner.fail(at=self._clock.now(), reason=reason)
         await self._runners.save(runner)
         await self._flush(runner)

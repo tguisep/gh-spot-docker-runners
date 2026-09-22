@@ -50,7 +50,7 @@ def entry(job_id: int = 1, *, pool: str = "default", **overrides: object) -> Que
 def pressure(pool: str = "default", **overrides: object) -> PoolPressure:
     defaults: dict[str, object] = {
         "pool": pool,
-        "repository": str(REPO),
+        "target": str(REPO),
         "priority": 1,
         "queued": 1,
         "available": 0,

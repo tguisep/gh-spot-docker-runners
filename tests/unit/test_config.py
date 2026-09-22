@@ -44,7 +44,7 @@ def test_a_minimal_configuration_loads_with_sensible_defaults() -> None:
 
     assert len(settings.pools) == 1  # type: ignore[attr-defined]
     pool = settings.pools[0]  # type: ignore[attr-defined]
-    assert str(pool.spec.repository) == "tguisep/gh-spot-docker-runners"
+    assert str(pool.spec.target) == "tguisep/gh-spot-docker-runners"
     assert pool.spec.max_runners == 2
     assert pool.spec.idle_timeout == timedelta(minutes=10)
     assert pool.template.image == "ghspot/runner:ubuntu-24.04"

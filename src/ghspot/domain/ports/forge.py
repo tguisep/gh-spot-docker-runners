@@ -9,7 +9,7 @@ from typing import Protocol
 
 from ghspot.domain.model.job import QueuedJob
 from ghspot.domain.model.labels import LabelSet
-from ghspot.domain.model.target import RepositoryTarget
+from ghspot.domain.model.target import GitHubTarget, OrganizationTarget, RepositoryTarget
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,25 +55,42 @@ class ForgeClient(Protocol):
 
     async def create_jit_registration(
         self,
-        repository: RepositoryTarget,
+        target: GitHubTarget,
         name: str,
         labels: LabelSet,
         work_folder: str = "_work",
+        runner_group: str | None = None,
     ) -> JitRegistration:
-        """Mint a just-in-time configuration for one runner."""
+        """Mint a just-in-time configuration for one runner.
+
+        ``runner_group`` names an organization runner group (by name or numeric id) and is
+        meaningless for a repository target, which only ever has the implicit default group.
+        """
         ...
 
-    async def list_runners(self, repository: RepositoryTarget) -> Sequence[ForgeRunner]:
-        """Every self-hosted runner the forge currently lists for this repository."""
+    async def list_runners(self, target: GitHubTarget) -> Sequence[ForgeRunner]:
+        """Every self-hosted runner the forge currently lists for this target."""
         ...
 
-    async def delete_runner(self, repository: RepositoryTarget, github_runner_id: int) -> None:
+    async def delete_runner(self, target: GitHubTarget, github_runner_id: int) -> None:
         """Remove a runner registration. Deleting an unknown runner must succeed quietly."""
         ...
 
     async def list_queued_jobs(self, repository: RepositoryTarget) -> Sequence[QueuedJob]:
         """Jobs waiting for a runner. Implementations should use conditional requests so an
-        unchanged queue costs no rate limit."""
+        unchanged queue costs no rate limit.
+
+        Always a concrete repository: GitHub has no organization-scoped equivalent, so an
+        organization pool asks this once per repository it watches."""
+        ...
+
+    async def list_organization_repositories(
+        self, organization: OrganizationTarget
+    ) -> Sequence[RepositoryTarget]:
+        """Every repository the forge's credentials can see under this organization.
+
+        What ``discover_repositories = true`` uses in place of a pool's explicit
+        ``repositories`` list."""
         ...
 
     async def job_logs(

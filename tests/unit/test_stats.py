@@ -29,7 +29,7 @@ def life(
     runner_id: str,
     *,
     pool: str = "default",
-    repository: RepositoryTarget = REPO,
+    target: RepositoryTarget = REPO,
     registered: float = 0,
     took_job: float | None = None,
     retired: float | None = None,
@@ -43,7 +43,7 @@ def life(
             runner_id=runner_id,
             runner_name=f"ghspot-{pool}-{runner_id}",
             github_runner_id=1,
-            repository=repository,
+            target=target,
             pool=pool,
         )
     ]
@@ -110,7 +110,7 @@ def test_one_runners_events_fold_into_one_story() -> None:
 
     assert list(told) == ["r1"]
     story = told["r1"]
-    assert story.repository == str(REPO)
+    assert story.target == str(REPO)
     assert story.pool == "default"
     assert story.registered_at == at(minutes=0)
     assert story.took_job_at == at(minutes=1)
@@ -209,13 +209,13 @@ async def test_a_repeated_job_assignment_does_not_move_the_busy_period() -> None
 async def test_work_is_split_by_repository_and_by_pool() -> None:
     view = await gather(
         [
-            *life("r1", pool="default", repository=REPO, registered=0, took_job=1, retired=11),
-            *life("r2", pool="gpu", repository=OTHER, registered=0, took_job=1, retired=6),
-            *life("r3", pool="gpu", repository=OTHER, registered=0, failed=1),
+            *life("r1", pool="default", target=REPO, registered=0, took_job=1, retired=11),
+            *life("r2", pool="gpu", target=OTHER, registered=0, took_job=1, retired=6),
+            *life("r3", pool="gpu", target=OTHER, registered=0, failed=1),
         ]
     )
 
-    repositories = {row.key: row for row in view.by_repository}
+    repositories = {row.key: row for row in view.by_target}
     assert repositories[str(REPO)].runners == 1
     assert repositories[str(OTHER)].runners == 2
     assert repositories[str(OTHER)].failed == 1
@@ -230,13 +230,13 @@ async def test_work_is_split_by_repository_and_by_pool() -> None:
 async def test_the_busiest_group_is_listed_first() -> None:
     view = await gather(
         [
-            *life("r1", repository=OTHER, registered=0, retired=1),
-            *life("r2", repository=REPO, registered=0, retired=1),
-            *life("r3", repository=REPO, registered=0, retired=1),
+            *life("r1", target=OTHER, registered=0, retired=1),
+            *life("r2", target=REPO, registered=0, retired=1),
+            *life("r3", target=REPO, registered=0, retired=1),
         ]
     )
 
-    assert [row.key for row in view.by_repository] == [str(REPO), str(OTHER)]
+    assert [row.key for row in view.by_target] == [str(REPO), str(OTHER)]
 
 
 async def test_a_runner_registered_before_the_window_is_shown_not_dropped() -> None:
@@ -249,7 +249,7 @@ async def test_a_runner_registered_before_the_window_is_shown_not_dropped() -> N
         ]
     )
 
-    assert [row.key for row in view.by_repository] == [UNKNOWN]
+    assert [row.key for row in view.by_target] == [UNKNOWN]
     assert view.total.runners == 1
 
 

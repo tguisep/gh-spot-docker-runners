@@ -155,7 +155,7 @@ async def test_the_installation_is_discovered_from_the_first_repository(
     )
     respx.post(TOKEN_URL).mock(return_value=token_response())
     provider = GitHubAppTokenProvider(
-        app_id="1", private_key=private_key, discovery_repository=REPO
+        app_id="1", private_key=private_key, discovery_target=REPO
     )
 
     assert await provider.token() == "ghs_installation"
@@ -168,7 +168,7 @@ async def test_an_app_not_installed_on_the_repository_says_so(private_key: str) 
         return_value=httpx.Response(404, json={"message": "Not Found"})
     )
     provider = GitHubAppTokenProvider(
-        app_id="1", private_key=private_key, discovery_repository=REPO
+        app_id="1", private_key=private_key, discovery_target=REPO
     )
 
     with pytest.raises(ForgeAuthError, match="app is installed"):
