@@ -65,8 +65,8 @@ export function Queue() {
 
             {view?.unreadable.map((target) => (
                 <p className="notice error" key={target}>
-                    <code>{target}</code> could not be read on the last tick. Anything
-                    queued there is missing from this page.
+                    <code>{target}</code> could not be read on the last tick. Anything queued
+                    there is missing from this page.
                 </p>
             ))}
 
