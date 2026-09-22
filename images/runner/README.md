@@ -19,6 +19,9 @@ The variant name is the image tag *and* the label, so the two cannot drift apart
 than one by giving each its own pool — a job asking for `rhel-9` will only ever land on a
 runner carrying it.
 
+For an image of your own, or for adding a variant here, the step-by-step is
+[Adding a runner image](https://tguisep.github.io/gh-spot-docker-runners/guides/host/custom-images/).
+
 ## What is installed
 
 The apt toolset GitHub installs on its own `ubuntu-24.04` image, from
