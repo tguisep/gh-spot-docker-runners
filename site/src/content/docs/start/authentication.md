@@ -125,7 +125,8 @@ others.
 ### 3. Point the config at it
 
 ```toml
-[github]
+[[github.credentials]]
+name = "default"
 token_file = "~/.config/ghspot/token"
 ```
 
@@ -208,7 +209,8 @@ you skip this step, `ghspot doctor` reports that the app has no installations.
 ### 5. Point the config at it
 
 ```toml
-[github]
+[[github.credentials]]
+name = "default"
 app_id = "123456"
 private_key_file = "~/.config/ghspot/app.pem"
 ```
@@ -261,12 +263,13 @@ Credentials are never command-line arguments — that would put them in `ps` out
 
 ## Serving multiple repositories or organizations with different credentials
 
-`[github]` is the default credential, and every pool uses it unless told otherwise. A pool
-needing a different one — a repository under another account, an organization with its own
-App installation — gets a named credential:
+Every credential is a `[[github.credentials]]` block — there is no separate shape for "the"
+credential. A pool uses whichever one is named `"default"` unless it sets `github = "<name>"`
+to name a different one:
 
 ```toml
-[github]
+[[github.credentials]]
+name = "default"
 token_file = "~/.config/ghspot/token"
 
 [[github.credentials]]
@@ -278,27 +281,29 @@ private_key_file = "~/.config/ghspot/other-org.pem"
 name = "other-org-pool"
 organization = "other-org"
 discover_repositories = true
-github = "other-org"          # names the credential above; omitted, a pool uses the default
+github = "other-org"          # names the credential above; omitted, a pool uses "default"
 labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
 [pool.container]
 image = "ghspot/runner:ubuntu-24.04"
 ```
 
-A named credential takes the same keys as `[github]` itself — `token_file` or
-`app_id`/`private_key_file`, `api_url`, `installation_id` — and follows the same permission
+Every credential — `"default"` included — takes the same keys: `token_file` or
+`app_id`/`private_key_file`, `api_url`, `installation_id`, and follows the same permission
 rules as any other credential registering against that target: see
 [Organization-level pools](../../guides/pools/organizations/) if it serves an organization.
 
-**Environment variables get a suffix.** The unsuffixed `GHSPOT_GITHUB_TOKEN` and friends stay
-the default credential's alone; a named one reads its own, suffixed with the name — uppercased,
-anything that is not a letter or digit folded to `_`:
+**Environment variables get a suffix, except for `"default"`.** The credential named
+`"default"` reads the unsuffixed `GHSPOT_GITHUB_TOKEN` and friends — the ones a
+single-credential deployment already sets. Any other name reads its own, suffixed with the
+name — uppercased, anything that is not a letter or digit folded to `_`:
 
 | Credential name | Token variable |
 |---|---|
+| `default` | `GHSPOT_GITHUB_TOKEN` |
 | `other-org` | `GHSPOT_GITHUB_TOKEN_OTHER_ORG` |
 | `staging` | `GHSPOT_GITHUB_TOKEN_STAGING` |
 
-(and `GHSPOT_GITHUB_APP_ID_<NAME>` / `GHSPOT_GITHUB_APP_PRIVATE_KEY_<NAME>` for an App.)
+(and `GHSPOT_GITHUB_APP_ID(_<NAME>)` / `GHSPOT_GITHUB_APP_PRIVATE_KEY(_<NAME>)` for an App.)
 
 `ghspot doctor` checks every configured credential independently, labelling each beyond the
 default: `github auth [other-org]`.

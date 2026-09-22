@@ -1568,9 +1568,28 @@ down as what it was: an accident, not a policy about when direct commits to `mai
 
 One `[github]` section served every pool. That breaks down the moment two pools need
 credentials that cannot overlap — a repository under a different account, an organization
-whose App installation is separate from another org's. `[[github.credentials]]` adds named
-ones alongside the default; a pool opts into one with `github = "name"`, and a pool that says
-nothing keeps using the default exactly as before — zero migration for every existing config.
+whose App installation is separate from another org's.
+
+The first pass kept `[github]` as a privileged "default" shape and added
+`[[github.credentials]]` alongside it for named extras — additive, zero migration. Told to
+build it, then told plainly not to: no special-cased shape, everything — the credential every
+existing single-credential config already has included — declared the same way, as an entry
+in `[[github.credentials]]`. One of them just has to be named `"default"`, for a pool that sets
+no `github` key to find it. `DEFAULT_CREDENTIAL = "default"` is a name a pool looks for, not a
+privileged type — nothing in `GitHubSettings` treats it specially, and `_one_credential()`
+parses it through the exact same code path as any other entry.
+
+**This is a breaking change to `config.toml`, on purpose.** `[github]` no longer accepts
+`token_file`, `app_id`, `private_key_file`, `installation_id`, `api_url` or `request_timeout`
+directly — attempting to is a load-time `ConfigError` naming the new shape, not a silently
+ignored key. Every shipped surface that wrote or read the old shape moved with it in the same
+change: `config.example.toml`, `packaging/deb/config.toml` (the packaged default — this one
+matters most, since a fresh `apt install` would otherwise refuse to start), the wizard
+(`ghspot setup`, which substitutes into `[[github.credentials]]` now), the Ansible role
+(`ghspot_github_token`/`ghspot_github_app_id`/`ghspot_github_app_private_key` are gone;
+everything is `ghspot_github_credentials`, a list, with a `name: default` entry required), and
+`site/src/content/docs/start/authentication.md`. Pre-1.0 (v0.10.x), no deprecation window —
+consistent with this project's "no backwards-compatibility shims, just change the code" rule.
 
 ### The decision that shaped the whole implementation
 
@@ -1606,15 +1625,20 @@ version and finding the ceiling doesn't work.
   an unknown one, the same boundary an App's own `app_id`/private key already had — caught at
   reload time (logged, old settings kept) rather than at the next tick that touches it.
 - Per-credential environment variables are the name, uppercased, non-alphanumerics folded to
-  `_`, appended to the existing variable: `GHSPOT_GITHUB_TOKEN_OTHER_ORG`. The default
-  credential keeps the bare variable unchanged. The Ansible role's `env.j2` computes the same
-  suffix in Jinja (`regex_replace('[^A-Z0-9]+', '_')`) — the two have to be kept in step by
-  hand, there being no shared implementation between a systemd EnvironmentFile template and
-  Python.
-- The Ansible role's own secret delivery for the *default* credential turned out to already be
-  entirely environment-variable-based (`env.j2`), never `token_file` in the rendered TOML — so
-  named credentials follow the same path for consistency, not the file-based one a first pass
-  at this assumed the role already had.
+  `_`, appended to the base variable name — `GHSPOT_GITHUB_TOKEN_OTHER_ORG` — except for the
+  credential named `"default"`, which keeps the bare `GHSPOT_GITHUB_TOKEN` unsuffixed: the one
+  every existing single-credential deployment already sets. The Ansible role's `env.j2`
+  computes the same suffix in Jinja (`'' if credential.name == 'default' else '_' + (...
+  regex_replace('[^A-Z0-9]+', '_'))`) — the two have to be kept in step by hand, there being no
+  shared implementation between a systemd EnvironmentFile template and Python.
+- The Ansible role's own secret delivery turned out to already be entirely
+  environment-variable-based (`env.j2`), never `token_file` in the rendered TOML — including
+  for what used to be the privileged default. `ghspot_github_credentials` follows that same
+  path uniformly now, one loop over every entry instead of a special-cased default block plus
+  a loop for extras.
+- `ghspot_api_url` (a role variable, previously applied only to the default credential) is
+  gone too — `api_url` is a per-credential key now, like everything else a credential can set,
+  matching how a named credential's own GHES endpoint already had to be set.
 - `ForgeClient` gained `aclose()` on the port itself. `CredentialGroup.forge` is typed against
   the port (application layer, correctly forge-agnostic), and `Application.aclose()` needed to
   close every group's client — which the port could not do until closing was part of its
