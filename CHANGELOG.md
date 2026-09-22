@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.10.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.9.0...v0.10.0) (2026-09-22)
+
+
+### Features
+
+* **ansible:** render organization-scoped pools ([a6dc4f8](https://github.com/tguisep/gh-spot-docker-runners/commit/a6dc4f84e6469fd8bd3954fb0efc7c6dea27585e))
+* **core:** register runners at the organization level ([4df1697](https://github.com/tguisep/gh-spot-docker-runners/commit/4df1697ad788267f89ee782e339c3e950c188711))
+* **dashboard:** mirror organization targets in the web UI ([6f9aaf6](https://github.com/tguisep/gh-spot-docker-runners/commit/6f9aaf69d91110a127239248472f7fa24648d326))
+* register runners at the organization level ([ec712c2](https://github.com/tguisep/gh-spot-docker-runners/commit/ec712c204e0270bbb91173c79795b0315faa0fb2))
+
+
+### Documentation
+
+* document organization-level pools ([6041b7e](https://github.com/tguisep/gh-spot-docker-runners/commit/6041b7e8f82d6b55968057fee6740ed66889d8f8))
+* **images:** add a step-by-step for adding a runner image ([c7a9cd1](https://github.com/tguisep/gh-spot-docker-runners/commit/c7a9cd18463eb11fe9c279d1d4dbbd8db2e51166))
+* **images:** add a step-by-step for adding a runner image ([95adb59](https://github.com/tguisep/gh-spot-docker-runners/commit/95adb59c3dc69c9d3a921e6b75e8eab2c8edbe5a))
+
+
+### Build and CI
+
+* **deps:** Bump astral-sh/setup-uv from 10.0.1 to 10.1.0 in the actions group ([ecda118](https://github.com/tguisep/gh-spot-docker-runners/commit/ecda118e979da414351ff695aaa18c34924d3e04))
+* **deps:** Bump astral-sh/setup-uv in the actions group ([55500b8](https://github.com/tguisep/gh-spot-docker-runners/commit/55500b8ecfba4deab83d29f9966834885cf979d1))
+
 ## [0.9.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.8.0...v0.9.0) (2026-09-08)
 
 
