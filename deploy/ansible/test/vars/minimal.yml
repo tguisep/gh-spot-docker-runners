@@ -1,6 +1,8 @@
-# The smallest configuration the role will accept.
-ghspot_api_url: https://api.github.com
-ghspot_github_app_id: ""
+# The smallest configuration the role will accept. No secret at all — a credential still
+# needs a name for a pool with no `github` key to find, but its token or App key can come
+# from the environment at runtime instead of through Ansible.
+ghspot_github_credentials:
+  - name: default
 ghspot_poll_interval: 15s
 ghspot_state_db: /var/lib/ghspot/state.db
 ghspot_log_level: INFO

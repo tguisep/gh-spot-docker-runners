@@ -4,13 +4,14 @@
   ansible.builtin.assert:
     that:
       - ghspot_pools | length > 0
-      - (ghspot_github_token | length > 0) or (ghspot_github_app_id | length > 0)
-      - not ((ghspot_github_token | length > 0) and (ghspot_github_app_id | length > 0))
-      - (ghspot_github_app_id | length == 0) or (ghspot_github_app_private_key | length > 0)
+      - ghspot_github_credentials | length > 0
+      - "'default' in (ghspot_github_credentials | map(attribute='name') | list)"
+      - (ghspot_github_credentials | map(attribute='name') | list | length) ==
+        (ghspot_github_credentials | map(attribute='name') | unique | list | length)
     fail_msg: >-
-      ghspot needs at least one pool in ghspot_pools, and exactly one credential:
-      ghspot_github_token, or ghspot_github_app_id together with
-      ghspot_github_app_private_key.
+      ghspot needs at least one pool in ghspot_pools, and at least one credential in
+      ghspot_github_credentials named "default" (every pool uses that one unless it sets its
+      own `github:` key), with no two credentials sharing a name.
     quiet: true
 
 - name: Install Docker

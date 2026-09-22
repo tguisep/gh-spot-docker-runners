@@ -36,8 +36,7 @@ green run means the daemon can actually do its job, not merely that files were c
 | Variable | Default | |
 |---|---|---|
 | `ghspot_pools` | `[]` | **Required.** The pools this host serves |
-| `ghspot_github_token` | `""` | A personal access token — or use the App variables |
-| `ghspot_github_app_id` / `_private_key` | `""` | A GitHub App instead |
+| `ghspot_github_credentials` | `[]` | **Required.** At least one credential, with `name: default` among them |
 | `ghspot_version` | `latest` | Pin a release, e.g. `0.2.0` |
 | `ghspot_deb_local` | `""` | Install a locally built package instead of a release |
 | `ghspot_images` | `[ubuntu-24.04]` | Which runner images to build |

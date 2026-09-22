@@ -114,8 +114,9 @@ def test_everything_round_trips() -> None:
     """Every key the template can emit survives the daemon reading it back."""
     settings = settings_for(VARS / "full.yml")
 
-    check(settings.github.api_url == "https://github.example.com/api/v3", "full: api_url lost")
-    check(settings.github.app_id == "123456", "full: app_id lost")
+    default = settings.credential("default")
+    check(default.api_url == "https://github.example.com/api/v3", "full: api_url lost")
+    check(default.app_id == "123456", "full: app_id lost")
     check(settings.daemon.poll_interval == timedelta(seconds=30), "full: poll_interval lost")
     check(str(settings.daemon.state_db) == "/srv/ghspot/state.db", "full: state_db lost")
     check(settings.daemon.api_bind == "127.0.0.1:8770", "full: api_bind lost")
@@ -135,8 +136,11 @@ def test_everything_round_trips() -> None:
     check(keep.volumes is False, "full: housekeeping.volumes lost")
     check(keep.keep_build_cache == "5g", "full: keep_build_cache lost")
 
-    named = {credential.name: credential for credential in settings.github_credentials}
-    check(set(named) == {"other-org", "token-based"}, f"full: credentials are {sorted(named)}")
+    named = {credential.name: credential for credential in settings.credentials}
+    check(
+        set(named) == {"default", "other-org", "token-based"},
+        f"full: credentials are {sorted(named)}",
+    )
     check(named["other-org"].app_id == "234567", "full: named credential app_id lost")
     check(
         named["token-based"].api_url == "https://github.example.com/api/v3",
@@ -210,13 +214,12 @@ def test_housekeeping_can_be_turned_off() -> None:
 
 
 def test_the_credential_file_takes_both_forms() -> None:
-    """A token, and an App key with the newlines systemd's EnvironmentFile cannot hold."""
+    """A token, and an App key with the newlines systemd's EnvironmentFile cannot hold — both
+    for the credential named "default", which keeps the unsuffixed variable names."""
     with tempfile.TemporaryDirectory() as directory:
         token_vars = Path(directory) / "token.yml"
         token_vars.write_text(
-            "ghspot_github_token: github_pat_example\n"
-            "ghspot_github_app_id: ''\n"
-            "ghspot_github_app_private_key: ''\n"
+            "ghspot_github_credentials:\n  - name: default\n    token: github_pat_example\n"
         )
         rendered = Path(directory) / "env"
         render("env.j2", token_vars, rendered)
@@ -226,9 +229,10 @@ def test_the_credential_file_takes_both_forms() -> None:
 
         app_vars = Path(directory) / "app.yml"
         app_vars.write_text(
-            "ghspot_github_token: ''\n"
-            "ghspot_github_app_id: '123456'\n"
-            'ghspot_github_app_private_key: "-----BEGIN PRIVATE KEY-----\\nSECOND\\n"\n'
+            "ghspot_github_credentials:\n"
+            "  - name: default\n"
+            '    app_id: "123456"\n'
+            '    private_key: "-----BEGIN PRIVATE KEY-----\\nSECOND\\n"\n'
         )
         rendered_app = Path(directory) / "env-app"
         render("env.j2", app_vars, rendered_app)
@@ -241,15 +245,14 @@ def test_the_credential_file_takes_both_forms() -> None:
 
 def test_named_credentials_get_their_own_environment_variables() -> None:
     """A named credential's secret is never `GHSPOT_GITHUB_TOKEN` unsuffixed — that variable
-    belongs to the default credential alone, and a named one reusing it would silently steal
-    every pool's traffic that meant to use the default."""
+    belongs to the credential named "default" alone, and another one reusing it would silently
+    steal every pool's traffic that meant to use the default."""
     with tempfile.TemporaryDirectory() as directory:
         variables = Path(directory) / "named.yml"
         variables.write_text(
-            "ghspot_github_token: default-token\n"
-            "ghspot_github_app_id: ''\n"
-            "ghspot_github_app_private_key: ''\n"
             "ghspot_github_credentials:\n"
+            "  - name: default\n"
+            "    token: default-token\n"
             "  - name: other-org\n"
             "    token: other-org-token\n"
             "  - name: app-based\n"
@@ -363,9 +366,9 @@ def test_the_dashboard_location_is_only_written_when_set() -> None:
     with tempfile.TemporaryDirectory() as directory:
         variables = Path(directory) / "web.yml"
         variables.write_text(
-            "ghspot_github_token: t\n"
-            "ghspot_github_app_id: ''\n"
-            "ghspot_github_app_private_key: ''\n"
+            "ghspot_github_credentials:\n"
+            "  - name: default\n"
+            "    token: t\n"
             "ghspot_web_root: /srv/ghspot/web\n"
         )
         rendered = Path(directory) / "env"

@@ -53,7 +53,9 @@ provisioner:
         # the service is left stopped.
         ghspot_api_bind: "127.0.0.1:8770"
 
-        ghspot_github_token: github_pat_not_a_real_token
+        ghspot_github_credentials:
+          - name: default
+            token: github_pat_not_a_real_token
         ghspot_pools:
           - name: default
             repository: tguisep/gh-spot-docker-runners

@@ -1,7 +1,8 @@
 # Everything the template can emit, so a key that stops round-tripping is caught.
-ghspot_api_url: https://github.example.com/api/v3
-ghspot_github_app_id: "123456"
 ghspot_github_credentials:
+  - name: default
+    app_id: "123456"
+    api_url: https://github.example.com/api/v3
   - name: other-org
     app_id: "234567"
     private_key: "not-a-real-key"
