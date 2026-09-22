@@ -110,8 +110,8 @@ export function Stats() {
                                 : ''}
                         </p>
                         <UsageTable
-                            heading="repository"
-                            rows={stats.data.by_repository}
+                            heading="target"
+                            rows={stats.data.by_target}
                             total={stats.data.total}
                         />
                         <UsageTable

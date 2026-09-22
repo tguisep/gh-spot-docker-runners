@@ -25,7 +25,7 @@ const HEALTH: Health = {
 
 const POOL: Pool = {
     name: 'default',
-    repository: 'tguisep/gh-spot-docker-runners',
+    target: 'tguisep/gh-spot-docker-runners',
     labels: ['self-hosted', 'linux'],
     min_idle: 1,
     max_runners: 4,
@@ -70,7 +70,7 @@ const QUEUE: Queue = {
     pools: [
         {
             pool: 'default',
-            repository: 'tguisep/gh-spot-docker-runners',
+            target: 'tguisep/gh-spot-docker-runners',
             priority: 1,
             queued: 1,
             available: 0,
@@ -121,7 +121,7 @@ const EMPTY_STATS: Stats = {
         utilisation: 0,
         live: 0,
     },
-    by_repository: [],
+    by_target: [],
     by_pool: [],
     failures: [],
 };

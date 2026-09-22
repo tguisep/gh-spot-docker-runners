@@ -103,7 +103,7 @@ export function Overview() {
                         <thead>
                             <tr>
                                 <th>pool</th>
-                                <th>repository</th>
+                                <th>target</th>
                                 <th className="num">idle</th>
                                 <th className="num">busy</th>
                                 <th className="num">starting</th>
@@ -117,7 +117,7 @@ export function Overview() {
                             {pools.data.map((pool) => (
                                 <tr key={pool.name}>
                                     <th scope="row">{pool.name}</th>
-                                    <td className="dim">{pool.repository}</td>
+                                    <td className="dim">{pool.target}</td>
                                     <td className="num">{pool.idle}</td>
                                     <td className="num">{pool.busy}</td>
                                     <td className="num">{pool.starting}</td>

@@ -122,7 +122,7 @@ export function Logs() {
                         {chosen ? (
                             <>
                                 <StateBadge state={chosen.state} /> {chosen.name} ·{' '}
-                                {chosen.repository}
+                                {chosen.target}
                             </>
                         ) : (
                             selected
