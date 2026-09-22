@@ -101,7 +101,7 @@ def test_minimal() -> None:
     check(len(settings.pools) == 1, "minimal: expected one pool")
     pool = settings.pools[0]
     check(pool.spec.name == "default", "minimal: pool name lost")
-    check(str(pool.spec.repository) == "tguisep/my-project", "minimal: repository lost")
+    check(str(pool.spec.target) == "tguisep/my-project", "minimal: repository lost")
     check(pool.template.image == "ghspot/runner:ubuntu-24.04", "minimal: image lost")
     check(pool.template.gpus is None, "minimal: a pool asked for a GPU it never wanted")
     check(pool.spec.requires_labels is None, "minimal: unexpected requires_labels")
@@ -136,7 +136,7 @@ def test_everything_round_trips() -> None:
     check(keep.keep_build_cache == "5g", "full: keep_build_cache lost")
 
     pools = {pool.spec.name: pool for pool in settings.pools}
-    check(set(pools) == {"ubuntu", "gpu", "rhel"}, f"full: pools are {sorted(pools)}")
+    check(set(pools) == {"ubuntu", "gpu", "rhel", "org"}, f"full: pools are {sorted(pools)}")
 
     ubuntu = pools["ubuntu"]
     check(ubuntu.spec.pm.value == "dynamic", f"full: pm is {ubuntu.spec.pm}")
@@ -167,7 +167,16 @@ def test_everything_round_trips() -> None:
 
     rhel = pools["rhel"]
     check(rhel.template.gpus == ("0", "1"), f"full: gpu ids are {rhel.template.gpus!r}")
-    check(str(rhel.spec.repository) == "tguisep/other-project", "full: second repository lost")
+    check(str(rhel.spec.target) == "tguisep/other-project", "full: second repository lost")
+
+    org = pools["org"]
+    check(str(org.spec.target) == "tguisep-org", "full: organization lost")
+    check(
+        [str(repo) for repo in org.spec.repositories] == ["tguisep-org/api", "tguisep-org/web"],
+        "full: organization repositories lost",
+    )
+    check(org.spec.discover_repositories is False, "full: discover_repositories should be unset")
+    check(org.spec.runner_group == "Default", "full: runner_group lost")
 
 
 def test_housekeeping_can_be_turned_off() -> None:
@@ -239,7 +248,7 @@ def test_pools_can_be_rendered_one_file_each() -> None:
         check("[capacity]" in body, "directory: the host's capacity limits were lost")
 
         # The role loops the template over each pool; here that loop is the test's.
-        for name in ("ubuntu", "gpu", "rhel"):
+        for name in ("ubuntu", "gpu", "rhel", "org"):
             one = root / f"{name}.yml"
             one.write_text(
                 (VARS / "full.yml").read_text()
@@ -250,7 +259,7 @@ def test_pools_can_be_rendered_one_file_each() -> None:
 
         settings = load(main)
         found = {pool.spec.name for pool in settings.pools}
-        check(found == {"ubuntu", "gpu", "rhel"}, f"directory: pools are {sorted(found)}")
+        check(found == {"ubuntu", "gpu", "rhel", "org"}, f"directory: pools are {sorted(found)}")
 
         # Compared against the inline form key by key, because two templates for one schema
         # is two chances to drift — and the drift is silent: a pool file missing `pm` still
@@ -270,6 +279,9 @@ def test_pools_can_be_rendered_one_file_each() -> None:
                 "max_launch_per_tick",
                 "priority",
                 "requires_labels",
+                "repositories",
+                "discover_repositories",
+                "runner_group",
             ):
                 if not hasattr(expected.spec, attribute):
                     continue

@@ -8,7 +8,20 @@
 #}
 [[pool]]
 name = "{{ pool.name }}"
+{% if pool.organization is defined %}
+organization = "{{ pool.organization }}"
+{% if pool.repositories is defined and pool.repositories %}
+repositories = [{{ pool.repositories | map('tojson') | join(', ') }}]
+{% endif %}
+{% if pool.discover_repositories is defined %}
+discover_repositories = {{ pool.discover_repositories | bool | lower }}
+{% endif %}
+{% if pool.runner_group is defined %}
+runner_group = "{{ pool.runner_group }}"
+{% endif %}
+{% else %}
 repository = "{{ pool.repository }}"
+{% endif %}
 labels = [{{ pool.labels | map('tojson') | join(', ') }}]
 {% if pool.pm is defined %}
 pm = "{{ pool.pm }}"
