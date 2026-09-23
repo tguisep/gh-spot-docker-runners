@@ -79,7 +79,7 @@ ghspot_pools:
   - name: other-org-pool
     organization: other-org
     discover_repositories: true
-    github: other-org
+    credential: other-org
     labels: [self-hosted, linux, x64, ubuntu-24.04]
     max_runners: 1
     container:

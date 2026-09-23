@@ -264,7 +264,7 @@ Credentials are never command-line arguments — that would put them in `ps` out
 ## Serving multiple repositories or organizations with different credentials
 
 Every credential is a `[[github.credentials]]` block — there is no separate shape for "the"
-credential. A pool uses whichever one is named `"default"` unless it sets `github = "<name>"`
+credential. A pool uses whichever one is named `"default"` unless it sets `credential = "<name>"`
 to name a different one:
 
 ```toml
@@ -281,7 +281,7 @@ private_key_file = "~/.config/ghspot/other-org.pem"
 name = "other-org-pool"
 organization = "other-org"
 discover_repositories = true
-github = "other-org"          # names the credential above; omitted, a pool uses "default"
+credential = "other-org"      # names the credential above; omitted, a pool uses "default"
 labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
 [pool.container]
 image = "ghspot/runner:ubuntu-24.04"

@@ -194,7 +194,7 @@ def test_everything_round_trips() -> None:
     check(org.spec.runner_group == "Default", "full: runner_group lost")
 
     other_org_pool = pools["other-org-pool"]
-    check(other_org_pool.credential == "other-org", "full: pool's 'github' key lost")
+    check(other_org_pool.credential == "other-org", "full: pool's 'credential' key lost")
     check(
         other_org_pool.spec.discover_repositories is True,
         "full: other-org-pool discover_repositories lost",

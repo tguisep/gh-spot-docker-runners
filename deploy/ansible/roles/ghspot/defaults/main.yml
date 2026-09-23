@@ -22,7 +22,7 @@ ghspot_images: [ubuntu-24.04]
 ghspot_images_force: false
 
 # Credentials. At least one is required, with a name: default entry among them — every pool
-# uses that one unless it sets `github: <name>` to pick another (see ghspot_pools below).
+# uses that one unless it sets `credential: <name>` to pick another (see ghspot_pools below).
 # Keep these in ansible-vault, not in a playbook.
 #
 # ghspot_github_credentials:
@@ -141,14 +141,14 @@ ghspot_capacity: {}
 #       image: ghspot/runner:ubuntu-24.04
 #       docker_socket: true
 #
-# A pool routes through a credential other than the default above with `github: <name>`,
+# A pool routes through a credential other than the default above with `credential: <name>`,
 # naming an entry in ghspot_github_credentials:
 #
 # ghspot_pools:
 #   - name: other-org-pool
 #     organization: other-org
 #     discover_repositories: true
-#     github: other-org
+#     credential: other-org
 #     labels: [self-hosted, linux, x64, ubuntu-24.04]
 #     container:
 #       image: ghspot/runner:ubuntu-24.04

@@ -100,7 +100,7 @@ class HousekeepingSettings:
 
 
 DEFAULT_CREDENTIAL = "default"
-"""The name a `[[github.credentials]]` entry needs for a pool that sets no `github` key to
+"""The name a `[[github.credentials]]` entry needs for a pool that sets no `credential` key to
 find it — not otherwise special. Every credential, this one included, is declared the same
 way."""
 
@@ -131,8 +131,8 @@ class GitHubSettings:
 
     name: str = DEFAULT_CREDENTIAL
     """This credential's name, as declared on its `[[github.credentials]]` entry — what a
-    pool's `github` key refers to. A pool that sets no `github` key uses whichever credential
-    is named `"default"`."""
+    pool's `credential` key refers to. A pool that sets no `credential` key uses whichever
+    credential is named `"default"`."""
 
     api_url: str = "https://api.github.com"
     token_file: Path | None = None
@@ -209,7 +209,7 @@ class Settings:
 
     credentials: tuple[GitHubSettings, ...]
     """Every configured GitHub credential, from `[[github.credentials]]`. Always at least one;
-    a pool with no `github` key uses whichever is named `"default"`."""
+    a pool with no `credential` key uses whichever is named `"default"`."""
 
     daemon: DaemonSettings
     housekeeping: HousekeepingSettings = field(default_factory=HousekeepingSettings)
@@ -254,8 +254,8 @@ class Settings:
         return list(seen)
 
     def credential(self, name: str) -> GitHubSettings:
-        """The credential a pool's `github` key names. Only fails for a name nothing at load
-        time already validated — see `_pool_credential` in `_pool()`."""
+        """The credential a pool's `credential` key names. Only fails for a name nothing at
+        load time already validated — see `_pool_credential` in `_pool()`."""
         for candidate in self.credentials:
             if candidate.name == name:
                 return candidate
@@ -485,7 +485,7 @@ def _github(table: dict[str, Any]) -> tuple[GitHubSettings, ...]:
     """Every configured credential, from `[[github.credentials]]`.
 
     There is no separate "default" shape any more: every credential, including the one a pool
-    uses when it sets no `github` key, is an entry here — one of them just has to be named
+    uses when it sets no `credential` key, is an entry here — one of them just has to be named
     `"default"`. Named credentials are validated here rather than left to fail at first use,
     the same as everything else in this module: a pool naming an unknown one is a load-time
     `ConfigError`, not something that surfaces an hour into a run.
@@ -770,21 +770,21 @@ def _pool_credential(
     Defaults to `"default"` when the pool sets nothing — which only works if one of the
     declared `[[github.credentials]]` is actually named that; a config with named credentials
     but none called "default" would otherwise fail with a KeyError at tick time instead of at
-    load time. An explicit `github` naming an undefined credential is caught the same way.
+    load time. An explicit `credential` naming an undefined credential is caught the same way.
     """
-    value = table.get("github")
+    value = table.get("credential")
     if value in (None, ""):
         if DEFAULT_CREDENTIAL not in credential_names:
             raise ConfigError(
-                f"{where} ({name}): no 'github' key set, and no [[github.credentials]] is "
-                f"named \"{DEFAULT_CREDENTIAL}\" — add one, or set 'github' explicitly on "
+                f"{where} ({name}): no 'credential' key set, and no [[github.credentials]] is "
+                f"named \"{DEFAULT_CREDENTIAL}\" — add one, or set 'credential' explicitly on "
                 "this pool"
             )
         return DEFAULT_CREDENTIAL
     name_str = str(value)
     if name_str not in credential_names:
         known = ", ".join(sorted(credential_names))
-        raise ConfigError(f"{where} ({name}): 'github' names {name_str!r}, not one of: {known}")
+        raise ConfigError(f"{where} ({name}): 'credential' names {name_str!r}, not one of: {known}")
     return name_str
 
 

@@ -22,8 +22,8 @@ runner_group = "{{ pool.runner_group }}"
 {% else %}
 repository = "{{ pool.repository }}"
 {% endif %}
-{% if pool.github is defined and pool.github %}
-github = "{{ pool.github }}"
+{% if pool.credential is defined and pool.credential %}
+credential = "{{ pool.credential }}"
 {% endif %}
 labels = [{{ pool.labels | map('tojson') | join(', ') }}]
 {% if pool.pm is defined %}

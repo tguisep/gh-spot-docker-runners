@@ -414,7 +414,7 @@ image = "ghspot/runner:ubuntu-24.04"
 name = "second"
 repository = "tguisep/second-repo"
 labels = ["self-hosted", "linux"]
-github = "other"
+credential = "other"
 [pool.container]
 image = "ghspot/runner:ubuntu-24.04"
 """
@@ -430,9 +430,9 @@ def test_a_pool_can_name_a_second_credential() -> None:
 
 
 def test_a_pool_naming_an_undefined_credential_is_refused() -> None:
-    text = TWO_CREDENTIALS.replace('github = "other"', 'github = "nope"')
+    text = TWO_CREDENTIALS.replace('credential = "other"', 'credential = "nope"')
 
-    with pytest.raises(ConfigError, match="'github' names 'nope', not one of"):
+    with pytest.raises(ConfigError, match="'credential' names 'nope', not one of"):
         parse(text)
 
 
@@ -459,7 +459,7 @@ def test_no_credentials_at_all_is_refused() -> None:
         )
 
 
-def test_a_pool_with_no_github_key_needs_a_credential_named_default() -> None:
+def test_a_pool_with_no_credential_key_needs_a_credential_named_default() -> None:
     """Two named credentials, neither called "default", and a pool that names neither —
     caught at load time, not as a KeyError the first time that pool's tick runs."""
     text = TWO_CREDENTIALS.replace(

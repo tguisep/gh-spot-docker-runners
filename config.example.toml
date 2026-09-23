@@ -19,7 +19,7 @@
 
 # Every credential ghspot can use is declared here, one [[github.credentials]] block each —
 # there is no separate "default" shape. A pool uses whichever one is named "default" unless
-# it sets `github = "<name>"` to name a different one (see the pool examples below).
+# it sets `credential = "<name>"` to name a different one (see the pool examples below).
 
 [[github.credentials]]
 name = "default"
@@ -69,8 +69,8 @@ token_file = "~/.config/ghspot/token"
 # folded to "_"): GHSPOT_GITHUB_TOKEN_OTHER_ORG, GHSPOT_GITHUB_APP_ID_OTHER_ORG,
 # GHSPOT_GITHUB_APP_PRIVATE_KEY_OTHER_ORG. The unsuffixed variables stay "default"'s alone.
 #
-# A pool then opts into it with `github = "other-org"`; a pool with no `github` key uses
-# whichever credential is named "default".
+# A pool then opts into it with `credential = "other-org"`; a pool with no `credential` key
+# uses whichever credential is named "default".
 
 [daemon]
 poll_interval = "15s"
@@ -300,13 +300,13 @@ docker_socket = true
 # docker_socket = true
 
 # A fourth pool, using the "other-org" credential from [[github.credentials]] above instead
-# of "default" — `github` names it. Left out, a pool always uses "default".
+# of "default" — `credential` names it. Left out, a pool always uses "default".
 #
 # [[pool]]
 # name = "other-org-shared"
 # organization = "other-org"
 # discover_repositories = true
-# github = "other-org"
+# credential = "other-org"
 # labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
 # max_runners = 2
 # [pool.container]

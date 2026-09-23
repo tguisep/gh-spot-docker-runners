@@ -1575,7 +1575,7 @@ The first pass kept `[github]` as a privileged "default" shape and added
 build it, then told plainly not to: no special-cased shape, everything — the credential every
 existing single-credential config already has included — declared the same way, as an entry
 in `[[github.credentials]]`. One of them just has to be named `"default"`, for a pool that sets
-no `github` key to find it. `DEFAULT_CREDENTIAL = "default"` is a name a pool looks for, not a
+no `credential` key to find it. `DEFAULT_CREDENTIAL = "default"` is a name a pool looks for, not a
 privileged type — nothing in `GitHubSettings` treats it specially, and `_one_credential()`
 parses it through the exact same code path as any other entry.
 
