@@ -60,6 +60,18 @@ It costs one `Actions: read` call, a permission the daemon already has.
 **The dashboard carries no authentication of its own**, because the API it talks to has none. The same
 rule applies: bind to localhost, or put a proxy with auth in front.
 
+### Reaching it from another machine
+
+Forward the port over SSH rather than widening the bind:
+
+```bash
+ssh -N -L 8770:localhost:8770 user@host
+```
+
+Then open `http://localhost:8770/ui` as if the daemon were local — the tunnel makes the
+remote's `localhost:8770` answer on yours. `-N` skips opening a shell, since the tunnel itself
+is all that's wanted; add `-f` to background it once it's working.
+
 The `.deb` installs it to `/usr/share/ghspot/web`, and the daemon serves whatever it finds
 there. From a checkout, build it once:
 
