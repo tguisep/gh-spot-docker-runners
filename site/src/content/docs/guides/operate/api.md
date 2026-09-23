@@ -16,7 +16,8 @@ curl -s 'localhost:8770/runners?usage=true' | jq   # with CPU and memory
 ```
 
 Interactive docs at `/docs`. **There is no authentication** — bind to localhost, or put a
-reverse proxy with auth in front of it.
+reverse proxy with auth in front of it. From another machine, an SSH tunnel reaches it without
+widening the bind — see [the dashboard](../dashboard/#reaching-it-from-another-machine).
 
 ### `GET /queue`
 
