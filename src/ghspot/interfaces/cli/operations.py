@@ -50,10 +50,11 @@ async def job_logs(settings: Settings, reference: str, tail: int) -> tuple[int |
     application = build(settings)
     try:
         runner = await ResolveRunner(application.runners)(reference)
-        job_id = await FindJobForRunner(application.forge, application.runners)(runner)
+        forge = application.forge_for(runner.pool)
+        job_id = await FindJobForRunner(forge, application.runners)(runner)
         if job_id is None or not isinstance(runner.target, RepositoryTarget):
             return job_id, None
-        found = await application.forge.job_logs(runner.target, job_id, tail=tail)
+        found = await forge.job_logs(runner.target, job_id, tail=tail)
         return job_id, found
     finally:
         await application.aclose()

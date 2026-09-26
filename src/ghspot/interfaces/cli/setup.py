@@ -244,12 +244,13 @@ def _write(config_path: Path, answers: Answers) -> list[Path]:
     system = config_path.parent == SYSTEM_DIRECTORY
 
     credential: list[Substitution] = []
+    section = "[[github.credentials]]"
     if answers.uses_app:
-        credential.append(Substitution("[github]", "token_file", None))
-        credential.append(Substitution("[github]", "app_id", f'"{answers.app_id}"'))
+        credential.append(Substitution(section, "token_file", None))
+        credential.append(Substitution(section, "app_id", f'"{answers.app_id}"'))
         if answers.private_key_path is not None:
             credential.append(
-                Substitution("[github]", "private_key_file", f'"{answers.private_key_path}"')
+                Substitution(section, "private_key_file", f'"{answers.private_key_path}"')
             )
             if system:
                 _warn_if_the_service_cannot_read(answers.private_key_path)
@@ -259,7 +260,7 @@ def _write(config_path: Path, answers: Answers) -> list[Path]:
         if system:
             _share_with_the_service(token_file)
         extra.append(token_file)
-        credential.append(Substitution("[github]", "token_file", f'"{token_file}"'))
+        credential.append(Substitution(section, "token_file", f'"{token_file}"'))
 
     reference = example_config()
     if reference is None:
@@ -332,7 +333,8 @@ def _minimal(answers: Answers, credential: list[Substitution], system: bool) -> 
         "# Written by `ghspot setup`. Edit freely — it is an ordinary configuration file.",
         "# Every setting, with what it means: config.example.toml",
         "",
-        "[github]",
+        "[[github.credentials]]",
+        'name = "default"',
         *(f"{item.key} = {item.value}" for item in credential if item.value is not None),
         "",
         "[daemon]",

@@ -236,11 +236,12 @@ def create_app(application: Application) -> FastAPI:
         which a just-in-time runner takes with it seconds later.
         """
         runner = await ResolveRunner(app.runners)(reference)
-        job_id = await FindJobForRunner(app.forge, app.runners)(runner)
+        forge = app.forge_for(runner.pool)
+        job_id = await FindJobForRunner(forge, app.runners)(runner)
 
         lines = None
         if job_id is not None and isinstance(runner.target, RepositoryTarget):
-            lines = await app.forge.job_logs(runner.target, job_id, tail=tail)
+            lines = await forge.job_logs(runner.target, job_id, tail=tail)
         return JobLogsResponse(
             runner_id=str(runner.id),
             job_id=job_id,

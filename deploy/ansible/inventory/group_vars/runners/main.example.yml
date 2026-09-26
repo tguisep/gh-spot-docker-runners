@@ -20,8 +20,12 @@ ghspot_images: [ubuntu-24.04]
 # ghspot_api_bind: "127.0.0.1:8770"
 
 # A personal access token, from vault:
-ghspot_github_token: "{{ vault_ghspot_github_token }}"
+ghspot_github_credentials:
+  - name: default
+    token: "{{ vault_ghspot_github_token }}"
 
 # Or a GitHub App:
-# ghspot_github_app_id: "123456"
-# ghspot_github_app_private_key: "{{ vault_ghspot_app_private_key }}"
+# ghspot_github_credentials:
+#   - name: default
+#     app_id: "123456"
+#     private_key: "{{ vault_ghspot_app_private_key }}"

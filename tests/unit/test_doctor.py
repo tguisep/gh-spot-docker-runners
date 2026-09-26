@@ -25,7 +25,8 @@ from tests.fakes.adapters import FakeBackend
 runner = CliRunner()
 
 CONFIG = """
-[github]
+[[github.credentials]]
+name = "default"
 token_file = "{token}"
 
 [daemon]
@@ -133,7 +134,7 @@ def test_a_missing_credential_is_reported_not_raised(
     monkeypatch.setattr(
         doctor_module,
         "build_forge",
-        lambda _settings: (_ for _ in ()).throw(ForgeAuthError("no GitHub token")),
+        lambda _credential, _target: (_ for _ in ()).throw(ForgeAuthError("no GitHub token")),
     )
 
     result = runner.invoke(app, ["doctor", "-c", str(config)])
@@ -171,7 +172,7 @@ def test_doctor_exits_zero_only_when_everything_passes(
             return None
 
     monkeypatch.setattr(doctor_module, "DockerRunnerBackend", Reachable)
-    monkeypatch.setattr(doctor_module, "build_forge", lambda _settings: Forge())
+    monkeypatch.setattr(doctor_module, "build_forge", lambda _credential, _target: Forge())
 
     result = runner.invoke(app, ["doctor", "-c", str(config)])
 

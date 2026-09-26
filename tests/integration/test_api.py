@@ -17,7 +17,11 @@ from fastapi.testclient import TestClient
 from ghspot.application.commands.housekeeping import ReclaimHostSpace
 from ghspot.application.commands.provision import ProvisionRunner, RunnerTemplate
 from ghspot.application.commands.retire import RetireRunner
-from ghspot.application.reconciliation import PoolConfiguration, ReconciliationService
+from ghspot.application.reconciliation import (
+    CredentialGroup,
+    PoolConfiguration,
+    ReconciliationService,
+)
 from ghspot.composition import Application
 from ghspot.domain.model.runner import RunnerState
 from ghspot.domain.ports.backend import ContainerUsage, PruneRequest
@@ -63,14 +67,21 @@ class Harness:
         # A fixed host, so the API's answers do not vary with whatever machine runs the
         # suite — and so a test can assert on the name the daemon reports for itself.
         settings = Settings(
-            github=GitHubSettings(),
+            credentials=(GitHubSettings(),),
             daemon=DaemonSettings(poll_interval=timedelta(seconds=15), host="builders-01"),
             pools=(PoolConfiguration(spec=self.spec, template=TEMPLATE),),
         )
         self.settings = settings
+        credentials = {
+            "default": CredentialGroup(
+                forge=self.forge,
+                provision=provision,
+                retire=retire,
+            )
+        }
         self.application = Application(
             settings=settings,
-            forge=self.forge,  # type: ignore[arg-type]
+            credentials=credentials,
             backend=self.backend,  # type: ignore[arg-type]
             runners=self.repository,  # type: ignore[arg-type]
             events=self.events,  # type: ignore[arg-type]
@@ -78,13 +89,11 @@ class Harness:
             queue=self.queue,  # type: ignore[arg-type]
             reconciler=ReconciliationService(
                 pools=settings.pools,
-                forge=self.forge,
+                credentials=credentials,
                 backend=self.backend,
                 runners=self.repository,
                 clock=self.clock,
                 events=self.events,
-                provision=provision,
-                retire=retire,
                 queue=self.queue,
             ),
             housekeeping=ReclaimHostSpace(
@@ -94,8 +103,6 @@ class Harness:
                 request=PruneRequest(),
             ),
             clock=self.clock,  # type: ignore[arg-type]
-            provision=provision,
-            retire=retire,
         )
         self.provision = provision
 

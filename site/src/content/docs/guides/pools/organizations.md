@@ -73,3 +73,8 @@ single repository to search. The container's own live log is unaffected.
 A GitHub App used for an organization pool needs the organization permission
 **"Self-hosted runners: read & write"**, in addition to whatever repository permissions your
 other pools need — see [Authentication](../../../start/authentication/).
+
+If this organization's App or token is entirely separate from what your other pools use — a
+different installation, a different account — give it its own named credential instead of
+widening the default one to cover both: see
+[serving multiple credentials](../../../start/authentication/#serving-multiple-repositories-or-organizations-with-different-credentials).

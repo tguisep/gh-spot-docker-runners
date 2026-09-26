@@ -22,7 +22,8 @@ from ghspot.infrastructure.config.settings import (
 )
 
 MINIMAL = """
-[github]
+[[github.credentials]]
+name = "default"
 token_file = "/tmp/token"
 
 [[pool]]
@@ -87,11 +88,20 @@ def test_a_nonsense_duration_names_the_field() -> None:
         parse(MINIMAL.replace('name = "default"', 'name = "default"\nidle_timeout = "soon"'))
 
 
+POOL_NAME_LINE = 'name = "default"\nrepository = "tguisep/gh-spot-docker-runners"'
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected"),
     [
-        ("", "at least one \\[\\[pool\\]\\]"),
-        (MINIMAL.replace('name = "default"', ""), "'name' is required"),
+        (
+            MINIMAL.split("\n\n[[pool]]")[0] + "\n",
+            "at least one \\[\\[pool\\]\\]",
+        ),
+        (
+            MINIMAL.replace(POOL_NAME_LINE, 'repository = "tguisep/gh-spot-docker-runners"'),
+            "'name' is required",
+        ),
         (MINIMAL.replace('repository = "tguisep/gh-spot-docker-runners"', ""), "'repository'"),
         (MINIMAL.replace('labels = ["self-hosted", "linux"]', "labels = []"), "non-empty list"),
         (MINIMAL.replace('image = "ghspot/runner:ubuntu-24.04"', ""), "needs an 'image'"),
@@ -100,7 +110,10 @@ def test_a_nonsense_duration_names_the_field() -> None:
             "owner/name",
         ),
         (
-            MINIMAL.replace('name = "default"', 'name = "default"\nmin_idle = 9\nmax_runners = 2'),
+            MINIMAL.replace(
+                POOL_NAME_LINE,
+                f"{POOL_NAME_LINE}\nmin_idle = 9\nmax_runners = 2",
+            ),
             "exceeds",
         ),
     ],
@@ -113,7 +126,7 @@ def test_a_broken_configuration_is_refused_with_a_useful_message(
 
 
 def test_two_pools_cannot_share_a_name() -> None:
-    doubled = MINIMAL + MINIMAL.split('[github]\ntoken_file = "/tmp/token"\n')[-1]
+    doubled = MINIMAL + MINIMAL.split('name = "default"\ntoken_file = "/tmp/token"\n')[-1]
 
     with pytest.raises(ConfigError, match="both named"):
         parse(doubled)
@@ -158,10 +171,10 @@ def test_the_token_comes_from_the_environment_before_the_file(
     settings = parse(MINIMAL.replace("/tmp/token", str(token_file)))
 
     monkeypatch.setenv(TOKEN_ENV, "from-env")
-    assert settings.github.resolve_token() == "from-env"  # type: ignore[attr-defined]
+    assert settings.credential("default").resolve_token() == "from-env"  # type: ignore[attr-defined]
 
     monkeypatch.delenv(TOKEN_ENV)
-    assert settings.github.resolve_token() == "from-file"  # type: ignore[attr-defined]
+    assert settings.credential("default").resolve_token() == "from-file"  # type: ignore[attr-defined]
 
 
 def test_a_missing_token_says_both_ways_to_provide_one(
@@ -171,7 +184,7 @@ def test_a_missing_token_says_both_ways_to_provide_one(
     settings = parse(MINIMAL.replace('token_file = "/tmp/token"', ""))
 
     with pytest.raises(ConfigError, match=r"GHSPOT_GITHUB_TOKEN.*token_file"):
-        settings.github.resolve_token()  # type: ignore[attr-defined]
+        settings.credential("default").resolve_token()  # type: ignore[attr-defined]
 
 
 def test_an_empty_token_file_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -182,7 +195,7 @@ def test_an_empty_token_file_is_refused(tmp_path: Path, monkeypatch: pytest.Monk
     settings = parse(MINIMAL.replace("/tmp/token", str(token_file)))
 
     with pytest.raises(ConfigError, match="is empty"):
-        settings.github.resolve_token()  # type: ignore[attr-defined]
+        settings.credential("default").resolve_token()  # type: ignore[attr-defined]
 
 
 def test_a_world_readable_token_file_warns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -193,7 +206,7 @@ def test_a_world_readable_token_file_warns(tmp_path: Path, monkeypatch: pytest.M
     settings = parse(MINIMAL.replace("/tmp/token", str(token_file)))
 
     with pytest.warns(UserWarning, match="readable by everybody"):
-        assert settings.github.resolve_token() == "ghp_secret"  # type: ignore[attr-defined]
+        assert settings.credential("default").resolve_token() == "ghp_secret"  # type: ignore[attr-defined]
 
 
 def test_the_packaged_credential_layout_does_not_warn(
@@ -211,7 +224,7 @@ def test_the_packaged_credential_layout_does_not_warn(
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        assert settings.github.resolve_token() == "ghp_secret"  # type: ignore[attr-defined]
+        assert settings.credential("default").resolve_token() == "ghp_secret"  # type: ignore[attr-defined]
 
 
 def test_group_readable_by_the_wrong_group_still_warns(
@@ -227,7 +240,7 @@ def test_group_readable_by_the_wrong_group_still_warns(
     settings = parse(MINIMAL.replace("/tmp/token", str(token_file)))
 
     with pytest.warns(UserWarning, match="group other than the daemon"):
-        assert settings.github.resolve_token() == "ghp_secret"  # type: ignore[attr-defined]
+        assert settings.credential("default").resolve_token() == "ghp_secret"  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------- file discovery
@@ -278,7 +291,8 @@ image = "ghspot/runner:ubuntu-24.04"
 
 
 APP = """
-[github]
+[[github.credentials]]
+name = "default"
 app_id = "123456"
 private_key_file = "{key}"
 
@@ -301,13 +315,13 @@ def test_an_app_configuration_is_recognised(tmp_path: Path) -> None:
 
     settings = parse(APP.format(key=key))
 
-    assert settings.github.uses_app is True  # type: ignore[attr-defined]
-    assert settings.github.app_id == "123456"  # type: ignore[attr-defined]
-    assert settings.github.resolve_private_key() == PEM  # type: ignore[attr-defined]
+    assert settings.credential("default").uses_app is True  # type: ignore[attr-defined]
+    assert settings.credential("default").app_id == "123456"  # type: ignore[attr-defined]
+    assert settings.credential("default").resolve_private_key() == PEM  # type: ignore[attr-defined]
 
 
 def test_a_token_configuration_is_not_an_app() -> None:
-    assert parse(MINIMAL).github.uses_app is False  # type: ignore[attr-defined]
+    assert parse(MINIMAL).credential("default").uses_app is False  # type: ignore[attr-defined]
 
 
 def test_a_private_key_without_an_app_id_is_refused(tmp_path: Path) -> None:
@@ -324,7 +338,7 @@ def test_the_app_id_can_come_from_the_environment(
     monkeypatch.setenv(APP_ID_ENV, "999")
     text = APP.format(key=tmp_path / "app.pem").replace('app_id = "123456"', "")
 
-    assert parse(text).github.app_id == "999"  # type: ignore[attr-defined]
+    assert parse(text).credential("default").app_id == "999"  # type: ignore[attr-defined]
 
 
 def test_the_private_key_can_come_from_the_environment(
@@ -334,7 +348,7 @@ def test_the_private_key_can_come_from_the_environment(
     monkeypatch.setenv(APP_KEY_ENV, PEM.replace("\n", "\\n"))
     settings = parse(APP.format(key=tmp_path / "absent.pem"))
 
-    assert settings.github.resolve_private_key() == PEM  # type: ignore[attr-defined]
+    assert settings.credential("default").resolve_private_key() == PEM  # type: ignore[attr-defined]
 
 
 def test_a_missing_private_key_names_both_ways_to_supply_one(
@@ -344,7 +358,7 @@ def test_a_missing_private_key_names_both_ways_to_supply_one(
     settings = parse(APP.format(key=tmp_path / "absent.pem"))
 
     with pytest.raises(ConfigError, match="could not read the private key"):
-        settings.github.resolve_private_key()  # type: ignore[attr-defined]
+        settings.credential("default").resolve_private_key()  # type: ignore[attr-defined]
 
 
 def test_a_key_file_that_is_not_a_pem_says_where_to_get_one(
@@ -357,7 +371,7 @@ def test_a_key_file_that_is_not_a_pem_says_where_to_get_one(
     settings = parse(APP.format(key=key))
 
     with pytest.raises(ConfigError, match="Private keys"):
-        settings.github.resolve_private_key()  # type: ignore[attr-defined]
+        settings.credential("default").resolve_private_key()  # type: ignore[attr-defined]
 
 
 def test_a_non_numeric_installation_id_is_refused(tmp_path: Path) -> None:
@@ -374,7 +388,128 @@ def test_an_installation_id_is_read_as_an_integer(tmp_path: Path) -> None:
         'app_id = "123456"', 'app_id = "1"\ninstallation_id = 98765'
     )
 
-    assert parse(text).github.installation_id == 98765  # type: ignore[attr-defined]
+    assert parse(text).credential("default").installation_id == 98765  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------- multiple credentials
+
+
+TWO_CREDENTIALS = """
+[[github.credentials]]
+name = "default"
+token_file = "/tmp/token"
+
+[[github.credentials]]
+name = "other"
+token_file = "/tmp/other-token"
+
+[[pool]]
+name = "default"
+repository = "tguisep/gh-spot-docker-runners"
+labels = ["self-hosted", "linux"]
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+
+[[pool]]
+name = "second"
+repository = "tguisep/second-repo"
+labels = ["self-hosted", "linux"]
+credential = "other"
+[pool.container]
+image = "ghspot/runner:ubuntu-24.04"
+"""
+
+
+def test_a_pool_can_name_a_second_credential() -> None:
+    settings = parse(TWO_CREDENTIALS)
+
+    by_name = {pool.spec.name: pool for pool in settings.pools}  # type: ignore[attr-defined]
+    assert by_name["default"].credential == "default"
+    assert by_name["second"].credential == "other"
+    assert {c.name for c in settings.credentials} == {"default", "other"}  # type: ignore[attr-defined]
+
+
+def test_a_pool_naming_an_undefined_credential_is_refused() -> None:
+    text = TWO_CREDENTIALS.replace('credential = "other"', 'credential = "nope"')
+
+    with pytest.raises(ConfigError, match="'credential' names 'nope', not one of"):
+        parse(text)
+
+
+def test_a_named_credential_needs_a_name() -> None:
+    text = TWO_CREDENTIALS.replace('name = "other"\n', "")
+
+    with pytest.raises(ConfigError, match="'name' is required"):
+        parse(text)
+
+
+def test_two_credentials_cannot_share_a_name() -> None:
+    text = TWO_CREDENTIALS.replace('name = "other"', 'name = "default"')
+
+    with pytest.raises(ConfigError, match="is used by another credential"):
+        parse(text)
+
+
+def test_no_credentials_at_all_is_refused() -> None:
+    with pytest.raises(ConfigError, match=r"at least one \[\[github.credentials\]\]"):
+        parse(
+            MINIMAL.replace(
+                '[[github.credentials]]\nname = "default"\ntoken_file = "/tmp/token"\n\n', ""
+            )
+        )
+
+
+def test_a_pool_with_no_credential_key_needs_a_credential_named_default() -> None:
+    """Two named credentials, neither called "default", and a pool that names neither —
+    caught at load time, not as a KeyError the first time that pool's tick runs."""
+    text = TWO_CREDENTIALS.replace(
+        'name = "default"\ntoken_file = "/tmp/token"', 'name = "only"\ntoken_file = "/tmp/token"'
+    )
+
+    with pytest.raises(ConfigError, match=r'no \[\[github.credentials\]\] is named "default"'):
+        parse(text)
+
+
+def test_credential_fields_no_longer_belong_directly_under_github() -> None:
+    """The old single-credential shape is refused with a message pointing at the new one,
+    rather than the field being silently ignored."""
+    text = MINIMAL.replace(
+        '[[github.credentials]]\nname = "default"\ntoken_file = "/tmp/token"',
+        '[github]\ntoken_file = "/tmp/token"',
+    )
+
+    with pytest.raises(ConfigError, match='name = "default"'):
+        parse(text)
+
+
+def test_a_named_credential_s_token_comes_from_its_own_environment_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`GHSPOT_GITHUB_TOKEN` (no suffix) must not leak into a named credential — each one
+    reads its own variable, or the default's env var would silently win for every pool."""
+    other_token = tmp_path / "other-token"
+    other_token.write_text("from-file")
+    other_token.chmod(0o600)
+    text = TWO_CREDENTIALS.replace("/tmp/other-token", str(other_token))
+
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    monkeypatch.delenv(f"{TOKEN_ENV}_OTHER", raising=False)
+    other = parse(text).credential("other")  # type: ignore[attr-defined]
+
+    monkeypatch.setenv(f"{TOKEN_ENV}_OTHER", "from-env")
+    assert other.resolve_token() == "from-env"
+
+    monkeypatch.delenv(f"{TOKEN_ENV}_OTHER")
+    assert other.resolve_token() == "from-file"  # falls back to its own token_file
+
+
+def test_credential_lookup_by_name() -> None:
+    settings = parse(TWO_CREDENTIALS)
+
+    assert settings.credential("default").name == "default"  # type: ignore[attr-defined]
+    assert settings.credential("other").name == "other"  # type: ignore[attr-defined]
+    with pytest.raises(ConfigError, match="no credential named 'ghost'"):
+        settings.credential("ghost")  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------- gpus
@@ -538,7 +673,8 @@ def test_a_band_that_is_upside_down_is_refused() -> None:
 MAIN = """
 include = "pools.d/*.toml"
 
-[github]
+[[github.credentials]]
+name = "default"
 token_file = "/tmp/token"
 """
 

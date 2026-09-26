@@ -18,8 +18,12 @@ from ghspot.application.commands.provision import (
     RunnerTemplate,
 )
 from ghspot.application.commands.retire import RetireRunner
-from ghspot.application.reconciliation import PoolConfiguration, ReconciliationService
-from ghspot.domain.errors import BackendError
+from ghspot.application.reconciliation import (
+    CredentialGroup,
+    PoolConfiguration,
+    ReconciliationService,
+)
+from ghspot.domain.errors import BackendError, GhSpotError
 from ghspot.domain.model.pool import PoolSpec
 from ghspot.domain.model.runner import Runner, RunnerId, RunnerState
 from ghspot.domain.model.target import RepositoryTarget
@@ -76,13 +80,11 @@ def build(*specs: PoolSpec, capacity: CapacityLimits | None = None, host: str = 
     retire = RetireRunner(forge, backend, repository, clock, events, archive=runner_logs)
     service = ReconciliationService(
         pools=[PoolConfiguration(spec=s, template=TEMPLATE) for s in (specs or (spec,))],
-        forge=forge,
+        credentials={"default": CredentialGroup(forge=forge, provision=provision, retire=retire)},
         backend=backend,
         runners=repository,
         clock=clock,
         events=events,
-        provision=provision,
-        retire=retire,
         capacity=capacity,
         host=host,
         queue=queue,
@@ -840,3 +842,106 @@ async def test_a_saturated_disk_defers_launches_and_says_so() -> None:
     assert snapshot.entries[0].reason.value == "host-busy"
     assert snapshot.host.io_percent == 98.0
     assert snapshot.host.io_high_water == 90.0
+
+
+# ---------------------------------------------------------------- multiple credentials
+
+
+OTHER = RepositoryTarget("tguisep", "second-repository")
+
+
+def _two_credentials(
+    spec_a: PoolSpec, spec_b: PoolSpec, *, capacity: CapacityLimits | None = None
+) -> tuple[ReconciliationService, FakeForge, FakeForge, InMemoryRunnerRepository]:
+    """Two pools, each on its own named credential with its own forge.
+
+    Everything else — Docker, the store, the clock — is still shared, the same as it is for a
+    real daemon: one host, one set of containers, several GitHub credentials.
+    """
+    clock = FakeClock(T0)
+    backend = FakeBackend(now=T0)
+    repository = InMemoryRunnerRepository()
+    events = RecordingPublisher()
+
+    forge_a = FakeForge()
+    forge_b = FakeForge()
+    groups = {
+        "a": CredentialGroup(
+            forge=forge_a,
+            provision=ProvisionRunner(
+                forge_a, backend, repository, clock, SequentialIds(prefix="a"), events
+            ),
+            retire=RetireRunner(forge_a, backend, repository, clock, events),
+        ),
+        "b": CredentialGroup(
+            forge=forge_b,
+            provision=ProvisionRunner(
+                forge_b, backend, repository, clock, SequentialIds(prefix="b"), events
+            ),
+            retire=RetireRunner(forge_b, backend, repository, clock, events),
+        ),
+    }
+    service = ReconciliationService(
+        pools=[
+            PoolConfiguration(spec=spec_a, template=TEMPLATE, credential="a"),
+            PoolConfiguration(spec=spec_b, template=TEMPLATE, credential="b"),
+        ],
+        credentials=groups,
+        backend=backend,
+        runners=repository,
+        clock=clock,
+        events=events,
+        capacity=capacity,
+    )
+    return service, forge_a, forge_b, repository
+
+
+@pytest.mark.anyio
+async def test_a_shared_ceiling_is_enforced_across_credentials_not_per_one() -> None:
+    """The whole reason there is one ReconciliationService and not one per credential: a host
+    ceiling has to see every pool's demand at once, whichever credential each pool uses.
+
+    Each pool alone would fit comfortably under max_containers=3 asked for 3; together they
+    ask for 6 against a host that can only take 3 — if capacity were tracked per credential
+    instead of per host, both would be granted their full 3 and the ceiling would do nothing.
+    """
+    spec_a = make_spec(name="a", target=REPO, min_idle=3, max_runners=3)
+    spec_b = make_spec(name="b", target=OTHER, min_idle=3, max_runners=3)
+    service, _forge_a, _forge_b, repository = _two_credentials(
+        spec_a, spec_b, capacity=CapacityLimits(max_containers=3)
+    )
+
+    report = await service.tick()
+
+    assert report.launched == 3
+    assert len(repository.saved) == 3
+    assert any("max_containers=3" in note for note in report.notes)
+
+
+@pytest.mark.anyio
+async def test_each_pool_provisions_and_reads_its_own_credential_s_forge() -> None:
+    """Pool a's runner is minted on forge a, never forge b, and vice versa — the routing
+    `_group()` does has to land on the right forge, not just any forge."""
+    spec_a = make_spec(name="a", target=REPO, min_idle=1, max_runners=1)
+    spec_b = make_spec(name="b", target=OTHER, min_idle=1, max_runners=1)
+    service, forge_a, forge_b, _repository = _two_credentials(spec_a, spec_b)
+
+    await service.tick()
+
+    assert len(forge_a.minted) == 1
+    assert len(forge_b.minted) == 1
+    assert forge_a.minted[0].startswith("ghspot-")
+    assert forge_b.minted[0].startswith("ghspot-")
+
+
+@pytest.mark.anyio
+async def test_a_pool_naming_an_unknown_credential_is_refused_not_crashed_into() -> None:
+    """Reload can swap pools without a restart; it cannot introduce a credential the daemon
+    was never given a token or App key for."""
+    spec_a = make_spec(name="a", target=REPO)
+    service, _forge_a, _forge_b, _repository = _two_credentials(spec_a, make_spec(name="b"))
+
+    unknown = PoolConfiguration(spec=make_spec(name="c"), template=TEMPLATE, credential="ghost")
+
+    with pytest.raises(GhSpotError, match="ghost"):
+        service.replace_pools([unknown])

@@ -21,7 +21,8 @@ from tests.unit.conftest import make_runner
 runner = CliRunner()
 
 CONFIG = """
-[github]
+[[github.credentials]]
+name = "default"
 token_file = "{token}"
 
 [daemon]
@@ -81,7 +82,9 @@ def test_a_missing_config_exits_two_and_points_at_the_example(tmp_path: Path) ->
 
 def test_a_broken_config_names_the_problem(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
-    path.write_text('[github]\n[[pool]]\nname = "x"\n')
+    path.write_text(
+        '[[github.credentials]]\nname = "default"\ntoken_file = "/tmp/t"\n[[pool]]\nname = "x"\n'
+    )
 
     result = runner.invoke(app, ["config", "validate", "-c", str(path)])
 

@@ -114,8 +114,9 @@ def test_everything_round_trips() -> None:
     """Every key the template can emit survives the daemon reading it back."""
     settings = settings_for(VARS / "full.yml")
 
-    check(settings.github.api_url == "https://github.example.com/api/v3", "full: api_url lost")
-    check(settings.github.app_id == "123456", "full: app_id lost")
+    default = settings.credential("default")
+    check(default.api_url == "https://github.example.com/api/v3", "full: api_url lost")
+    check(default.app_id == "123456", "full: app_id lost")
     check(settings.daemon.poll_interval == timedelta(seconds=30), "full: poll_interval lost")
     check(str(settings.daemon.state_db) == "/srv/ghspot/state.db", "full: state_db lost")
     check(settings.daemon.api_bind == "127.0.0.1:8770", "full: api_bind lost")
@@ -135,8 +136,22 @@ def test_everything_round_trips() -> None:
     check(keep.volumes is False, "full: housekeeping.volumes lost")
     check(keep.keep_build_cache == "5g", "full: keep_build_cache lost")
 
+    named = {credential.name: credential for credential in settings.credentials}
+    check(
+        set(named) == {"default", "other-org", "token-based"},
+        f"full: credentials are {sorted(named)}",
+    )
+    check(named["other-org"].app_id == "234567", "full: named credential app_id lost")
+    check(
+        named["token-based"].api_url == "https://github.example.com/api/v3",
+        "full: named credential api_url lost",
+    )
+
     pools = {pool.spec.name: pool for pool in settings.pools}
-    check(set(pools) == {"ubuntu", "gpu", "rhel", "org"}, f"full: pools are {sorted(pools)}")
+    check(
+        set(pools) == {"ubuntu", "gpu", "rhel", "org", "other-org-pool"},
+        f"full: pools are {sorted(pools)}",
+    )
 
     ubuntu = pools["ubuntu"]
     check(ubuntu.spec.pm.value == "dynamic", f"full: pm is {ubuntu.spec.pm}")
@@ -178,6 +193,13 @@ def test_everything_round_trips() -> None:
     check(org.spec.discover_repositories is False, "full: discover_repositories should be unset")
     check(org.spec.runner_group == "Default", "full: runner_group lost")
 
+    other_org_pool = pools["other-org-pool"]
+    check(other_org_pool.credential == "other-org", "full: pool's 'credential' key lost")
+    check(
+        other_org_pool.spec.discover_repositories is True,
+        "full: other-org-pool discover_repositories lost",
+    )
+
 
 def test_housekeeping_can_be_turned_off() -> None:
     """`never` and omitted keys are read as 'do not', not as a parse error."""
@@ -192,13 +214,12 @@ def test_housekeeping_can_be_turned_off() -> None:
 
 
 def test_the_credential_file_takes_both_forms() -> None:
-    """A token, and an App key with the newlines systemd's EnvironmentFile cannot hold."""
+    """A token, and an App key with the newlines systemd's EnvironmentFile cannot hold — both
+    for the credential named "default", which keeps the unsuffixed variable names."""
     with tempfile.TemporaryDirectory() as directory:
         token_vars = Path(directory) / "token.yml"
         token_vars.write_text(
-            "ghspot_github_token: github_pat_example\n"
-            "ghspot_github_app_id: ''\n"
-            "ghspot_github_app_private_key: ''\n"
+            "ghspot_github_credentials:\n  - name: default\n    token: github_pat_example\n"
         )
         rendered = Path(directory) / "env"
         render("env.j2", token_vars, rendered)
@@ -208,9 +229,10 @@ def test_the_credential_file_takes_both_forms() -> None:
 
         app_vars = Path(directory) / "app.yml"
         app_vars.write_text(
-            "ghspot_github_token: ''\n"
-            "ghspot_github_app_id: '123456'\n"
-            'ghspot_github_app_private_key: "-----BEGIN PRIVATE KEY-----\\nSECOND\\n"\n'
+            "ghspot_github_credentials:\n"
+            "  - name: default\n"
+            '    app_id: "123456"\n'
+            '    private_key: "-----BEGIN PRIVATE KEY-----\\nSECOND\\n"\n'
         )
         rendered_app = Path(directory) / "env-app"
         render("env.j2", app_vars, rendered_app)
@@ -219,6 +241,41 @@ def test_the_credential_file_takes_both_forms() -> None:
         check("GHSPOT_WEB_ROOT" not in body, "env: a web root nobody asked for")
         check("\\n" in body, "env: newlines not escaped for systemd's EnvironmentFile")
         check("GHSPOT_GITHUB_TOKEN" not in body, "env: token written alongside an App")
+
+
+def test_named_credentials_get_their_own_environment_variables() -> None:
+    """A named credential's secret is never `GHSPOT_GITHUB_TOKEN` unsuffixed — that variable
+    belongs to the credential named "default" alone, and another one reusing it would silently
+    steal every pool's traffic that meant to use the default."""
+    with tempfile.TemporaryDirectory() as directory:
+        variables = Path(directory) / "named.yml"
+        variables.write_text(
+            "ghspot_github_credentials:\n"
+            "  - name: default\n"
+            "    token: default-token\n"
+            "  - name: other-org\n"
+            "    token: other-org-token\n"
+            "  - name: app-based\n"
+            '    app_id: "234567"\n'
+            '    private_key: "-----BEGIN PRIVATE KEY-----\\nSECOND\\n"\n'
+        )
+        rendered = Path(directory) / "env"
+        render("env.j2", variables, rendered)
+        body = rendered.read_text()
+
+        check("GHSPOT_GITHUB_TOKEN=default-token" in body, "env: default token lost")
+        check(
+            "GHSPOT_GITHUB_TOKEN_OTHER_ORG=other-org-token" in body,
+            "env: named token-based credential lost or wrongly suffixed",
+        )
+        check(
+            "GHSPOT_GITHUB_APP_ID_APP_BASED=234567" in body,
+            "env: named app-based credential's app_id lost or wrongly suffixed",
+        )
+        check(
+            "GHSPOT_GITHUB_APP_PRIVATE_KEY_APP_BASED=" in body and "\\n" in body,
+            "env: named app-based credential's key lost or not escaped",
+        )
 
 
 def test_pools_can_be_rendered_one_file_each() -> None:
@@ -248,7 +305,7 @@ def test_pools_can_be_rendered_one_file_each() -> None:
         check("[capacity]" in body, "directory: the host's capacity limits were lost")
 
         # The role loops the template over each pool; here that loop is the test's.
-        for name in ("ubuntu", "gpu", "rhel", "org"):
+        for name in ("ubuntu", "gpu", "rhel", "org", "other-org-pool"):
             one = root / f"{name}.yml"
             one.write_text(
                 (VARS / "full.yml").read_text()
@@ -259,7 +316,10 @@ def test_pools_can_be_rendered_one_file_each() -> None:
 
         settings = load(main)
         found = {pool.spec.name for pool in settings.pools}
-        check(found == {"ubuntu", "gpu", "rhel", "org"}, f"directory: pools are {sorted(found)}")
+        check(
+            found == {"ubuntu", "gpu", "rhel", "org", "other-org-pool"},
+            f"directory: pools are {sorted(found)}",
+        )
 
         # Compared against the inline form key by key, because two templates for one schema
         # is two chances to drift — and the drift is silent: a pool file missing `pm` still
@@ -269,6 +329,11 @@ def test_pools_can_be_rendered_one_file_each() -> None:
 
         for name, expected in inline.items():
             got = from_files[name]
+            check(
+                got.credential == expected.credential,
+                f"directory: {name}'s credential is {got.credential!r}, but the inline form "
+                f"gives {expected.credential!r}",
+            )
             for attribute in (
                 "pm",
                 "min_idle",
@@ -301,9 +366,9 @@ def test_the_dashboard_location_is_only_written_when_set() -> None:
     with tempfile.TemporaryDirectory() as directory:
         variables = Path(directory) / "web.yml"
         variables.write_text(
-            "ghspot_github_token: t\n"
-            "ghspot_github_app_id: ''\n"
-            "ghspot_github_app_private_key: ''\n"
+            "ghspot_github_credentials:\n"
+            "  - name: default\n"
+            "    token: t\n"
             "ghspot_web_root: /srv/ghspot/web\n"
         )
         rendered = Path(directory) / "env"
@@ -321,6 +386,7 @@ def main() -> int:
         test_everything_round_trips,
         test_housekeeping_can_be_turned_off,
         test_the_credential_file_takes_both_forms,
+        test_named_credentials_get_their_own_environment_variables,
         test_pools_can_be_rendered_one_file_each,
         test_the_dashboard_location_is_only_written_when_set,
         test_the_host_is_named_when_set_and_left_to_the_system_when_not,

@@ -1563,3 +1563,83 @@ that were bypassed rather than enforced, which is what let the push through at a
 `main` rather than reverted-and-redone through a PR, because the content is small, correct
 and already verified, and ceremony to re-land identical code serves no one — but worth writing
 down as what it was: an accident, not a policy about when direct commits to `main` are fine.
+
+## 2026-09-22 — more than one GitHub credential
+
+One `[github]` section served every pool. That breaks down the moment two pools need
+credentials that cannot overlap — a repository under a different account, an organization
+whose App installation is separate from another org's.
+
+The first pass kept `[github]` as a privileged "default" shape and added
+`[[github.credentials]]` alongside it for named extras — additive, zero migration. Told to
+build it, then told plainly not to: no special-cased shape, everything — the credential every
+existing single-credential config already has included — declared the same way, as an entry
+in `[[github.credentials]]`. One of them just has to be named `"default"`, for a pool that sets
+no `credential` key to find it. `DEFAULT_CREDENTIAL = "default"` is a name a pool looks for, not a
+privileged type — nothing in `GitHubSettings` treats it specially, and `_one_credential()`
+parses it through the exact same code path as any other entry.
+
+**This is a breaking change to `config.toml`, on purpose.** `[github]` no longer accepts
+`token_file`, `app_id`, `private_key_file`, `installation_id`, `api_url` or `request_timeout`
+directly — attempting to is a load-time `ConfigError` naming the new shape, not a silently
+ignored key. Every shipped surface that wrote or read the old shape moved with it in the same
+change: `config.example.toml`, `packaging/deb/config.toml` (the packaged default — this one
+matters most, since a fresh `apt install` would otherwise refuse to start), the wizard
+(`ghspot setup`, which substitutes into `[[github.credentials]]` now), the Ansible role
+(`ghspot_github_token`/`ghspot_github_app_id`/`ghspot_github_app_private_key` are gone;
+everything is `ghspot_github_credentials`, a list, with a `name: default` entry required), and
+`site/src/content/docs/start/authentication.md`. Pre-1.0 (v0.10.x), no deprecation window —
+consistent with this project's "no backwards-compatibility shims, just change the code" rule.
+
+### The decision that shaped the whole implementation
+
+`[capacity]` bounds the *host*, not one pool: `admit()` (`domain/policy/admission.py`) takes
+every pool's `LaunchRequest` in one batch and enforces `max_containers` etc. across all of
+them at once. The obvious shape for multiple credentials — one `ReconciliationService` per
+credential, each ticking independently — would have quietly turned a host-wide ceiling into a
+per-credential one: `max_containers = 8` becomes 8 *per credential*, not 8 total, because each
+reconciler's `admit()` only ever sees its own pools.
+
+So there is still exactly one `ReconciliationService`, one tick, one admission pass, one
+`QueueSnapshot`, one `TickReport` — unchanged from before this landed. What changed is that it
+resolves *which* forge/provision/retire to use **per pool**, via a new `CredentialGroup` looked
+up by `PoolConfiguration.credential`, instead of holding one of each for the whole tick. The
+alternative was never implemented, because the reasoning above found the bug in it before any
+code was written — worth recording so nobody re-derives it by shipping the per-credential
+version and finding the ceiling doesn't work.
+
+### Notes for later
+
+- `Application.forge`/`.provision`/`.retire` (singular fields) became `Application.credentials:
+  Mapping[str, CredentialGroup]` plus `forge_for(pool_name)` and an async `retire(...)` method
+  that resolves internally. `retire`'s call signature is unchanged on purpose — every existing
+  call site (`operations.py`, the API's stop endpoint, `daemon.py`'s shutdown) needed no edits
+  at all, only the two spots that read `.forge` directly (job-logs, CLI and API) do.
+- A runner whose pool has since been removed from configuration falls back to the `"default"`
+  credential for its best-effort GitHub-side deletion — the same orphan case reconciliation
+  already handles by adopting from container labels, now also orphaned from a credential's
+  point of view. Container teardown happens regardless of forge; only the GitHub-side delete
+  could use the wrong one, and that was already wrapped in a swallowed `GhSpotError`.
+- Reload (`SIGHUP`) can swap pools and capacity without a restart, as before; it cannot
+  introduce a credential the daemon was not started with. `replace_pools` refuses a pool naming
+  an unknown one, the same boundary an App's own `app_id`/private key already had — caught at
+  reload time (logged, old settings kept) rather than at the next tick that touches it.
+- Per-credential environment variables are the name, uppercased, non-alphanumerics folded to
+  `_`, appended to the base variable name — `GHSPOT_GITHUB_TOKEN_OTHER_ORG` — except for the
+  credential named `"default"`, which keeps the bare `GHSPOT_GITHUB_TOKEN` unsuffixed: the one
+  every existing single-credential deployment already sets. The Ansible role's `env.j2`
+  computes the same suffix in Jinja (`'' if credential.name == 'default' else '_' + (...
+  regex_replace('[^A-Z0-9]+', '_'))`) — the two have to be kept in step by hand, there being no
+  shared implementation between a systemd EnvironmentFile template and Python.
+- The Ansible role's own secret delivery turned out to already be entirely
+  environment-variable-based (`env.j2`), never `token_file` in the rendered TOML — including
+  for what used to be the privileged default. `ghspot_github_credentials` follows that same
+  path uniformly now, one loop over every entry instead of a special-cased default block plus
+  a loop for extras.
+- `ghspot_api_url` (a role variable, previously applied only to the default credential) is
+  gone too — `api_url` is a per-credential key now, like everything else a credential can set,
+  matching how a named credential's own GHES endpoint already had to be set.
+- `ForgeClient` gained `aclose()` on the port itself. `CredentialGroup.forge` is typed against
+  the port (application layer, correctly forge-agnostic), and `Application.aclose()` needed to
+  close every group's client — which the port could not do until closing was part of its
+  contract, not just `GitHubClient`'s.

@@ -24,7 +24,8 @@
 # Must stay above the first [section] — in TOML a bare key belongs to the table above it.
 # include = "/etc/ghspot/pools.d/*.toml"
 
-[github]
+[[github.credentials]]
+name = "default"
 # api_url = "https://api.github.com"     # change for GitHub Enterprise Server
 
 [daemon]

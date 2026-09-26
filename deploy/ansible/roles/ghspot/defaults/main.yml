@@ -21,18 +21,28 @@ ghspot_build_images: true
 ghspot_images: [ubuntu-24.04]
 ghspot_images_force: false
 
-# Credentials. Supply exactly one. Keep them in ansible-vault, not in a playbook.
+# Credentials. At least one is required, with a name: default entry among them — every pool
+# uses that one unless it sets `credential: <name>` to pick another (see ghspot_pools below).
+# Keep these in ansible-vault, not in a playbook.
 #
-#   ghspot_github_token: "{{ vault_ghspot_token }}"
+# ghspot_github_credentials:
+#   - name: default
+#     token: "{{ vault_ghspot_token }}"
 # or
-#   ghspot_github_app_id: "123456"
-#   ghspot_github_app_private_key: "{{ vault_ghspot_app_key }}"
-ghspot_github_token: ""
-ghspot_github_app_id: ""
-ghspot_github_app_private_key: ""
+#   - name: default
+#     app_id: "123456"
+#     private_key: "{{ vault_ghspot_app_key }}"
+#
+# A pool needing a different credential — a repository under another account, an organization
+# with its own installation — gets another entry, the same shape:
+#
+#   - name: other-org
+#     app_id: "234567"
+#     private_key: "{{ vault_ghspot_other_org_app_key }}"
+#     # api_url: https://ghe.example.com/api/v3   # only if this one is on GitHub Enterprise Server
+ghspot_github_credentials: []
 
 # Daemon configuration, rendered into /etc/ghspot/config.toml.
-ghspot_api_url: https://api.github.com
 ghspot_poll_interval: 15s
 ghspot_state_db: /var/lib/ghspot/state.db
 # The REST API, and with it the web dashboard at /ui. Unset means neither is served and no
@@ -130,6 +140,18 @@ ghspot_capacity: {}
 #     container:
 #       image: ghspot/runner:ubuntu-24.04
 #       docker_socket: true
+#
+# A pool routes through a credential other than the default above with `credential: <name>`,
+# naming an entry in ghspot_github_credentials:
+#
+# ghspot_pools:
+#   - name: other-org-pool
+#     organization: other-org
+#     discover_repositories: true
+#     credential: other-org
+#     labels: [self-hosted, linux, x64, ubuntu-24.04]
+#     container:
+#       image: ghspot/runner:ubuntu-24.04
 ghspot_pools: []
 
 # Whether to start the service. Set false to configure a host without running it yet.

@@ -17,7 +17,12 @@
 # This has to sit above the first [section]: in TOML a bare key belongs to whichever table
 # precedes it, so written lower down it would quietly become part of that table.
 
-[github]
+# Every credential ghspot can use is declared here, one [[github.credentials]] block each —
+# there is no separate "default" shape. A pool uses whichever one is named "default" unless
+# it sets `credential = "<name>"` to name a different one (see the pool examples below).
+
+[[github.credentials]]
+name = "default"
 # Two ways to authenticate. Credentials are never read from this file itself — it points
 # at files, or you set the environment variables (the environment always wins).
 #
@@ -50,6 +55,22 @@ token_file = "~/.config/ghspot/token"
 
 # api_url = "https://api.github.com"       # change for GitHub Enterprise Server
 # request_timeout = "20s"
+
+# --- Serving more than one credential -------------------------------------------------
+# A pool needing a different token or App than the default above — a repository under
+# another account, an organization with its own installation — gets its own named block,
+# in exactly the same shape:
+#
+# [[github.credentials]]
+# name = "other-org"
+# token_file = "~/.config/ghspot/other-org-token"          # or app_id + private_key_file
+#
+# Environment variables work the same way, suffixed with the name (uppercased, non-letters
+# folded to "_"): GHSPOT_GITHUB_TOKEN_OTHER_ORG, GHSPOT_GITHUB_APP_ID_OTHER_ORG,
+# GHSPOT_GITHUB_APP_PRIVATE_KEY_OTHER_ORG. The unsuffixed variables stay "default"'s alone.
+#
+# A pool then opts into it with `credential = "other-org"`; a pool with no `credential` key
+# uses whichever credential is named "default".
 
 [daemon]
 poll_interval = "15s"
@@ -272,6 +293,20 @@ docker_socket = true
 # in, since only an organization plan has more than one.
 # runner_group = "Default"
 #
+# labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
+# max_runners = 2
+# [pool.container]
+# image = "ghspot/runner:ubuntu-24.04"
+# docker_socket = true
+
+# A fourth pool, using the "other-org" credential from [[github.credentials]] above instead
+# of "default" — `credential` names it. Left out, a pool always uses "default".
+#
+# [[pool]]
+# name = "other-org-shared"
+# organization = "other-org"
+# discover_repositories = true
+# credential = "other-org"
 # labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
 # max_runners = 2
 # [pool.container]
