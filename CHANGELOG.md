@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.11.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.10.0...v0.11.0) (2026-09-26)
+
+
+### Features
+
+* **ansible:** render named GitHub credentials ([66e0838](https://github.com/tguisep/gh-spot-docker-runners/commit/66e0838a4de70efd6c69adb9d45cc69a5c25d5c1))
+* **core:** serve pools with more than one GitHub credential ([90a4d5d](https://github.com/tguisep/gh-spot-docker-runners/commit/90a4d5d19d9c34442b1ae2267810c43086f026cf))
+* serve pools with more than one GitHub credential ([9339f1a](https://github.com/tguisep/gh-spot-docker-runners/commit/9339f1adcd464416789bb9178183328edbd2a4d9))
+
+
+### Fixes
+
+* **ansible:** unify credentials under ghspot_github_credentials ([5d55872](https://github.com/tguisep/gh-spot-docker-runners/commit/5d55872ab240f6b7c0d0d8f812bab9ab4a931188))
+* **cli:** doctor's permission remedy names the org permission for org targets ([5e9769e](https://github.com/tguisep/gh-spot-docker-runners/commit/5e9769e77eaa5258ca5e8464fa9266abf042e0ad))
+* **config:** update example and packaged config for [[github.credentials]] ([bf3b6a2](https://github.com/tguisep/gh-spot-docker-runners/commit/bf3b6a255e2b47cb99e97da1bd1a8fa7e29df648))
+* **core:** fold the default GitHub credential into [[github.credentials]] ([9e46d7d](https://github.com/tguisep/gh-spot-docker-runners/commit/9e46d7d7775db238f3f8bdfc01d0d01a429d1c5d))
+* **core:** rename the pool credential key from github to credential ([9c118eb](https://github.com/tguisep/gh-spot-docker-runners/commit/9c118eb50022ef189ab30f4472928c0e9c141350))
+
+
+### Documentation
+
+* document reaching the dashboard and API through an SSH tunnel ([0d74777](https://github.com/tguisep/gh-spot-docker-runners/commit/0d747772e31ba6372d97fb8f9670c8e21d8c7c33))
+* document serving pools with multiple GitHub credentials ([72cf6db](https://github.com/tguisep/gh-spot-docker-runners/commit/72cf6dbe44010efddf6782ec85e4a326e2d40a7d))
+* reach the dashboard and API through an SSH tunnel ([7b84edc](https://github.com/tguisep/gh-spot-docker-runners/commit/7b84edc0d536b62715be5a6170e287ef3e699b61))
+* record the doctor org-permission bug and the direct-main-commit slip ([2a9f1fa](https://github.com/tguisep/gh-spot-docker-runners/commit/2a9f1fae6a27dd3be43fbbb8e890523e5e659f23))
+* record the organization runner-group bug and the direct-main-commit slip ([a5ef7db](https://github.com/tguisep/gh-spot-docker-runners/commit/a5ef7dbb4a2a2ccb0157e84ff8a7f3bef9481575))
+* update authentication guide and CONTEXT.md for the unified shape ([73a6cff](https://github.com/tguisep/gh-spot-docker-runners/commit/73a6cff23115a70c1db3253e25d1a7dd35ef53ea))
+
 ## [0.10.0](https://github.com/tguisep/gh-spot-docker-runners/compare/v0.9.0...v0.10.0) (2026-09-22)
 
 
