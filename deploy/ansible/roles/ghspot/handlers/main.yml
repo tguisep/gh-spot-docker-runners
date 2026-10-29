@@ -11,7 +11,7 @@
 - name: Reload ghspot
   ansible.builtin.systemd:
     name: ghspot
-    state: reloaded
+    state: reloade
   # Nothing to reload if the operator asked for the service to stay stopped.
   when: ghspot_service_enabled | bool
 
